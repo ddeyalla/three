@@ -13,7 +13,7 @@ Research checked against Apple's documentation on 2 November 2026.
 | [Materials](https://developer.apple.com/design/human-interface-guidelines/materials) and [Meet Liquid Glass](https://developer.apple.com/videos/play/wwdc2025/219/) | Liquid Glass separates controls from content. Standard materials give content structure. Avoid layering glass on glass. | Use translucent system material for pane bodies, with titles and header icons directly on that material. Preserve Three's existing glass controls, cards and dial as a deliberate product preference; do not claim every existing content surface follows Apple's stricter guidance. |
 | [Drag and drop](https://developer.apple.com/design/human-interface-guidelines/drag-and-drop) | Show a valid destination, clear feedback on exit, and offer alternatives to dragging. Moves should be reversible. | Native drag sessions move a pane only on drop. A neutral highlight identifies the receiver. Header and View menus offer the same moves. Reset restores default order. |
 
-The rounded pane appearance, exact insets, persisted order and fixed-size dial are Three-specific decisions, not Apple-prescribed dimensions.
+The rounded pane appearance, exact insets, persisted order and the dial's 240 to 400pt range (it scales with the Now pane) are Three-specific decisions, not Apple-prescribed dimensions.
 
 Pane headers now show only the title, drag grip and menu icon, as requested after the initial workspace review. Native divider lines are not drawn. Their geometry, resize cursor and hit areas remain unchanged through AppKit's `drawDivider(in:)` customization point.
 

@@ -26,6 +26,7 @@ The full product spec, with principles, data model and roadmap, is in [PRODUCT.m
 - **Priority order.** Drag a Today card by its title row to reorder, or use Move Up and Move Down. The top open task is the one the dial offers next.
 - **Categories** with colours, which carry through the timer, cards and timeline. Edit them in Settings.
 - **Menu bar.** The timer, the next task and a capture field are always one click away.
+- **Blocking during focus** (built, not yet in a release). Pick websites and apps in Settings → Blocking. During a focus session, and during weekly focus hours if you set them, Chrome shows a calm block page instead of a blocked site and blocked apps are hidden, never quit. To open one for five minutes you write a reason and wait 20 seconds, in Three only; a strict task turns that off. Chrome blocking works with Three closed; hiding apps needs Three running. Safari, other browsers and Chrome's Guest and Incognito windows aren't covered. Details in [PRODUCT.md §7](PRODUCT.md#7-distraction-blocker).
 - **A CLI for you and your AI.** `three` reads and writes the same database as the app, so Claude Code, Codex or a script can plan your day. Changes show up in the app straight away.
 
 ![Tags: time spent on each thread of work](docs/tags.png)
@@ -82,7 +83,13 @@ three drop 3 | tomorrow 3
 three status [--json]
 three categories [add Health --color "#4FBF8B" | rename A B | color A "#hex" | archive A]
 three settings [--session 50 --short-break 5 --long-break 15 --block 60]
+three block [status] [--json]                     # whether blocking is on, why, until when, and what isn't covered
+three block add reddit news.ycombinator.com --app com.tinyspeck.slackmacgap
+three block hours add mon-fri 10:00-13:00         # weekly focus hours; 22:00-02:00 runs past midnight
+three block connect-chrome                        # the same Chrome setup as Settings → Blocking
 ```
+
+`three block` only adds. Remove rules and change focus hours in the app, while blocking is off.
 
 To let an agent run your day, open **Settings → Connect** and copy the instructions into your `CLAUDE.md` or `AGENTS.md`. An MCP server is planned for v0.4.
 
@@ -91,7 +98,7 @@ To let an agent run your day, open **Settings → Connect** and copy the instruc
 ```bash
 make build     # debug build of build/Three.app
 make run       # build, then launch
-make test      # core tests (Swift Testing)
+make test      # design lint, core and app tests (Swift Testing), extension tests (node --test)
 make install   # release build to ~/Applications, CLI linked at ~/.local/bin/three
 ```
 
@@ -120,7 +127,7 @@ open -n --env THREE_DB=$TMPDIR/three-demo.sqlite --env THREE_OPEN=tags build/Thr
 scripts/shot.sh <pid> build/today.png             # screenshot that window (needs Screen Recording)
 ```
 
-`THREE_DB` points the app and CLI at another database. `THREE_OPEN` takes `today`, `inbox`, `upcoming`, `done`, `tags` or `settings`. Keep demo databases outside `~/Documents`, or macOS asks the freshly signed build for folder access and the app waits on the prompt.
+`THREE_DB` points the app and CLI at another database. `THREE_OPEN` takes `today`, `inbox`, `upcoming`, `done`, `tags`, `settings` or `blocking`. `THREE_CHROME_DATA` points the app's Chrome setup at another Chrome data folder (the CLI takes `--chrome-folder`), so a test copy never writes into your real Chrome profile. Keep demo databases outside `~/Documents`, or macOS asks the freshly signed build for folder access and the app waits on the prompt.
 
 ## Roadmap
 
@@ -128,7 +135,7 @@ scripts/shot.sh <pid> build/today.png             # screenshot that window (need
 |---|---|---|
 | v0.1 | Core loop: plan, dial timer, reflection, breaks, timeline, CLI | Done |
 | v0.2 | Plan and capture: inbox, upcoming, quick add, steps, categories, settings, tags, three panes | Done |
-| v0.3 | Site and app blocker during focus | Next |
+| v0.3 | Site and app blocker during focus: Chrome and apps | Built, unreleased |
 | v0.4 | MCP server and AI planning | |
 | v0.5 | Calendar sync | |
 | v0.6 | Session record and trends | |

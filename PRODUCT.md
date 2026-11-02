@@ -106,7 +106,7 @@ Split view, as in Session's first screenshot, with less on it.
 ### 5.2 Menu bar
 
 - Title: a category-colour dot and `Write spec · 23:41`. When idle: `Next: Write spec (90m)`. With no plan: `Plan today`.
-- Popover (glass): the current task, time left, Start/Pause, `+5`, the list of today's tasks with ticks, and "Open Three".
+- Popover (glass): the current task, time left, Start/Pause, `+5`, the list of today's tasks with ticks, and "Open Three". While blocking is on, a row says until when and why, with Unblock for 5 Minutes and Blocking Settings in its menu (§7).
 - Global hotkey (default ⌥⌘Space) opens the popover from anywhere.
 
 ### 5.3 Reflection panel (end of every focus session)
@@ -147,7 +147,7 @@ Plus one streak number: days in a row on which you committed a plan and finished
 - Default block length · session length (when splitting) · break lengths
 - Calendars: which to read meetings from, and the write calendars (§9.2)
 - Categories: name, colour, and allowed items (§7.2)
-- Blocker: blocklist, focus hours, browser-extension status with install buttons
+- Blocking: websites, apps, focus hours and the Chrome connection, with what isn't covered (§7)
 - Sounds: on/off, plus one chime choice
 - Menu-bar hotkey · launch at login
 - CLI & MCP: shows install status and copy-paste config snippets for Claude Code, Claude Desktop and Codex
@@ -164,61 +164,63 @@ Plus one streak number: days in a row on which you committed a plan and finished
 
 ## 7. Distraction blocker
 
-Opal-style blocking of websites and apps, tied to the plan rather than to a separate schedule screen.
+Blocking of websites in Chrome and of apps on the Mac, tied to focus sessions and weekly focus hours rather than to a separate schedule screen. It adds friction, not security: the person who set it up can always get round it, so Three says plainly what it covers and what it doesn't.
+
+This section describes v0.3 as built (unreleased, after 0.2.4). Where the original plan differed, the difference is listed at the end of each part.
 
 ### 7.1 When it's on
 
-- **During every focus session.** It starts with the timer and ends when the timer ends.
-- **During focus hours,** a weekly schedule set in Settings (e.g. Mon–Fri 10:00–13:00, 14:00–18:00). Blocking stays on between sessions and during breaks inside those hours, which closes the gap where "quick break" turns into an hour of YouTube.
-- Outside both, nothing is blocked.
-- The menu-bar item shows a small shield while blocking is on.
+- **During every focus session,** from Start until the session ends. A paused or overrunning session keeps blocking for at most 15 minutes, then lets go even if the timer is left alone.
+- **During focus hours,** a weekly schedule set in Settings → Blocking or with `three block hours add` (e.g. Mon–Fri 10:00–13:00). Hours may run past midnight. Blocking stays on between sessions and during breaks inside them, which closes the gap where "quick break" turns into an hour of YouTube. A schedule that covers the whole week with no gap is refused, so blocking can't be on forever.
+- Outside both, nothing is blocked. Times follow the Mac's time zone and are re-read after a time-zone change, a clock change or wake.
+- While at least one blocked rule is really enforced, the menu-bar symbol becomes `hand.raised.fill` and Now's status line adds "· Blocking". It doesn't pulse. If blocking is on but nothing can be enforced (only websites, and no working Chrome connection), there's no glyph and the menu-bar popover says websites aren't blocked.
+
+Changed from the original plan: a hand, not a shield, because this is friction rather than protection.
 
 ### 7.2 What it blocks
 
-- **One global blocklist** of websites and apps. A suggested starter list is shown on first run, and you pick what to keep: Reddit, YouTube, X, Instagram, TikTok, Facebook, Hacker News, news sites, Discord, WhatsApp, Telegram, Messages.
-- **Website rules:**
-  - A domain covers its subdomains.
-  - Optional path rules let you block part of a site, e.g. block `youtube.com/shorts` but not `youtube.com`.
-- **App rules** use the bundle ID, picked from your Applications folder.
-- **Per-category allow.** Each category can allow items back while one of its tasks is active, e.g. Coding allows YouTube for tutorials, Admin allows Slack. During focus hours with no session running, only the global list applies.
+- **One list of websites and apps,** empty until you add something. X, Reddit and YouTube are one-click suggestions that add their domains as ordinary rows: x.com and twitter.com (not t.co, so shared links elsewhere keep working), reddit.com and redd.it, youtube.com and youtu.be.
+- **Websites:** a domain covers its subdomains. Paths such as `youtube.com/shorts` aren't supported; Three offers to block the whole site instead. Up to 1,000 websites can be on. Lists saved before that limit, up to the extension's original 4,000, keep working, but new additions past 1,000 are refused.
+- **Apps** are chosen from Applications and matched by bundle ID. Three never blocks itself, under any bundle ID, or apps macOS needs, such as Finder.
+- **Not covered:** Safari, Firefox and other browsers; Chrome profiles without the extension; Chrome Guest and Incognito windows (the extension is not allowed in Incognito); videos embedded in other sites; apps that show web pages. Add a browser under Apps to hide it during focus. Three never hides a browser you haven't added.
+
+Not built from the original plan: path rules, per-category allow lists, a starter list on first run, Safari and other Chromium browsers.
 
 ### 7.3 What you see when you hit a block
 
-- **Website:** the tab shows a full-page glass screen (like the "Work on success, not Reddit" example).
-  - Category emoji/icon.
-  - **"Work on *Write PRD*, not Reddit"**, using the active task's title, or "Focus hours" when no session runs.
-  - Time left in the session.
-  - "Reddit blocked today: 7".
-  - A primary **Back to work** button that closes the tab or goes back.
-- **App:** the app is hidden immediately and the same screen shows as a glass overlay window above it. **Back to work** returns you to the previous app.
-- There are no motivational quotes. The task you committed to is the message.
+- **Website (Chrome):** the tab goes to the extension's block page. It names the site and why ("reddit.com is blocked during this focus session"), the task with its category colour or "Focus hours", the time until blocking ends and "Until 3:45 PM". **Back to work** goes back, closes a tab that was moved off a blocked site, or opens a new tab when it's the last one; Esc does the same. If the site stops being blocked while the page is open, it says so and offers the site's front page, because the address you opened is never kept.
+- **App:** the app is hidden, never quit, so nothing in it is lost. A small glass panel says so, with the task and when blocking ends. **Back to work** returns to the app you were using. It appears each time the app comes forward. Hiding needs the Three app running; Chrome blocking doesn't.
+- No counts, streaks, quotes or scores on either. The task you committed to is the message.
 
-### 7.4 Getting past it (friction, with a strict mode)
+Changed from the original plan: no "Reddit blocked today: 7" counter, and no category icon.
 
-- **Normal sessions.** The block screen has a small **Unblock 5 min** link. You type a reason (at least a few words), wait out a 20-second countdown, and then that one site or app is open for 5 minutes. The unblock is logged with its reason and counts as a distraction for the session.
-- **Strict sessions.** There's no unblock link. A task can be marked strict in the app, or by Claude in the plan.
-  - Stopping a strict session early needs **Give up**: type a reason and wait 60 seconds. The session is logged as abandoned.
-  - Focus hours stay on regardless.
-  - Quitting Three during a strict session doesn't help: a launch agent restarts it within seconds.
-- **No way to edit the lists during blocking.** Removing or disabling a rule, or loosening a category allow, is only possible while blocking is off. Adding rules is always allowed.
+### 7.4 Getting past it
+
+- **Only in Three.** The app overlay's **Unblock for 5 minutes…**, or Unblock for 5 Minutes in the menu-bar popover. The Chrome page tells you where to go; it has no link into Three.
+- Write a reason of at least three words, start a 20-second wait, then click **Unblock for 5 minutes**. That last button has no keyboard shortcut, so holding Return can't open anything. The rule is open for five minutes; then blocking resumes and an open app is hidden again. The reason is saved with the session.
+- A site that a broader rule also covers can't be opened on its own (opening old.reddit.com wouldn't help while reddit.com is blocked). Three says so before the wait.
+- **Strict tasks** turn unblocking off for that task's sessions. Create one with `three add --strict`. Finish and Stop work as usual, focus hours are unaffected, and there's no Give up timer, no protection against quitting and no relaunch agent. The app can't yet mark an existing task strict: that needs a Store mutation that doesn't exist.
+- **No loosening while blocking is on.** Removing a rule, changing focus hours and removing the Chrome connection wait until blocking is off. The Store refuses them even if a button was drawn before blocking started. Adding is always allowed.
+
+Changed from the original plan: no Give up timer and no launch agent; strict only prevents new unblocks.
 
 ### 7.5 What it records
 
-- Every block hit and every unblock is logged (time, item, session, reason).
-- Distractions appear in:
-  - the Today summary (`2/3 done · 3h 10m focus · 7 blocks · 1 unblock`),
-  - each session in the Timeline, as Session's "N distracted",
-  - Trends (§5.5).
-- The data is also exposed to Claude via `get_stats`.
+- Each block hit (which rule, when) and each unblock (rule, reason, when it ends), with the session when there is one. Never the address of the page.
+- The app shows none of this as counts. `three block status` lists today's hits per rule.
+
+Not built from the original plan: distractions in the Today summary, the Timeline and Trends, and in `get_stats`.
 
 ### 7.6 How it works
 
 | Target | Mechanism |
 |---|---|
-| Safari | A Safari Web Extension bundled in the app. It redirects blocked URLs to its own block page using `declarativeNetRequest` rules the app keeps updated. It reads state from a small JSON file in a shared App Group container. |
-| Chrome, Arc, Brave, Edge, Dia | A Chromium extension (MV3, same block page). It gets its rules from `three native-host`, a native-messaging mode of the same `three` binary. |
-| A browser without the extension (Firefox, or the extension disabled) | Treated as a blocked app during blocking: "Install the Three extension to use Firefox during focus." Each extension sends a heartbeat so the app knows it's alive. |
-| Apps | The app watches app launches and activations (`NSWorkspace`), hides blocked apps at once, and shows the overlay window. No special entitlements needed. |
+| Chrome | An MV3 extension, loaded unpacked from a folder Three keeps, talks to `three-native-host` through Chrome native messaging. The host reads the database itself, so Chrome blocking works with the Three app closed. `declarativeNetRequest` sends blocked page loads to the block page, and open tabs on a newly blocked site are moved there. Each profile reports whether it can act on all sites. If Three stops answering, rules lapse within three minutes (fail open). |
+| Apps | The Three app watches activations, launches and unhides (`NSWorkspace`) and hides blocked apps. It hides them again when blocking starts, a rule is added or an unblock ends. Only while Three is running. No special entitlements. |
+
+**Chrome setup** is a step you take, in Settings → Blocking → Set Up Chrome…. It shows the two things it will write (the native-messaging connection file in Chrome's `NativeMessagingHosts` folder and a copy of the extension) and writes them only when you click Add Connection. Then you load the extension in each Chrome profile with Developer mode and Load unpacked. Three won't replace an extension folder it didn't create. `three block connect-chrome` does the same from the terminal.
+
+**Verified so far:** the Chrome path ran end to end in an isolated Chrome for Testing profile with Three's real host (rules, sweeping, pause, expiry, Back to work, two profiles, permission changes, lease loss, legacy lists). The visible setup steps a person takes in their own Chrome, and Chrome's own permission prompt, haven't been tested by hand.
 
 Not used, and why:
 - **Screen Time APIs** (FamilyControls/ManagedSettings): they need a special entitlement from Apple and give little control over the block screen.
@@ -322,7 +324,7 @@ Categories, Day Plan with up to 5 tasks, dial timer, menu bar, reflection → br
 Three panes (tasks, dial, timeline; 0.2.4 replaced the sidebar), inbox for unplanned tasks, tags with time per tag, a 30-day Done list, Todoist-style quick add (`#category 45m tomorrow`), steps and notes shown in place on each task, Settings (timer defaults shared with the CLI through the database, category editing, CLI install and agent instructions), quick capture from the menu bar.
 
 **v0.3 — Blocker**
-Blocklist, focus hours, Safari and Chromium extensions with the block page, app blocking overlay, unblock friction, strict mode, block logging.
+Blocklist, focus hours, the Chrome extension with its block page, app hiding with an overlay, unblock friction, strict tasks, block logging. Built and unreleased; Safari, other Chromium browsers, path rules and per-category allow come later (§7).
 
 **v0.4 — AI-driven**
 MCP server, `plan-day` skill, draft → commit flow, scheduled planning command, carry-over.

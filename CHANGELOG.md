@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **Blocking during focus.** Settings has a Blocking tab for websites, apps, weekly focus hours and the Chrome connection. It starts empty; X, Reddit and YouTube are one-click suggestions that add their domains as ordinary rows (X adds x.com and twitter.com, not t.co). Blocking is on during every focus session, for at most 15 minutes of a paused or overrunning one, and during focus hours, which may run past midnight but can't cover the whole week.
+- **Chrome** shows a calm block page instead of a blocked site: the site, the task, the time until blocking ends and Back to work. It keeps working with Three closed. Setup is a step you take: Three shows what it will write and writes it only when you click Add Connection, then you load the extension in each profile. Guest and Incognito windows, other profiles and other browsers aren't covered, and Settings says so.
+- **Apps** you block are hidden, never quit, whenever they come forward while blocking is on, and again when an unblock ends. A small glass panel says so and offers Back to work. Hiding needs Three running. Three never hides itself, apps macOS needs, or a browser you didn't add.
+- **Unblocking** happens only in Three: write a reason of at least three words, wait 20 seconds, then click Unblock for 5 minutes, which has no keyboard shortcut. A site a broader rule also covers can't be opened on its own. A strict task (`three add --strict`) turns unblocking off; Finish and Stop work as usual.
+- While something is really blocked, the menu bar shows a raised hand and Now adds "· Blocking". Blocking that can't enforce anything shows no hand and says what's missing. The menu-bar popover says until when and why, and holds Unblock and Blocking Settings.
+- Removing rules, changing focus hours and removing the Chrome connection wait until blocking is off; adding is always allowed. The Store refuses a removal that races the start.
+- New website rules are capped at 1,000 enabled sites; existing lists up to 4,000 keep working. `three block status` shows coverage, gaps and today's hits.
+- Typing straight after Break it down or Add a tag now lands in the new field instead of Notes.
+- Closed tasks on Today are dimmed again; the dimming was applied outside the glass, where it was ignored.
+
 - Now is one centred column: the task, its category and its next step; the dial, time left and status; then the controls. The dial grows from 240 to 400pt with the pane. The title is larger and wraps to two lines. Click the next step to tick it off. The status is plain text and says Paused while paused. A break names the task up next, an empty day offers Add Task, and an all-done day shows its summary. The dial takes input only when there is a task to start.
 - Drag a Today card by its title row to change the order. A line marks where it will land; Escape or a drop anywhere else changes nothing. Move Up and Move Down are also in the card's menu, in Edit (⌥⌘↑ and ⌥⌘↓, for the task you selected) and in VoiceOver's actions.
 - Add Task and ⌘N put the cursor in quick add even when they switch lists. Previously the list being replaced kept the request.
