@@ -6,42 +6,50 @@ struct MenuBarLabel: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// The menu bar draws one symbol from a label (its first image), so the item shows one thing by priority: a saved
-    /// reflection's dot, else the blocking hand while something is really blocked, else the timer.
+    /// macOS draws a menu bar extra as one template symbol and a plain title, dropping a `Label`'s text, a second image,
+    /// sizes and opacity (docs/menu-bar-design.md). So the symbol shows the most pressing state and the time stays beside it.
     var body: some View {
+        HStack {
+            Image(systemName: symbol)
+            if let time { Text(time) }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(spokenLabel)
+    }
+
+    /// A saved reflection's dot, else the hand while something is really blocked, else the timer.
+    private var symbol: String {
         if !model.deferredReflections.isEmpty {
-            Image(systemName: "circle.fill")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 6, height: 6)
-                .opacity(reminderBright ? 1 : 0.35)
-                .animation(reduceMotion ? nil : .easeInOut(duration: 1), value: reminderBright)
-                .accessibilityLabel("Saved reflection awaiting review")
-        } else if model.blocking.isEnforcing {
-            // Never pulses: blocking is a state, not a reminder.
-            Image(systemName: "hand.raised.fill")
-                .accessibilityLabel(model.blocking.headline)
-        } else {
-            title
+            // Swapping the symbol is the pulse: the menu bar ignores opacity.
+            return reduceMotion || Int(model.now.timeIntervalSince1970).isMultiple(of: 2) ? "circlebadge.fill" : "circlebadge"
         }
+        // Never pulses: blocking is a state, not a reminder.
+        if model.blocking.isEnforcing { return "hand.raised.fill" }
+        return model.running?.kind == .break ? "cup.and.saucer.fill" : "timer"
     }
 
-    private var reminderBright: Bool { reduceMotion || Int(model.now.timeIntervalSince1970).isMultiple(of: 2) }
+    /// "24:13", "Paused 24:13", "+03:12" or "Break 4:12": worded to stand alone, since the symbol may be showing
+    /// the reminder or blocking instead.
+    private var time: String? {
+        guard let running = model.running else { return nil }
+        let clock = Format.clock(running.remaining(at: model.now))
+        if running.kind == .break { return "Break \(clock)" }
+        return running.isPaused ? "Paused \(clock)" : clock
+    }
 
-    @ViewBuilder private var title: some View {
-        if let running = model.running {
-            let title = running.kind == .break ? "Break" : (model.runningTask?.task.title ?? "Focus")
-            Label("\(short(title)) · \(running.isPaused ? "paused" : Format.clock(running.remaining(at: model.now)))",
-                  systemImage: running.kind == .break ? "cup.and.saucer.fill" : "timer")
-                .monospacedDigit()
+    private var spokenLabel: String {
+        var parts: [String]
+        if let running = model.running, let time {
+            parts = running.kind == .break ? [time] : [model.runningTask?.task.title ?? "Focus", time]
         } else if let next = model.snapshot.nextTask {
-            Label("Next: \(short(next.task.title))", systemImage: "timer")
+            parts = ["Next: \(next.task.title)"]
         } else {
-            Label(model.snapshot.tasks.isEmpty ? "Plan today" : "Three", systemImage: "timer")
+            parts = [model.snapshot.tasks.isEmpty ? "Plan today" : "Three"]
         }
+        if !model.deferredReflections.isEmpty { parts.append("Saved reflection awaiting review") }
+        if model.blocking.isEnforcing { parts.append(model.blocking.headline) }
+        return parts.joined(separator: ", ")
     }
-
-    private func short(_ s: String) -> String { s.count > 22 ? String(s.prefix(21)) + "…" : s }
 }
 
 struct MenuBarView: View {
