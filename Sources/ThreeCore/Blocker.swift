@@ -300,6 +300,7 @@ public struct FocusWindow: Identifiable, Hashable, Sendable {
 public struct RunningFocus: Sendable {
     public let session: Session
     public let taskTitle: String?
+    public let categoryColor: String?
     public let strict: Bool
 }
 
@@ -318,6 +319,8 @@ public struct FocusCover: Hashable, Sendable {
     public let sessionId: String
     public let taskId: String?
     public let taskTitle: String?
+    /// The task's category colour, "#RRGGBB".
+    public let categoryColor: String?
     public let strict: Bool
     public let phase: Phase
     /// When the timer reaches zero. While paused, the end it would have if resumed at evaluation time.
@@ -393,7 +396,8 @@ public struct BlockPolicy: Hashable, Sendable {
             expiresAt = s.plannedEnd.addingTimeInterval(staleSessionGrace)
         }
         guard now < expiresAt else { return nil }
-        return FocusCover(sessionId: s.id, taskId: s.taskId, taskTitle: running.taskTitle, strict: running.strict,
+        return FocusCover(sessionId: s.id, taskId: s.taskId, taskTitle: running.taskTitle,
+                          categoryColor: running.categoryColor, strict: running.strict,
                           phase: phase, plannedEnd: plannedEnd, expiresAt: expiresAt)
     }
 

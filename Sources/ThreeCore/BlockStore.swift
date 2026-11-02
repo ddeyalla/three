@@ -65,7 +65,8 @@ extension Store {
         var running: RunningFocus?
         if let s = try Session.filter(Column("endedAt") == nil).fetchOne(db), s.kind == .focus {
             let task = try s.taskId.flatMap { try FocusTask.fetchOne(db, key: $0) }
-            running = RunningFocus(session: s, taskTitle: task?.title, strict: task?.strict ?? false)
+            let category = try task.flatMap { try Category.fetchOne(db, key: $0.categoryId) }
+            running = RunningFocus(session: s, taskTitle: task?.title, categoryColor: category?.colorHex, strict: task?.strict ?? false)
         }
         let exceptions = try Row.fetchAll(db, sql: """
             SELECT id, ruleId, reason, expiresAt FROM blockEvent WHERE action = 'unblocked' AND expiresAt > ?

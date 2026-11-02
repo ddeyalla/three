@@ -24,7 +24,7 @@ private func focus(_ startedAt: Date, minutes: Int, pausedAt: Date? = nil, kind:
                    strict: Bool = false) -> RunningFocus {
     let s = Session(id: "s1", taskId: "t1", kind: kind, plannedSeconds: minutes * 60, startedAt: startedAt, pausedAt: pausedAt,
                     pausedSeconds: 0, endedAt: nil, endReason: nil, outcome: nil, focusRating: nil, note: nil, updatedAt: startedAt)
-    return RunningFocus(session: s, taskTitle: "Write PRD", strict: strict)
+    return RunningFocus(session: s, taskTitle: "Write PRD", categoryColor: "#6E9BF2", strict: strict)
 }
 
 private func evaluate(_ now: Date, zone: String = "UTC", rules: [BlockRule] = [rule("r", "reddit.com")],
