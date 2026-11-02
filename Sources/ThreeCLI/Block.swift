@@ -19,7 +19,7 @@ private let uncovered = [
     "Chrome profiles without the Three extension",
     "Chrome Incognito and Guest windows",
     "videos embedded in other sites, and apps that show web pages",
-    "apps: rules are saved, but the Three app doesn't hide apps yet",
+    "apps while Three is closed (chosen apps are hidden, never quit, while Three runs)",
 ]
 
 struct BlockStatusCommand: ParsableCommand {

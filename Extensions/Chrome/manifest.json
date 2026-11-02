@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Three Focus Blocker",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Blocks the sites you chose in Three while you focus. Checks addresses on your Mac and tells Three only which rule matched.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxA913PN8yXx5g3ZS+UAfkzFAVulpe+FZIz94CENzSsw5QjnMgQ9hQ9GM/HdKCf/nXFTWKNk1tQ/wOvxxAUpi6Bf2zBavgWFJaUaJuXY9LlNpgY0jBpfcabfS7rQDcaWKexmUcjl6/EtD2+ZL7e1GAXsZhCyMhuAImbNYtBT/zpfvc9NCtRVTgLFmd4xAvZ7kBsEgnuKKLoErgZmd0LI8wOpdZKzZv7b6OSy+LPvqd6chqkhWYclgNCiDJaFoHNVggE9KutxX1+WkZaiSXMCMf75xTxV6hDlvgOhx9KIl+8ul0ajzZ56BM1J7kSbPGcyQEGSMmZ2VEUfbE/D4rHl6KQIDAQAB",
   "minimum_chrome_version": "120",

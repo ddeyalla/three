@@ -4,7 +4,7 @@ public enum ChromeExtension {
     /// Fixed by the public `key` in Extensions/Chrome/manifest.json; a test derives it from that key.
     public static let id = "mgaphdelplkgbnffedmakgpemgnhnaai"
     /// Must match the manifest's version, so the app can tell a stale unpacked copy.
-    public static let version = "0.3.0"
+    public static let version = "0.3.1"
     public static var origin: String { "chrome-extension://\(id)/" }
 }
 
