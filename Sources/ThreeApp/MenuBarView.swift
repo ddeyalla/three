@@ -207,7 +207,7 @@ struct UnblockMenu: View {
 
     var body: some View {
         let options = model.blocking.unblockOptions
-        if options.isEmpty {
+        if !options.contains(where: { $0.availableRule != nil }) {
             // A disabled Menu still reaches the menu bar enabled, with an empty submenu.
             Button("Unblock for 5 Minutes") {}.disabled(true)
         } else {

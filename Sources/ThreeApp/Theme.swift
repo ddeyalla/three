@@ -69,8 +69,7 @@ struct Backdrop: View {
 
 /// The one prominent button: system glass tinted with the accent. The glass renders category colours brighter than
 /// the palette, and white labels measured 2.1 to 2.8:1 on them, so a light tint gets a canvas-coloured label. Only while
-/// the tint shows, though: the glass is grey in any window that isn't key and on a disabled button, where the system's
-/// label reads.
+/// the tint shows: non-key windows and disabled buttons keep the system's label on grey glass.
 struct PrimaryButtonStyle: PrimitiveButtonStyle {
     let tint: Color
 

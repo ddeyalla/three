@@ -174,6 +174,25 @@ struct BlockingStateTests {
         #expect(off.unblockOptions.isEmpty && off.availableRule(id: reddit.id) == nil)
     }
 
+    @Test func anUnblockMenuNeedsAnAvailableRuleEvenWhenItListsOpenRules() throws {
+        let s = try store()
+        let reddit = try site(s, "reddit.com")
+        let youtube = try site(s, "youtube.com")
+        try focus(s, at: monday)
+        let t = monday.addingTimeInterval(60)
+        _ = try s.requestBlockException(ruleId: reddit.id, reason: "Reply to a mod", now: t, calendar: utc)
+        let partial = try state(s, at: t)
+        #expect(partial.unblockOptions.compactMap(\.availableRule) == [youtube])
+
+        _ = try s.requestBlockException(ruleId: youtube.id, reason: "Watch a tutorial", now: t, calendar: utc)
+        let allOpen = try state(s, at: t)
+        #expect(allOpen.unblockOptions.count == 2)
+        #expect(allOpen.unblockOptions.allSatisfy { $0.availableRule == nil })
+
+        let expired = try state(s, at: t.addingTimeInterval(301))
+        #expect(Set(expired.unblockOptions.compactMap(\.availableRule)) == Set([reddit, youtube]))
+    }
+
     @Test func theReasonNamesWhateverKeepsBlockingOnLongest() throws {
         let s = try store()
         try s.addBlockRule(.app(AppBundleID(parsing: "com.example.blocked")), now: monday)

@@ -41,8 +41,7 @@ struct BlockingState {
 
     /// The rule with this id if it can be opened now. A menu can outlive the state it was drawn from.
     func availableRule(id: String) -> BlockRule? {
-        for case .available(let rule) in unblockOptions where rule.id == id { return rule }
-        return nil
+        unblockOptions.lazy.compactMap(\.availableRule).first { $0.id == id }
     }
 
     /// The Settings status value: "Off", "On until 3:45 PM", or that sites aren't being blocked.
@@ -145,6 +144,11 @@ enum UnblockOption: Hashable, Identifiable {
     /// A broader rule also blocks this site, so opening it alone wouldn't help.
     case covered(BlockRule, by: BlockRule)
     case alreadyOpen(BlockRule, until: Date)
+
+    var availableRule: BlockRule? {
+        guard case .available(let rule) = self else { return nil }
+        return rule
+    }
 
     var id: String {
         switch self {
