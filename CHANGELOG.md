@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.0 — 2026-11-02
+
+Plan and capture. Three becomes a place for everything you mean to do, while each day stays at three.
+
+- **Sidebar** with Today, Inbox, Upcoming and your categories. It uses native Liquid Glass. ⌘1, ⌘2 and ⌘3 switch views.
+- **Inbox.** Capture anything without giving it a day. Inbox tasks don't count toward the five-task cap. Hover a task to send it to today or tomorrow, or use Schedule in its menu for any day this week.
+- **Quick add**, Todoist style: `Renew passport #admin 30m fri`. `#category` matches by prefix, a duration sets the block, and today, tomorrow, a weekday or `inbox` picks the day. A preview shows what it understood as you type. Press ⌘N anywhere. There's also a capture field in the menu bar.
+- **Upcoming** shows the next seven days, each with a count against three.
+- **Steps.** Break a task into small checkboxes. They show inline under the running or selected task, so the next step is always in view.
+- **Task inspector** (⌘I) for title, category, block, day, steps and notes.
+- **Settings** (⌘,):
+  - Timer defaults, stored in the database so the CLI uses them too.
+  - Category add, rename, recolour and archive.
+  - Connect: install the CLI, plus instructions to paste into CLAUDE.md or AGENTS.md.
+  - The chime can be turned off.
+- **Glass is back** on task cards, the dial face and knob, the controls and timeline blocks, over a backdrop tinted by the current task's colour.
+- **Today layout.** The timer and tasks sit centred under the header instead of stacking at the top. The timeline opens scrolled to now.
+- **Reflection panel** appears centred over the window rather than at the top of the screen. The overrun line reads "Ended 5:00 PM" instead of "Over by 0m".
+- **CLI:** `capture`, `inbox`, `schedule`, `upcoming`, `step add|done|remove`, `categories add|rename|color|archive` and `settings`.
+- **Roadmap renumbered.** The blocker moves to v0.3, AI/MCP to v0.4, calendar to v0.5 and record to v0.6.
+- Recurring tasks and priorities are left out on purpose for now. Today's three already are the priority list.
+
 ## 0.1.1 — 2026-11-02
 
 A design pass toward a quiet, native Mac app: solid surfaces, colour only where it means something, one deliberate motion.

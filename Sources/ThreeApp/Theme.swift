@@ -2,7 +2,7 @@ import SwiftUI
 import ThreeCore
 
 enum Theme {
-    static let canvas = Color(white: 0.075)
+    static let canvas = Color(red: 0.055, green: 0.055, blue: 0.065)
     /// Selected and running rows.
     static let rowFill = Color.white.opacity(0.06)
     static let rowHover = Color.white.opacity(0.03)
@@ -12,6 +12,23 @@ enum Theme {
 
     /// Exponential ease-out, for things arriving.
     static let arrive = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.7)
+}
+
+/// What the glass sits on: a dark canvas lit by the current task's colour, so the material has something to refract.
+struct Backdrop: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        ZStack {
+            Theme.canvas
+            RadialGradient(colors: [model.accent.opacity(0.22), model.accent.opacity(0.06), .clear],
+                           center: .topLeading, startRadius: 0, endRadius: 900)
+            RadialGradient(colors: [model.accent.opacity(0.08), .clear],
+                           center: .bottomTrailing, startRadius: 0, endRadius: 700)
+        }
+        .animation(.easeOut(duration: 0.4), value: model.accent)
+        .ignoresSafeArea()
+    }
 }
 
 extension Color {
@@ -41,6 +58,18 @@ enum Format {
         let m = Int(seconds / 60)
         if m >= 60 { return m % 60 == 0 ? "\(m / 60)h" : "\(m / 60)h \(m % 60)m" }
         return "\(m)m"
+    }
+
+    /// "Today", "Tomorrow", "Wednesday" within the week, else "Mon 16 Nov".
+    static func dayName(_ day: DayKey, today: DayKey) -> String {
+        let days = Calendar.current.dateComponents([.day], from: today.startDate, to: day.startDate).day ?? 0
+        switch days {
+        case 0: return "Today"
+        case 1: return "Tomorrow"
+        case -1: return "Yesterday"
+        case 2..<7: return day.startDate.formatted(.dateTime.weekday(.wide))
+        default: return day.startDate.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
+        }
     }
 
     static func time(_ date: Date) -> String {

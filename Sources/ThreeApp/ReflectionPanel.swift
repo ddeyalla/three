@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import ThreeCore
 
-/// A small floating glass panel at the top of the screen. Never full-screen, never modal.
+/// A small floating glass panel, centred over the app. Never full-screen, never modal.
 @MainActor
 final class ReflectionPanelController {
     private unowned let model: AppModel
@@ -15,14 +15,22 @@ final class ReflectionPanelController {
     func show() {
         let panel = self.panel ?? makePanel()
         self.panel = panel
-        panel.contentView = NSHostingView(rootView: ReflectionView(dismiss: { [weak self] in self?.hide() })
+        let host = NSHostingView(rootView: ReflectionView(dismiss: { [weak self] in self?.hide() })
             .environment(model))
+        // Clip to the glass shape so no square corners or shadow show around it.
+        host.wantsLayer = true
+        host.layer?.cornerRadius = 20
+        host.layer?.cornerCurve = .continuous
+        host.layer?.masksToBounds = true
+        panel.contentView = host
         panel.setContentSize(panel.contentView!.fittingSize)
-        guard let screen = NSScreen.main else { return }
+        // Centred over the main window when it's on screen, else the middle of the screen.
+        let main = NSApp.windows.first { $0.title == "Three" && $0.isVisible && !$0.isMiniaturized && $0.isOnActiveSpace }
+        guard let area = main?.frame ?? NSScreen.main?.visibleFrame else { return }
         let size = panel.frame.size
-        let target = NSPoint(x: screen.visibleFrame.midX - size.width / 2, y: screen.visibleFrame.maxY - size.height - 12)
+        let target = NSPoint(x: area.midX - size.width / 2, y: area.midY - size.height / 2)
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        panel.setFrameOrigin(NSPoint(x: target.x, y: target.y + (reduceMotion ? 0 : 12)))
+        panel.setFrameOrigin(NSPoint(x: target.x, y: target.y - (reduceMotion ? 0 : 10)))
         panel.alphaValue = 0
         // Front, not key: never take keystrokes from whatever the user is typing in. A click makes it key.
         panel.orderFrontRegardless()

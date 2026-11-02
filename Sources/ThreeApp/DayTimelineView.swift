@@ -3,8 +3,8 @@ import ThreeCore
 
 struct DayTimelineView: View {
     @Environment(AppModel.self) private var model
-    @State private var position = ScrollPosition(idType: String.self)
-    @State private var placed = false
+    @State private var position = ScrollPosition()
+    @State private var viewport: CGFloat = 0
 
     var body: some View {
         ScrollView {
@@ -13,27 +13,41 @@ struct DayTimelineView: View {
         }
         .scrollIndicators(.never)
         .scrollPosition($position)
-        // Scroll to now once the content has a real size, and again each new day.
+        // Put now 40% down once the viewport has a real size, and again each new day.
         .onScrollGeometryChange(for: CGFloat.self, of: { $0.containerSize.height }) { _, height in
-            guard !placed, height > 0 else { return }
-            placed = true
-            position.scrollTo(id: "now", anchor: UnitPoint(x: 0, y: 0.4))
+            let first = viewport == 0
+            viewport = height
+            if first, height > 0 { scrollToNow() }
         }
-        .onChange(of: model.snapshot.day) { position.scrollTo(id: "now", anchor: UnitPoint(x: 0, y: 0.4)) }
+        .onChange(of: model.snapshot.day) { scrollToNow() }
+    }
+
+    private func scrollToNow() {
+        let y = DayTimelineGrid.offset(of: model.now, day: model.snapshot) + 24
+        position.scrollTo(y: max(0, y - viewport * 0.4))
     }
 }
 
 /// Today on an hour grid: planned blocks outlined, actual sessions filled, a red line for now.
 struct DayTimelineGrid: View {
     @Environment(AppModel.self) private var model
-    private let hourHeight: CGFloat = 60
+    private let hourHeight = DayTimelineGrid.hourHeight
     private let gutter: CGFloat = 60
 
-    private var hours: ClosedRange<Int> {
+    private static let hourHeight: CGFloat = 60
+
+    private var hours: ClosedRange<Int> { Self.hours(model.snapshot, now: model.now) }
+
+    private static func hours(_ snap: DaySnapshot, now: Date) -> ClosedRange<Int> {
         let cal = Calendar.current
-        let sessionHours = model.snapshot.sessions.map { cal.component(.hour, from: $0.startedAt) }
-        let lo = min(7, sessionHours.min() ?? 7, cal.component(.hour, from: model.now))
-        return lo...23
+        let sessionHours = snap.sessions.map { cal.component(.hour, from: $0.startedAt) }
+        return min(7, sessionHours.min() ?? 7, cal.component(.hour, from: now))...23
+    }
+
+    /// Where `date` sits in the grid, for scrolling to it.
+    static func offset(of date: Date, day snap: DaySnapshot) -> CGFloat {
+        let start = Calendar.current.date(bySettingHour: hours(snap, now: date).lowerBound, minute: 0, second: 0, of: snap.day.startDate)!
+        return CGFloat(date.timeIntervalSince(start) / 3600) * hourHeight
     }
 
     var body: some View {
@@ -41,8 +55,6 @@ struct DayTimelineGrid: View {
             grid
             blocks
             nowLine
-            // A layout-real anchor for scrollTo; offsets don't move layout.
-            Color.clear.frame(width: 1, height: 1).id("now").padding(.top, y(model.now))
         }
         .frame(maxWidth: .infinity, minHeight: height, maxHeight: height, alignment: .topLeading)
         .padding(.trailing, 24)
@@ -129,15 +141,15 @@ private struct SessionBlock: View {
     var body: some View {
         let isBreak = session.kind == .break
         let color = isBreak ? Color.white : (row?.category.color ?? Theme.idle)
-        RoundedRectangle(cornerRadius: 6)
-            .fill(color.opacity(isBreak ? 0.06 : 0.22))
+        Color.clear
             .frame(height: height)
+            .glassEffect(isBreak ? .regular : .regular.tint(color.opacity(0.35)), in: .rect(cornerRadius: 8))
             .overlay(alignment: .topLeading) {
                 if height >= 20 {
                     HStack(spacing: 6) {
                         Text(isBreak ? "Break" : (row?.task.title ?? "Focus"))
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(isBreak ? AnyShapeStyle(.secondary) : AnyShapeStyle(color))
+                            .foregroundStyle(isBreak ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
                             .lineLimit(1)
                         Spacer(minLength: 4)
                         Text(Format.duration(session.elapsed(at: now)))

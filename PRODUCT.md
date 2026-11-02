@@ -57,7 +57,7 @@ CategoryAllow  categoryId, blockRuleId
 FocusHours  weekday, start, end
 BlockEvent  id, at, blockRuleId, sessionId?, action [blocked|unblocked], reason?
 MeetingCache  date, eventId, title, start, end   (written by the app, read by CLI/MCP)
-Command       id, kind, payload, createdAt, handledAt?   (v0.4+: calendar intents from CLI/MCP, executed by the app)
+Command       id, kind, payload, createdAt, handledAt?   (v0.5+: calendar intents from CLI/MCP, executed by the app)
 ```
 
 The record is local-first. Every row carries `id` (UUID), `updatedAt` and `deletedAt` (soft delete), so CloudKit sync can be added later without a migration (§10).
@@ -232,7 +232,7 @@ This is the core of the product. The CLI and the MCP server are the same binary,
   ```json
   { "mcpServers": { "three": { "command": "three", "args": ["mcp"] } } }
   ```
-- **Division of work.** The app is the only process that touches EventKit, notifications and the timer. The `three` binary only reads the database and writes rows. Plan, task and timer edits go in directly: the timer is a `Session` row with timestamps, so the CLI can start or pause it and the app reacts by rescheduling notifications. Calendar actions (`commit_day` writing events, from v0.4) go in as `Command` rows, which the app executes.
+- **Division of work.** The app is the only process that touches EventKit, notifications and the timer. The `three` binary only reads the database and writes rows. Plan, task and timer edits go in directly: the timer is a `Session` row with timestamps, so the CLI can start or pause it and the app reacts by rescheduling notifications. Calendar actions (`commit_day` writing events, from v0.5) go in as `Command` rows, which the app executes.
 - **If the app isn't running,** any command that needs it launches it in the background first (`open -g -b <bundle id>`). Launch at login is on by default.
 - **Reads come from the database only.** Meetings come from the `MeetingCache` the app refreshes, so the CLI never needs calendar permission.
 
@@ -314,16 +314,19 @@ Background sounds, Slack status, window tracking, AppleScript, social or leaderb
 **v0.1 — Core loop (use it daily)**
 Categories, Day Plan with up to 5 tasks, dial timer, menu bar, reflection → break, Today screen with timeline (plan and actual only), local SQLite, `three` CLI.
 
-**v0.2 — Blocker**
+**v0.2 — Plan and capture**
+Sidebar (Today, Inbox, Upcoming, categories), inbox for unplanned tasks, Todoist-style quick add (`#category 45m tomorrow`), steps under each task, notes and a task inspector, Settings (timer defaults shared with the CLI through the database, category editing, CLI install and agent instructions), quick capture from the menu bar.
+
+**v0.3 — Blocker**
 Blocklist, focus hours, Safari and Chromium extensions with the block page, app blocking overlay, unblock friction, strict mode, block logging.
 
-**v0.3 — AI-driven**
+**v0.4 — AI-driven**
 MCP server, `plan-day` skill, draft → commit flow, scheduled planning command, carry-over.
 
-**v0.4 — Calendar**
+**v0.5 — Calendar**
 Read meetings, free-time warning, Plan and Log calendars.
 
-**v0.5 — Record**
+**v0.6 — Record**
 Timeline history (month/day/detail), Trends charts, day-close summary.
 
 **v1.0 — Polish**

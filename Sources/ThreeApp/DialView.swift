@@ -22,16 +22,17 @@ struct DialView: View {
         ZStack {
             Canvas { ctx, canvas in drawTicks(ctx, canvas) }
             Circle()
-                .fill(.white.opacity(0.04))
+                .fill(.clear)
                 .frame(width: face, height: face)
+                .glassEffect(.regular, in: .circle)
             Wedge(fraction: fraction * sweep)
                 .fill(model.accent.opacity(model.running?.isPaused == true ? 0.4 : 1))
                 .frame(width: face, height: face)
                 .animation(isIdle && !reduceMotion ? .snappy(duration: 0.18) : nil, value: fraction)
             Circle()
-                .fill(Theme.canvas)
-                .frame(width: 10, height: 10)
-                .overlay(Circle().strokeBorder(model.accent, lineWidth: 2))
+                .fill(.clear)
+                .frame(width: 22, height: 22)
+                .glassEffect(.regular.tint(model.accent.opacity(0.4)), in: .circle)
         }
         .frame(width: size, height: size)
         .contentShape(Circle())

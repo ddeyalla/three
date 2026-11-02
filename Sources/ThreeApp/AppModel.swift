@@ -16,6 +16,14 @@ final class AppModel {
     /// Minutes dragged on the dial while idle; nil follows the selected task.
     var dialOverride: Int?
     var selectedTaskId: String?
+    private(set) var inbox: [TaskRow] = []
+    private(set) var upcoming: [DaySnapshot] = []
+    var destination: Destination = .today
+    /// The task shown in the inspector.
+    var inspectedTaskId: String?
+    var showInspector = false
+    /// Bumped by ⌘N; quick-add fields focus themselves when it changes.
+    var quickAddRequest = 0
 
     @ObservationIgnored private var signalToken: Int32 = 0
     @ObservationIgnored private var ticker: Timer?
@@ -29,8 +37,16 @@ final class AppModel {
         do {
             store = try Store()
             snapshot = try store.snapshot()
+            inbox = try store.inbox()
+            upcoming = try store.upcoming()
         } catch {
             fatalError("Three can't open its database: \(error)")
+        }
+        // THREE_OPEN=inbox|upcoming opens on that view, for screenshots and scripts.
+        switch ProcessInfo.processInfo.environment["THREE_OPEN"] {
+        case "inbox": destination = .inbox
+        case "upcoming": destination = .upcoming
+        default: break
         }
         signalToken = ChangeSignal.observe { [weak self] in self?.reload() }
         let ticker = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
@@ -41,7 +57,6 @@ final class AppModel {
         self.ticker = ticker
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
         reconcile()
-        Snapshotter.scheduleIfRequested(model: self)
     }
 
     // MARK: Derived
@@ -79,7 +94,7 @@ final class AppModel {
         if let running, running.kind == .focus, !running.isPaused,
            running.remaining(at: now) <= 0, reflectedBlock != blockKey(running) {
             reflectedBlock = blockKey(running)
-            NSSound(named: "Glass")?.play()
+            if UserDefaults.standard.object(forKey: "chime") as? Bool ?? true { NSSound(named: "Glass")?.play() }
             reflection.show()
         }
     }
@@ -87,6 +102,8 @@ final class AppModel {
     func reload() {
         do {
             snapshot = try store.snapshot(for: DayKey(Date()))
+            inbox = try store.inbox()
+            upcoming = try store.upcoming()
             if let id = selectedTaskId, !snapshot.tasks.contains(where: { $0.id == id && $0.task.status.isOpen }) {
                 selectedTaskId = nil
             }
@@ -161,6 +178,53 @@ final class AppModel {
 
     func select(_ row: TaskRow) {
         selectedTaskId = row.id
+        inspectedTaskId = row.id
         dialOverride = nil
     }
+
+    func inspect(_ row: TaskRow) {
+        inspectedTaskId = row.id
+        showInspector = true
+    }
+
+    /// Every task the app knows about: today, the inbox and the week ahead.
+    var allTasks: [TaskRow] { snapshot.tasks + inbox + upcoming.flatMap(\.tasks) }
+
+    func task(_ id: String?) -> TaskRow? {
+        guard let id else { return nil }
+        return allTasks.first { $0.id == id } ?? (snapshot.runningTask?.id == id ? snapshot.runningTask : nil)
+    }
+
+    /// The day a task is planned for, or nil for the inbox.
+    func day(of id: String) -> DayKey? {
+        if snapshot.tasks.contains(where: { $0.id == id }) { return snapshot.day }
+        return upcoming.first { $0.tasks.contains { $0.id == id } }?.day
+    }
+
+    func schedule(_ row: TaskRow, on day: DayKey?) {
+        perform { try store.schedule(row.id, on: day) }
+    }
+
+    var liveCategories: [ThreeCore.Category] { snapshot.categories.filter { !$0.archived } }
+
+    /// Quick add: `#category`, a duration and a day word override the defaults.
+    func capture(_ text: String, defaultDay: DayKey?) {
+        let quick = QuickAdd.parse(text, categories: liveCategories.map(\.name), today: snapshot.day)
+        guard !quick.title.isEmpty, let fallback = liveCategories.first else { return }
+        let new = NewTask(title: quick.title, category: quick.category ?? fallback.name,
+                          blockMinutes: quick.minutes ?? snapshot.preferences.defaultBlockMinutes)
+        let day: DayKey? = switch quick.when {
+        case .day(let d)?: d
+        case .inbox?: nil
+        case nil: defaultDay
+        }
+        perform {
+            if let day { try store.addTask(new, day: day, source: .app) } else { try store.addToInbox(new, source: .app) }
+        }
+    }
+}
+
+enum Destination: Hashable {
+    case today, inbox, upcoming
+    case category(String)
 }

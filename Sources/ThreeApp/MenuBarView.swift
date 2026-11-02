@@ -75,6 +75,8 @@ struct MenuBarView: View {
                 }
             }
 
+            QuickAddField(defaultDay: nil, placeholder: "Capture to inbox")
+
             Divider()
             HStack {
                 Button("Open Three") {

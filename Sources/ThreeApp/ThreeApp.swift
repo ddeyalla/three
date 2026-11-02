@@ -9,11 +9,30 @@ struct ThreeApp: App {
 
     var body: some Scene {
         Window("Three", id: "main") {
-            TodayView()
+            RootView()
                 .environment(model)
         }
-        .windowStyle(.hiddenTitleBar)
-        .defaultSize(width: 1120, height: 800)
+        .defaultSize(width: 1280, height: 820)
+        .windowToolbarStyle(.unified)
+        .commands {
+            CommandGroup(replacing: .newItem) {
+                Button("Quick Add") {
+                    if model.destination != .today && model.destination != .upcoming { model.destination = .inbox }
+                    model.quickAddRequest += 1
+                }
+                .keyboardShortcut("n")
+            }
+            CommandMenu("Go") {
+                Button("Today") { model.destination = .today }.keyboardShortcut("1")
+                Button("Inbox") { model.destination = .inbox }.keyboardShortcut("2")
+                Button("Upcoming") { model.destination = .upcoming }.keyboardShortcut("3")
+            }
+        }
+
+        Settings {
+            SettingsView()
+                .environment(model)
+        }
 
         MenuBarExtra {
             MenuBarView().environment(model)
@@ -34,32 +53,4 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async
         -> UNNotificationPresentationOptions { [.banner, .sound] }
-}
-
-/// `THREE_SNAPSHOT=/dir` renders the Today screen, reflection panel and menu popover to PNGs
-/// with `ImageRenderer`, so layout can be checked without screen-recording rights.
-/// Glass materials don't render offscreen; judge layout and type, not materials.
-@MainActor
-enum Snapshotter {
-    static func scheduleIfRequested(model: AppModel) {
-        guard let dir = ProcessInfo.processInfo.environment["THREE_SNAPSHOT"] else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-            let url = URL(fileURLWithPath: dir)
-            write(TodayView().environment(model).frame(width: 1120, height: 800), to: url.appendingPathComponent("today.png"))
-            write(ReflectionView(dismiss: {}).environment(model).padding(20).background(Theme.canvas),
-                  to: url.appendingPathComponent("reflection.png"))
-            write(DayTimelineGrid().environment(model).frame(width: 620).background(Theme.canvas),
-                  to: url.appendingPathComponent("timeline.png"))
-            write(MenuBarView().environment(model).background(Color(white: 0.12)), to: url.appendingPathComponent("menubar.png"))
-            NSApp.terminate(nil)
-        }
-    }
-
-    private static func write(_ view: some View, to url: URL) {
-        let renderer = ImageRenderer(content: view.environment(\.colorScheme, .dark))
-        renderer.scale = 2
-        guard let image = renderer.nsImage, let tiff = image.tiffRepresentation,
-              let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else { return }
-        try? png.write(to: url)
-    }
 }
