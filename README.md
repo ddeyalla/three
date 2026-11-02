@@ -17,7 +17,7 @@ The full product spec, with principles, data model and roadmap, is in [PRODUCT.m
 - **Three panes.** Your tasks on the left (Today, Inbox, Upcoming, Done or Tags), the dial and the time left in the middle, and the day's timeline on the right, showing what you planned and what you actually did.
 - **Three by default, five at most.** A fourth or fifth task brings a gentle warning, and a sixth is refused.
 - **Focus blocks.** Each task has a block, for example 90 minutes, that you work through in sessions (45 minutes by default, up to 4 hours, set in Settings → Timer). Drag the dial to change one; past 12 o'clock it winds on into another hour. You can pause, add five minutes or finish early.
-- **Reflection, then a break.** When a block ends, a small panel asks how it went, then starts a short or long break based on how long you've been focusing.
+- **Reflection, then a break.** When a block ends, a small panel asks how it went, then starts a short or long break based on how long you've been focusing. After two minutes without an answer or edit, it ends the block with Made progress and Okay and keeps your note. A menu-bar dot lets you review or dismiss that reflection later.
 - **Inbox and Upcoming.** Capture anything without a day, and see the next seven days. A hover sends a task to today or tomorrow.
 - **Quick add**, Todoist style: `Fix signup bug #coding @onboarding 30m fri`. Press ⌘N anywhere, or use the field in the menu bar.
 - **Tags** for work that runs for days or weeks, such as a product, project or feature. Tags shows how much time each one has taken in total and in the past week, and each task's share. A task carried to tomorrow keeps its tags.

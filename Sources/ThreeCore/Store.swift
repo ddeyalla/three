@@ -190,6 +190,11 @@ public final class Store: @unchecked Sendable {
             try db.alter(table: "task") { t in t.add(column: "doneAt", .datetime) }
             try db.execute(sql: "UPDATE task SET doneAt = updatedAt WHERE status = 'done'")
         }
+        m.registerMigration("v6-deferred-reflections") { db in
+            try db.alter(table: "session") { t in
+                t.add(column: "reflectionPending", .boolean).notNull().defaults(to: false)
+            }
+        }
         return m
     }
 }

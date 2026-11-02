@@ -119,7 +119,7 @@ A small glass panel slides in at the top centre of the active screen. It never g
 Then it offers **Start 5 min break** (the default; the length scales with how long you've been focusing, §6), **Skip break**, or **Extend +15**.
 - `Done` marks the task `done` if it was the task's last session, and asks "mark task done?" if block time is left.
 - `Stuck` offers to drop the task's remaining time or push it to tomorrow.
-- Ignoring the panel: after 2 minutes it auto-records `Made progress / okay`. The panel then shrinks into the menu bar with a pulsing dot until you answer or dismiss it. It never re-opens on its own.
+- Ignoring the panel: after 2 minutes without an answer or edit it ends the focus session and auto-records `Made progress / okay`, keeping any typed note. It starts neither a break nor the next task. The panel hides and a neutral dot pulses in the menu bar until you answer or dismiss the saved reflection. Reduce Motion keeps the dot still. The reminder survives relaunch and never re-opens on its own. Review edits only that session's answers, leaving its times, the task's current status, and any newer timer alone. Several saved reflections wait in order in the popover.
 
 ### 5.4 Timeline (history)
 

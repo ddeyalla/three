@@ -4,8 +4,26 @@ import ThreeCore
 
 struct MenuBarLabel: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        HStack(spacing: Space.xs) {
+            if !model.deferredReflections.isEmpty {
+                Image(systemName: "circle.fill")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 6, height: 6)
+                    .opacity(reminderBright ? 1 : 0.35)
+                    .animation(.easeInOut(duration: 1), value: reminderBright)
+                    .accessibilityLabel("Saved reflection awaiting review")
+            }
+            title
+        }
+    }
+
+    private var reminderBright: Bool { reduceMotion || Int(model.now.timeIntervalSince1970).isMultiple(of: 2) }
+
+    @ViewBuilder private var title: some View {
         if let running = model.running {
             let title = running.kind == .break ? "Break" : (model.runningTask?.task.title ?? "Focus")
             Label("\(short(title)) · \(running.isPaused ? "paused" : Format.clock(running.remaining(at: model.now)))",
@@ -27,6 +45,28 @@ struct MenuBarView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.md) {
+            if let saved = model.deferredReflections.first {
+                VStack(alignment: .leading, spacing: Space.sm) {
+                    if model.deferredReflections.count > 1 {
+                        Text("\(model.deferredReflections.count) saved reflections")
+                            .font(Typo.meta)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(saved.task?.task.title ?? "Focus block")
+                        .font(Typo.heading)
+                        .lineLimit(1)
+                    Text("Made progress · Okay saved automatically")
+                        .font(Typo.meta)
+                        .foregroundStyle(.secondary)
+                    HStack(spacing: Space.sm) {
+                        Button("Review reflection") { model.reviewReflection(saved) }
+                            .disabled(model.reflectionPresentation != nil)
+                        Button("Dismiss") { model.dismissReflection(saved) }
+                    }
+                    .buttonStyle(.glass)
+                    .font(Typo.body)
+                }
+            }
             if let running = model.running {
                 VStack(alignment: .leading, spacing: Space.xs) {
                     Text(running.kind == .break ? "Break" : (model.runningTask?.task.title ?? "Focus"))

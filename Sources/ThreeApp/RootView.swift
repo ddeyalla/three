@@ -83,7 +83,7 @@ private struct TasksPane: View {
 /// AppKit and SwiftUI give the first text field the cursor when the window first becomes key.
 /// This takes that focus back once, so the window opens calm and a field only focuses when you
 /// click it or press ⌘N. Later activations keep whatever you were typing in.
-private struct InitialFocusSink: NSViewRepresentable {
+struct InitialFocusSink: NSViewRepresentable {
     final class SinkView: NSView {
         private var observer: NSObjectProtocol?
         override var acceptsFirstResponder: Bool { true }
@@ -100,14 +100,20 @@ private struct InitialFocusSink: NSViewRepresentable {
         }
 
         private func reclaimOnce() {
-            if let observer { NotificationCenter.default.removeObserver(observer) }
+            invalidate()
             DispatchQueue.main.async { [weak self] in
                 guard let self, let window, window.firstResponder is NSTextView else { return }
                 window.makeFirstResponder(self)
             }
         }
+
+        func invalidate() {
+            if let observer { NotificationCenter.default.removeObserver(observer) }
+            observer = nil
+        }
     }
 
     func makeNSView(context: Context) -> SinkView { SinkView() }
     func updateNSView(_ nsView: SinkView, context: Context) {}
+    static func dismantleNSView(_ nsView: SinkView, coordinator: ()) { nsView.invalidate() }
 }

@@ -10,7 +10,7 @@ $T add "Read Dieter Rams essay" --cat Learning --block 45 >/dev/null
 $T start 1 --min 50 >/dev/null
 $T done 1 >/dev/null
 sqlite3 "$THREE_DB" "UPDATE session SET startedAt=datetime('now','-2 hours','-30 minutes'), endedAt=datetime('now','-1 hours','-40 minutes'), focusRating=3;
-INSERT INTO session VALUES('b1',NULL,'break',300,datetime('now','-1 hours','-38 minutes'),NULL,0,datetime('now','-1 hours','-33 minutes'),'completed',NULL,NULL,NULL,datetime('now'));"
+INSERT INTO session(id,taskId,kind,plannedSeconds,startedAt,pausedAt,pausedSeconds,endedAt,endReason,outcome,focusRating,note,updatedAt) VALUES('b1',NULL,'break',300,datetime('now','-1 hours','-38 minutes'),NULL,0,datetime('now','-1 hours','-33 minutes'),'completed',NULL,NULL,NULL,datetime('now'));"
 $T tags add 1 onboarding >/dev/null
 $T tags add 2 q4-planning >/dev/null
 $T tomorrow 4 >/dev/null
@@ -29,5 +29,5 @@ $T capture "Weekly planning #meetingprep 45m fri" >/dev/null
 $T capture "Onboarding empty states #coding @onboarding 90m inbox" >/dev/null
 sqlite3 "$THREE_DB" "INSERT INTO dayPlan VALUES('p-past', date('now','-3 days'), 'closed', 'cli', datetime('now','-3 days'), NULL, datetime('now','-3 days'), NULL);
 UPDATE task SET dayPlanId='p-past', status='done', updatedAt=datetime('now','-3 days') WHERE title='Onboarding empty states';
-INSERT INTO session SELECT 's-past', id, 'focus', 4800, datetime('now','-3 days','-2 hours'), NULL, 0, datetime('now','-3 days','-40 minutes'), 'completed', 'done', 3, NULL, datetime('now') FROM task WHERE title='Onboarding empty states';"
+INSERT INTO session(id,taskId,kind,plannedSeconds,startedAt,pausedAt,pausedSeconds,endedAt,endReason,outcome,focusRating,note,updatedAt) SELECT 's-past', id, 'focus', 4800, datetime('now','-3 days','-2 hours'), NULL, 0, datetime('now','-3 days','-40 minutes'), 'completed', 'done', 3, NULL, datetime('now') FROM task WHERE title='Onboarding empty states';"
 echo "$THREE_DB"

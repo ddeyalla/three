@@ -20,6 +20,8 @@ final class AppModel {
     private(set) var upcoming: [DaySnapshot] = []
     private(set) var logbook: [LoggedDay] = []
     private(set) var tagSummaries: [TagSummary] = []
+    private(set) var deferredReflections: [DeferredReflection] = []
+    private(set) var reflectionPresentation: ReflectionPresentation?
     var destination: Destination = .today
     /// The card opened in place in Inbox, Upcoming or Done, or the tag opened in Tags.
     var expandedTaskId: String?
@@ -33,8 +35,7 @@ final class AppModel {
     /// Extending changes the length, which re-arms it, whoever extended.
     @ObservationIgnored private var reflectedBlock: String?
     @ObservationIgnored private var scheduledNotification: (id: String, end: Date)?
-    /// True while the panel is up because you clicked Finish, not because time ran out.
-    @ObservationIgnored private var reflectionOpenedEarly = false
+    @ObservationIgnored private var reflectionNote = ""
     @ObservationIgnored lazy var reflection = ReflectionPanelController(model: self)
 
     init() {
@@ -45,6 +46,7 @@ final class AppModel {
             upcoming = try store.upcoming()
             logbook = try store.logbook()
             tagSummaries = try store.tagSummaries()
+            deferredReflections = try store.deferredReflections()
         } catch {
             fatalError("Three can't open its database: \(error)")
         }
@@ -94,15 +96,21 @@ final class AppModel {
         now = Date()
         if snapshot.day != DayKey(now) { reload() }
         try? store.finishBreakIfDue(now: now)
-        if reflection.isVisible, running?.kind != .focus { reflection.hide() }
-        // Time was added since the panel opened at the end of a block, so the block isn't over after all.
-        if reflection.isVisible, !reflectionOpenedEarly, let running, running.remaining(at: now) > 0 { reflection.hide() }
+        reconcileReflection()
+        if case .live(let prompt, _) = reflectionPresentation, now >= prompt.deadline {
+            do {
+                try store.deferReflection(prompt, note: reflectionNote, now: now)
+                hideReflection()
+                reload()
+            } catch {
+                self.error = error.localizedDescription
+            }
+        }
         if let running, running.kind == .focus, !running.isPaused,
-           running.remaining(at: now) <= 0, reflectedBlock != blockKey(running) {
+           running.remaining(at: now) <= 0, reflectedBlock != blockKey(running), reflectionPresentation == nil {
             reflectedBlock = blockKey(running)
-            reflectionOpenedEarly = false
             if UserDefaults.standard.object(forKey: "chime") as? Bool ?? true { NSSound(named: "Glass")?.play() }
-            reflection.show()
+            showReflection(.live(ReflectionPrompt(session: running, openedAt: now), task: runningTask))
         }
     }
 
@@ -115,10 +123,12 @@ final class AppModel {
             upcoming = try store.upcoming()
             logbook = try store.logbook()
             tagSummaries = try store.tagSummaries()
+            deferredReflections = try store.deferredReflections()
             if let id = selectedTaskId, !snapshot.tasks.contains(where: { $0.id == id && $0.task.status.isOpen }) {
                 selectedTaskId = nil
             }
             reconcile()
+            reconcileReflection()
         } catch {
             self.error = error.localizedDescription
         }
@@ -152,14 +162,19 @@ final class AppModel {
 
     // MARK: Actions
 
-    func perform(_ action: () throws -> Void) {
+    @discardableResult
+    func perform(_ action: () throws -> Void) -> Bool {
+        let succeeded: Bool
         do {
             try action()
             error = nil
+            succeeded = true
         } catch {
             self.error = error.localizedDescription
+            succeeded = false
         }
         reload()
+        return succeeded
     }
 
     func start(_ task: TaskRow? = nil) {
@@ -183,11 +198,58 @@ final class AppModel {
     func finishEarly() {
         guard let running, running.kind == .focus else { return }
         reflectedBlock = blockKey(running)
-        reflectionOpenedEarly = true
-        reflection.show()
+        showReflection(.live(ReflectionPrompt(session: running, openedAt: Date()), task: runningTask))
     }
 
-    private func blockKey(_ s: Session) -> String { "\(s.id)/\(s.plannedSeconds)" }
+    private func blockKey(_ s: Session) -> String { "\(s.id)/\(s.plannedSeconds)/\(s.plannedEnd.timeIntervalSince1970)" }
+
+    func reviewReflection(_ saved: DeferredReflection) {
+        guard reflectionPresentation == nil else { return }
+        showReflection(.saved(saved))
+    }
+
+    func reflectionActivity(note: String) {
+        guard case .live(let prompt, let task) = reflectionPresentation else { return }
+        reflectionNote = note
+        reflectionPresentation = .live(ReflectionPrompt(session: prompt.session, openedAt: Date()), task: task)
+    }
+
+    func dismissReflection(_ saved: DeferredReflection) {
+        if perform({ try store.dismissDeferredReflection(saved.id) }), reflectionPresentation?.session.id == saved.id {
+            hideReflection()
+        }
+    }
+
+    func closeReflection() {
+        if case .saved(let saved) = reflectionPresentation {
+            dismissReflection(saved)
+        } else {
+            hideReflection()
+        }
+    }
+
+    func hideReflection() {
+        reflectionPresentation = nil
+        reflection.hide()
+    }
+
+    private func showReflection(_ presentation: ReflectionPresentation) {
+        reflectionPresentation = presentation
+        reflectionNote = presentation.session.note ?? ""
+        reflection.show(presentation)
+    }
+
+    private func reconcileReflection() {
+        switch reflectionPresentation {
+        case .live(let prompt, _) where !prompt.matches(running):
+            hideReflection()
+            if running?.isPaused == true { reflectedBlock = nil }
+        case .saved(let saved) where !deferredReflections.contains(where: { $0.id == saved.id }):
+            hideReflection()
+        default:
+            break
+        }
+    }
 
     func select(_ row: TaskRow) {
         selectedTaskId = row.id
@@ -241,6 +303,30 @@ final class AppModel {
             if let day { try store.addTask(new, day: day, source: .app) } else { try store.addToInbox(new, source: .app) }
         }
         return error == nil
+    }
+}
+
+enum ReflectionPresentation {
+    case live(ReflectionPrompt, task: TaskRow?)
+    case saved(DeferredReflection)
+
+    var session: Session {
+        switch self {
+        case .live(let prompt, _): prompt.session
+        case .saved(let saved): saved.session
+        }
+    }
+
+    var task: TaskRow? {
+        switch self {
+        case .live(_, let task): task
+        case .saved(let saved): saved.task
+        }
+    }
+
+    var isSaved: Bool {
+        if case .saved = self { return true }
+        return false
     }
 }
 

@@ -140,6 +140,7 @@ public struct Session: Codable, Hashable, Identifiable, FetchableRecord, Persist
     public var focusRating: FocusRating?
     public var note: String?
     public var updatedAt: Date
+    public var reflectionPending: Bool = false
 
     public var isRunning: Bool { endedAt == nil }
     public var isPaused: Bool { pausedAt != nil }

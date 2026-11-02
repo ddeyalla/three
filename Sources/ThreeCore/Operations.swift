@@ -364,9 +364,12 @@ extension Store {
         }
     }
 
-    public func extend(minutes: Int, now: Date = Date()) throws {
+    public func extend(minutes: Int, expectedSession: Session? = nil, now: Date = Date()) throws {
         try write { db in
             guard var s = try runningSession(db) else { throw ThreeError.noRunningSession }
+            if let expectedSession, !ReflectionPrompt(session: expectedSession, openedAt: now).matches(s) {
+                throw ThreeError.invalid("This focus block changed. Open its reflection again.")
+            }
             // Extending an overrun block adds time from now, not from the old end.
             let overrun = max(0, -Int(s.remaining(at: now)))
             s.plannedSeconds += overrun + minutes * 60
@@ -389,19 +392,27 @@ extension Store {
 
     /// Ends the running focus session with the reflection answers.
     public func finishFocus(outcome: Outcome, rating: FocusRating, note: String?, markTaskDone: Bool,
-                            now: Date = Date()) throws {
+                            expectedSession: Session? = nil, now: Date = Date()) throws {
         try write { db in
             guard var s = try runningSession(db), s.kind == .focus else { throw ThreeError.noRunningSession }
-            s.outcome = outcome
-            s.focusRating = rating
-            s.note = note?.isEmpty == true ? nil : note
-            try end(&s, reason: .completed, at: now, db)
-            if let taskId = s.taskId, var t = try FocusTask.fetchOne(db, key: taskId) {
-                t.status = markTaskDone ? .done : .partial
-                t.updatedAt = now
-                try t.update(db)
-                try setDone(taskId, markTaskDone, at: now, db)
+            if let expectedSession, !ReflectionPrompt(session: expectedSession, openedAt: now).matches(s) {
+                throw ThreeError.invalid("This focus block changed. Open its reflection again.")
             }
+            try finishFocus(&s, outcome: outcome, rating: rating, note: note, markTaskDone: markTaskDone, now: now, db)
+        }
+    }
+
+    func finishFocus(_ session: inout Session, outcome: Outcome, rating: FocusRating, note: String?,
+                     markTaskDone: Bool, now: Date, _ db: Database) throws {
+        session.outcome = outcome
+        session.focusRating = rating
+        session.note = note?.isEmpty == true ? nil : note
+        try end(&session, reason: .completed, at: now, db)
+        if let taskId = session.taskId, var task = try FocusTask.fetchOne(db, key: taskId) {
+            task.status = markTaskDone ? .done : .partial
+            task.updatedAt = now
+            try task.update(db)
+            try setDone(taskId, markTaskDone, at: now, db)
         }
     }
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- After two minutes without an answer or edit, the reflection panel saves Made progress and Okay, keeps any note, ends the block, and hides. A pulsing menu-bar dot reminds you to review or dismiss it. Saved reflections survive relaunch, and editing one leaves newer timers alone. Reduce Motion keeps the dot still.
+
 ## 0.2.4 — 2026-11-02
 
 Three panes instead of a sidebar, tags that add up time across weeks, and a calmer end-of-block panel.
