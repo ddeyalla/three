@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 // Drives `three native-host` the way Chrome does, against a scratch database, and checks the protocol.
 // Usage: node scripts/native-host-check.mjs [path/to/three] [--timer]
-// --timer also waits up to two minutes for a focus-hours window to end on its own.
+// --timer also waits up to two minutes for a focus-hours window to end on its own. When three-native-host
+// sits beside three, as in the app bundle, Chrome's entry point through it is checked too.
 import { spawn, execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import assert from 'node:assert/strict';
 
 const args = process.argv.slice(2);
@@ -26,8 +27,8 @@ function frame(body) {
 }
 
 class Host {
-  constructor(argv = [ORIGIN]) {
-    this.proc = spawn(three, ['native-host', ...argv], { env });
+  constructor(argv = [ORIGIN], launcher = null) {
+    this.proc = launcher ? spawn(launcher, argv, { env }) : spawn(three, ['native-host', ...argv], { env });
     this.pending = Buffer.alloc(0);
     this.frames = [];
     this.read = 0;
@@ -170,5 +171,14 @@ await windows.next('initial state', (m) => m.type === 'state');
 windows.proc.stdin.end();
 assert.equal(await windows.exited, 0);
 check('extra launch arguments are tolerated');
+
+const launcher = join(dirname(three), 'three-native-host');
+if (existsSync(launcher)) {
+  const chrome = new Host([ORIGIN], launcher);
+  await chrome.next('initial state through the launcher', (m) => m.type === 'state');
+  chrome.proc.stdin.end();
+  assert.equal(await chrome.exited, 0);
+  check('the bundled launcher starts the host with only the origin, as Chrome does');
+}
 
 console.log(`\n${results.length} checks passed against ${three}`);

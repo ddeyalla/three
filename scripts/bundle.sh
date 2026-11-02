@@ -17,6 +17,15 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Helpers" "$APP/Contents/Resources"
 cp "$BIN/ThreeApp" "$APP/Contents/MacOS/ThreeApp"
 # The CLI lives in Helpers: "three" and "Three" collide on a case-insensitive disk.
 cp "$BIN/three" "$APP/Contents/Helpers/three"
+# Chrome starts its native host with the extension's origin as the only argument. This launcher maps that
+# calling convention onto `three native-host`, so the CLI's own argument parsing stays as it is.
+cat > "$APP/Contents/Helpers/three-native-host" <<'EOF'
+#!/bin/sh
+exec "$(dirname "$0")/three" native-host "$@"
+EOF
+chmod 755 "$APP/Contents/Helpers/three-native-host"
+# `three block connect-chrome` copies this to a stable folder for Chrome's Load unpacked.
+cp -R Extensions/Chrome "$APP/Contents/Resources/ChromeExtension"
 
 cat > "$APP/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -43,6 +52,7 @@ cat > "$APP/Contents/Info.plist" <<EOF
 </plist>
 EOF
 
+codesign --force --sign - "$APP/Contents/Helpers/three-native-host"
 codesign --force --sign - "$APP/Contents/Helpers/three"
 codesign --force --sign - "$APP"
 echo "Built $APP ($VERSION build $BUILD)"
