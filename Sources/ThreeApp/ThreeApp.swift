@@ -44,6 +44,8 @@ struct ThreeApp: App {
                 Button("Finish Block") { model.finishEarly() }
                     .keyboardShortcut(.return, modifiers: [.command, .shift])
                     .disabled(model.running?.kind != .focus)
+                Divider()
+                UnblockMenu(model: model)
             }
             CommandGroup(before: .toolbar) {
                 Menu("Arrange Panes") {

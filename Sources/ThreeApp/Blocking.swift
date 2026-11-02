@@ -26,8 +26,24 @@ struct BlockingState {
     /// Blocking is on and rules are in force, but nothing on this Mac can enforce them.
     var isDegraded: Bool { policy.isActive && !policy.blocked.isEmpty && !isEnforcing }
 
-    /// Rules the person may open for five minutes now: those in force, unless the running task is strict.
-    var unblockable: [BlockRule] { policy.isActive && !policy.strict ? policy.blocked : [] }
+    /// What an Unblock for 5 Minutes menu lists: every rule in force, each openable or covered by a broader one, then
+    /// the rules already open. Empty while blocking is off or the running task is strict, so those menus offer nothing.
+    var unblockOptions: [UnblockOption] {
+        guard policy.isActive, !policy.strict else { return [] }
+        let blocked = policy.blocked.map { rule in
+            policy.coveringRule(for: rule).map { UnblockOption.covered(rule, by: $0) } ?? .available(rule)
+        }
+        let open = policy.exceptions.compactMap { e in
+            status.rules.first { $0.id == e.ruleId }.map { UnblockOption.alreadyOpen($0, until: e.expiresAt) }
+        }
+        return blocked + open
+    }
+
+    /// The rule with this id if it can be opened now. A menu can outlive the state it was drawn from.
+    func availableRule(id: String) -> BlockRule? {
+        for case .available(let rule) in unblockOptions where rule.id == id { return rule }
+        return nil
+    }
 
     /// The Settings status value: "Off", "On until 3:45 PM", or that sites aren't being blocked.
     var value: String {
@@ -121,6 +137,21 @@ struct BlockingState {
 
     /// For the menu-bar glyph and Now: "Blocking until 3:45 PM".
     var accessibilityLabel: String { headline }
+}
+
+/// One rule in an Unblock for 5 Minutes menu, and whether it can be opened now.
+enum UnblockOption: Hashable, Identifiable {
+    case available(BlockRule)
+    /// A broader rule also blocks this site, so opening it alone wouldn't help.
+    case covered(BlockRule, by: BlockRule)
+    case alreadyOpen(BlockRule, until: Date)
+
+    var id: String {
+        switch self {
+        case .available(let rule), .covered(let rule, _): rule.id
+        case .alreadyOpen(let rule, _): "open-\(rule.id)"
+        }
+    }
 }
 
 extension BlockRule {

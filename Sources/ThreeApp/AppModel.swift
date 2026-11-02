@@ -322,8 +322,11 @@ final class AppModel {
         }
     }
 
-    /// Opens the panel where a person asks for one rule for five minutes. Only ever from Three's own UI.
+    /// Opens the panel where a person asks for one rule for five minutes. Only ever from Three's own UI. The menu that
+    /// offered the rule may have been drawn before blocking ended, the rule opened or a broader rule arrived.
     func requestUnblock(_ rule: BlockRule) {
+        refreshBlocking()
+        guard let rule = blocking.availableRule(id: rule.id) else { return }
         blockOverlay.present(.init(rule: rule, appName: rule.bundleID == nil ? nil : rule.name), mode: .unblock)
     }
 

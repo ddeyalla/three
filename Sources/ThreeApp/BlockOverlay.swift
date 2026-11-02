@@ -24,6 +24,8 @@ final class BlockOverlayController: NSObject, NSWindowDelegate {
     /// A blocked app was just hidden. macOS brings another app forward next; showing after that keeps the
     /// panel from losing key to it at once.
     private var pending: (id: UUID, subject: Subject, mode: Mode)?
+    /// False when the person asked to unblock from Three while it was in front: Three is the app they were working in.
+    private var returnsToWorkApp = true
 
     init(model: AppModel) { self.model = model }
 
@@ -33,6 +35,7 @@ final class BlockOverlayController: NSObject, NSWindowDelegate {
         // A blocked app that keeps coming forward gets the same panel, unmoved, with nothing restarted.
         if isVisible, self.subject?.rule.id == subject.rule.id, mode == .blocked || self.mode == mode { return }
         pending = nil
+        returnsToWorkApp = mode == .blocked || !NSApp.isActive
         guard mode == .blocked, !isVisible else { return show(subject, mode: mode) }
         let id = UUID()
         pending = (id, subject, mode)
@@ -75,7 +78,7 @@ final class BlockOverlayController: NSObject, NSWindowDelegate {
 
     func backToWork() {
         dismiss()
-        model.appBlocker.returnToWork()
+        if returnsToWorkApp { model.appBlocker.returnToWork() }
     }
 
     func dismiss() {

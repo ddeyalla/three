@@ -172,21 +172,8 @@ private struct BlockingRow: View {
                 if !state.blockedSites.isEmpty && state.workingProfiles.isEmpty {
                     Button("Set Up Chrome…") { openBlockingSettings(chrome: true) }
                 }
-                if !state.unblockable.isEmpty || !state.policy.exceptions.isEmpty {
-                    Menu("Unblock for 5 Minutes") {
-                        ForEach(state.unblockable) { rule in
-                            if let parent = state.policy.coveringRule(for: rule) {
-                                Button("\(rule.name) (also blocked by \(parent.name))") {}.disabled(true)
-                            } else {
-                                Button(rule.name) { model.requestUnblock(rule) }
-                            }
-                        }
-                        ForEach(state.policy.exceptions, id: \.id) { e in
-                            if let rule = state.status.rules.first(where: { $0.id == e.ruleId }) {
-                                Button("\(rule.name) · open until \(Format.time(e.expiresAt))") {}.disabled(true)
-                            }
-                        }
-                    }
+                if !state.unblockOptions.isEmpty {
+                    UnblockMenu(model: model)
                 }
                 Button("Blocking Settings…") { openBlockingSettings(chrome: false) }
             } label: {
@@ -205,5 +192,27 @@ private struct BlockingRow: View {
         if chrome { model.chromeSetupRequested = true }
         openSettings()
         NSApp.activate()
+    }
+}
+
+/// Unblock for 5 Minutes, as the Focus menu and the menu-bar popover both list it.
+struct UnblockMenu: View {
+    let model: AppModel
+
+    var body: some View {
+        let options = model.blocking.unblockOptions
+        Menu("Unblock for 5 Minutes") {
+            ForEach(options) { option in
+                switch option {
+                case .available(let rule):
+                    Button(rule.name) { model.requestUnblock(rule) }
+                case .covered(let rule, let parent):
+                    Button("\(rule.name) (also blocked by \(parent.name))") {}.disabled(true)
+                case .alreadyOpen(let rule, let until):
+                    Button("\(rule.name) · open until \(Format.time(until))") {}.disabled(true)
+                }
+            }
+        }
+        .disabled(options.isEmpty)
     }
 }

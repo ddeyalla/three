@@ -38,7 +38,7 @@ struct BlockingStateTests {
         let s = try store()
         var off = try state(s, at: evening)
         #expect(off.value == "Off" && off.detail == "Add a website or app to block during focus.")
-        #expect(!off.isEnforcing && !off.isDegraded && off.unblockable.isEmpty)
+        #expect(!off.isEnforcing && !off.isDegraded && off.unblockOptions.isEmpty)
 
         try site(s, "reddit.com")
         off = try state(s, at: evening)
@@ -137,21 +137,41 @@ struct BlockingStateTests {
         let reddit = try site(s, "reddit.com")
         try focus(s, at: monday)
         let t = monday.addingTimeInterval(60)
-        #expect(try state(s, at: t).unblockable.map(\.id) == [reddit.id])
+        #expect(try state(s, at: t).unblockOptions == [.available(reddit)])
 
         let open = try s.requestBlockException(ruleId: reddit.id, reason: "Reply to a mod", now: t, calendar: utc)
         let excepted = try state(s, at: t)
         // Still on, but nothing is in force, so there is nothing to enforce or warn about.
         #expect(excepted.policy.isActive && excepted.policy.blocked.isEmpty)
-        #expect(!excepted.isEnforcing && !excepted.isDegraded && excepted.unblockable.isEmpty)
+        #expect(!excepted.isEnforcing && !excepted.isDegraded)
+        #expect(excepted.unblockOptions == [.alreadyOpen(reddit, until: open.expiresAt)])
+        #expect(excepted.availableRule(id: reddit.id) == nil)
         #expect(excepted.detail == "This focus session · reddit.com open until \(Format.time(open.expiresAt))")
 
         try s.stop(now: t.addingTimeInterval(60))
         try focus(s, at: t.addingTimeInterval(120), strict: true)
         try s.recordBrowserHello(clientId: "a", extensionVersion: ChromeExtension.version, hostAccess: true, now: t.addingTimeInterval(180))
         let strict = try state(s, at: t.addingTimeInterval(180))
-        #expect(strict.policy.strict && strict.unblockable.isEmpty)
+        // reddit.com is still open from before, but a strict task's menus offer nothing at all.
+        #expect(strict.policy.strict && strict.policy.exceptions.count == 1 && strict.unblockOptions.isEmpty)
         #expect(strict.detail.contains(" · Unblocking off for this task"))
+    }
+
+    @Test func aCoveredSiteCantBeChosenAndAStaleChoiceIsRefused() throws {
+        let s = try store()
+        // The child goes in first: adding reddit.com first would fold old.reddit.com into it.
+        let thread = try site(s, "old.reddit.com")
+        let reddit = try site(s, "reddit.com")
+        try focus(s, at: monday)
+        let t = monday.addingTimeInterval(60)
+        let on = try state(s, at: t)
+        #expect(on.unblockOptions == [.covered(thread, by: reddit), .available(reddit)])
+        #expect(on.availableRule(id: reddit.id) == reddit && on.availableRule(id: thread.id) == nil)
+
+        // A menu drawn while the session ran still offers reddit.com; the state read after it stopped refuses it.
+        try s.stop(now: t.addingTimeInterval(30))
+        let off = try state(s, at: t.addingTimeInterval(31))
+        #expect(off.unblockOptions.isEmpty && off.availableRule(id: reddit.id) == nil)
     }
 
     @Test func theReasonNamesWhateverKeepsBlockingOnLongest() throws {
