@@ -4,6 +4,7 @@ build:
 	./scripts/bundle.sh
 
 test:
+	./scripts/lint-design.sh
 	./scripts/swift.sh test
 
 run: build

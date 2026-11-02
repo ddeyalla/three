@@ -70,6 +70,8 @@ make test      # core tests (Swift Testing)
 make install   # release build to ~/Applications, CLI linked at ~/.local/bin/three
 ```
 
+Design rules live in [DESIGN.md](DESIGN.md): one family (SF Pro), six type roles, one spacing scale, Liquid Glass surfaces. The roles are defined once in `Sources/ThreeApp/Theme.swift`, and `scripts/lint-design.sh` (run by `make test`) rejects any view that sets a font directly.
+
 The app is a SwiftPM package with no Xcode project:
 
 | Target | What it is |

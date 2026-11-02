@@ -26,18 +26,17 @@ struct MenuBarView: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: Space.md) {
             if let running = model.running {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: Space.xs) {
                     Text(running.kind == .break ? "Break" : (model.runningTask?.task.title ?? "Focus"))
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(Typo.focus)
                         .lineLimit(1)
                     Text(Format.clock(running.remaining(at: model.now)))
-                        .font(.system(size: 34, weight: .light))
-                        .monospacedDigit()
+                        .font(Typo.display)
                         .foregroundStyle(running.remaining(at: model.now) <= 0 ? Theme.overrun : .primary)
                 }
-                HStack(spacing: 8) {
+                HStack(spacing: Space.sm) {
                     if running.kind == .focus {
                         Button(running.isPaused ? "Resume" : "Pause") { model.togglePause() }
                             .buttonStyle(.glassProminent)
@@ -57,9 +56,9 @@ struct MenuBarView: View {
             }
 
             if !model.snapshot.tasks.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: Space.sm) {
                     ForEach(model.snapshot.tasks.filter { $0.task.status != .dropped }) { row in
-                        HStack(spacing: 8) {
+                        HStack(spacing: Space.sm) {
                             Image(systemName: row.task.status == .done ? "checkmark.circle.fill" : "circle")
                                 .foregroundStyle(row.category.color)
                             Text(row.task.title)
@@ -70,7 +69,7 @@ struct MenuBarView: View {
                                 .monospacedDigit()
                                 .foregroundStyle(.secondary)
                         }
-                        .font(.system(size: 13))
+                        .font(Typo.body)
                     }
                 }
             }
@@ -88,10 +87,10 @@ struct MenuBarView: View {
                 Button("Quit") { NSApp.terminate(nil) }
             }
             .buttonStyle(.plain)
-            .font(.system(size: 12))
+            .font(Typo.body)
             .foregroundStyle(.secondary)
         }
-        .padding(16)
+        .padding(Space.lg)
         .frame(width: 300)
         .preferredColorScheme(.dark)
     }

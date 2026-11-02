@@ -185,7 +185,7 @@ private struct ConnectSettings: View {
                     Text("Paste this into CLAUDE.md or AGENTS.md so Claude Code or Codex can plan and run your day.")
                         .foregroundStyle(.secondary)
                     Text(agentNote)
-                        .font(.system(.caption, design: .monospaced))
+                        .font(Typo.code)
                         .textSelection(.enabled)
                         .padding(10)
                         .frame(maxWidth: .infinity, alignment: .leading)

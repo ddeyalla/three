@@ -16,11 +16,11 @@ struct RootView: View {
                 .overlay(alignment: .bottom) {
                     if model.error != nil {
                         ErrorNote()
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
+                            .padding(.horizontal, Space.lg)
+                            .padding(.vertical, Space.sm + Space.hairline)
                             .frame(maxWidth: 560)
                             .glassEffect(.regular, in: .capsule)
-                            .padding(.bottom, 20)
+                            .padding(.bottom, Space.xl)
                             .transition(.opacity.combined(with: .offset(y: 8)))
                     }
                 }
@@ -82,8 +82,8 @@ private struct Sidebar: View {
                 .foregroundStyle(.secondary)
                 Spacer()
             }
-            .padding(.horizontal, 18)
-            .padding(.bottom, 14)
+            .padding(.horizontal, Space.lg)
+            .padding(.bottom, Space.md)
         }
     }
 }

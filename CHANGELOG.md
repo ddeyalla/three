@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.3 — 2026-11-02
+
+A design guideline, and a type and spacing pass to match it.
+
+- **[DESIGN.md](DESIGN.md)** sets the rules: SF Pro only, compact density, Liquid Glass for every surface, and colour only for a category, the current time or an overrun.
+- **Six type roles replace nine sizes.** The time left (48pt light) is now the largest thing on Today, ahead of the page title (22pt bold). Below those come the task the dial is about (15pt semibold), section headings and body (13pt), and detail lines (11pt). Selecting or running a task no longer changes its font weight, so its title stops shifting.
+- **One spacing scale** (2, 4, 8, 12, 16, 24, 32) replaces thirteen ad hoc values. Cards, the quick-add field and controls are a little more compact.
+- The menu bar uses the same roles as the window, including the same timer readout.
+- Short blocks on the timeline now show their task and duration.
+- `make test` fails if a view sets a font size or text style directly instead of using a role.
+
 ## 0.2.2 — 2026-11-02
 
 A cleanup after a full review of the app. The window loses its chrome, and a long list of rough edges is fixed.

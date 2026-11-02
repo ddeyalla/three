@@ -76,9 +76,9 @@ struct DayTimelineGrid: View {
             let date = Calendar.current.date(bySettingHour: h, minute: 0, second: 0, of: model.snapshot.day.startDate)!
             HStack(spacing: 8) {
                 Text(date.formatted(.dateTime.hour()))
-                    .font(.caption)
+                    .font(Typo.meta)
                     .monospacedDigit()
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.tertiary)
                     .frame(width: gutter - 8, alignment: .trailing)
                     .opacity(abs(y(date) - nowY) < 12 ? 0 : 1)
                 Rectangle().fill(.white.opacity(0.06)).frame(height: 1)
@@ -120,7 +120,7 @@ struct DayTimelineGrid: View {
     private var nowLine: some View {
         HStack(spacing: 0) {
             Text(Format.time(model.now))
-                .font(.caption.weight(.semibold))
+                .font(Typo.meta.weight(.semibold))
                 .monospacedDigit()
                 .foregroundStyle(Theme.now)
                 .frame(width: gutter - 8, alignment: .trailing)
@@ -145,22 +145,24 @@ private struct SessionBlock: View {
         let color = isBreak ? Color.white : (row?.category.color ?? Theme.idle)
         Color.clear
             .frame(height: height)
-            .glassEffect(isBreak ? .regular : .regular.tint(color.opacity(0.35)), in: .rect(cornerRadius: 8))
+            .glassEffect(isBreak ? .regular : .regular.tint(color.opacity(0.35)), in: .rect(cornerRadius: Radius.block))
             .overlay(alignment: .topLeading) {
-                if height >= 20 {
-                    HStack(spacing: 6) {
+                // An 11pt label fits from 14pt up; shorter blocks stay a bar.
+                if height >= 14 {
+                    HStack(spacing: Space.xs) {
                         Text(isBreak ? "Break" : (row?.task.title ?? "Focus"))
-                            .font(.caption.weight(.semibold))
+                            .font(Typo.meta.weight(.semibold))
                             .foregroundStyle(isBreak ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
                             .lineLimit(1)
                         Spacer(minLength: 4)
                         Text(Format.duration(session.elapsed(at: now)))
-                            .font(.caption)
+                            .font(Typo.meta)
                             .monospacedDigit()
                             .foregroundStyle(.secondary)
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.top, 4)
+                    .padding(.horizontal, Space.sm)
+                    .padding(.top, height >= 20 ? Space.xs : 0)
+                    .frame(maxHeight: height, alignment: height >= 20 ? .top : .center)
                 }
             }
             .accessibilityElement(children: .combine)

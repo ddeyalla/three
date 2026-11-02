@@ -20,15 +20,14 @@ private struct NowPane: View {
             ScrollView {
                 VStack(spacing: 0) {
                     Header()
-                    Spacer(minLength: 24)
+                    Spacer(minLength: Space.xl)
                     TimerSection()
                     TaskList()
-                        .padding(.top, 28)
-                    Spacer(minLength: 24)
+                        .padding(.top, Space.xl)
+                    Spacer(minLength: Space.xl)
                 }
-                .padding(.horizontal, 24)
-                .padding(.top, 20)
-                .padding(.bottom, 20)
+                .padding(.horizontal, Space.xl)
+                .padding(.vertical, Space.xl)
                 .frame(minHeight: geo.size.height)
             }
             .scrollIndicators(.never)
@@ -42,11 +41,11 @@ private struct Header: View {
     var body: some View {
         let snap = model.snapshot
         HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Space.hairline) {
                 Text("Today")
-                    .font(.largeTitle.weight(.bold))
+                    .font(Typo.title)
                 Text(summary)
-                    .font(.callout)
+                    .font(Typo.body)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
@@ -75,27 +74,26 @@ private struct TimerSection: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: Space.md) {
             Text(heading)
-                .font(.title3.weight(.medium))
+                .font(Typo.focus)
                 .lineLimit(1)
-            DialView(size: 220)
-            VStack(spacing: 8) {
+            DialView(size: 200)
+            VStack(spacing: Space.sm) {
                 Text(readout)
-                    .font(.system(size: 40, weight: .light))
-                    .monospacedDigit()
+                    .font(Typo.display)
                     .foregroundStyle((model.remaining ?? 1) <= 0 ? Theme.overrun : .primary)
                     .contentTransition(.numericText(countsDown: true))
                 Text(span)
-                    .font(.callout)
+                    .font(Typo.body)
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, Space.md)
+                    .padding(.vertical, Space.xs)
                     .glassEffect(.regular, in: .capsule)
             }
             Controls()
-                .padding(.top, 4)
+                .padding(.top, Space.xs)
         }
         .frame(maxWidth: .infinity)
     }
@@ -126,8 +124,8 @@ private struct Controls: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        GlassEffectContainer(spacing: 8) {
-            HStack(spacing: 8) {
+        GlassEffectContainer(spacing: Space.sm) {
+            HStack(spacing: Space.sm) {
                 if let running = model.running {
                     if running.kind == .focus {
                         Button("+5") { model.extend(5) }
@@ -164,7 +162,6 @@ private struct Controls: View {
                     .keyboardShortcut(.return, modifiers: .command)
                 }
             }
-            .controlSize(.large)
         }
     }
 }
@@ -177,8 +174,8 @@ private struct TaskList: View {
     private var rows: [TaskRow] { model.snapshot.tasks.filter { $0.task.status != .dropped } }
 
     var body: some View {
-        GlassEffectContainer(spacing: 6) {
-            VStack(alignment: .leading, spacing: 6) {
+        GlassEffectContainer(spacing: Space.sm) {
+            VStack(alignment: .leading, spacing: Space.sm) {
                 ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                     TodayTaskCard(row: row, index: index, count: rows.count)
                 }
@@ -190,10 +187,10 @@ private struct TaskList: View {
                     Text(model.snapshot.activeTaskCount == Rules.maxTasks
                          ? "Five is the limit. Move one to the inbox to add another."
                          : "Three is the sweet spot. Are all of these today?")
-                        .font(.callout)
+                        .font(Typo.meta)
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, 4)
-                        .padding(.top, 4)
+                        .padding(.horizontal, Space.xs)
+                        .padding(.top, Space.xs)
                 }
             }
         }

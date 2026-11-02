@@ -86,13 +86,13 @@ struct ReflectionView: View {
     private var next: TaskRow? { candidates.first { $0.id == nextId } ?? candidates.first }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: Space.lg) {
+            VStack(alignment: .leading, spacing: Space.hairline) {
                 Text(model.runningTask?.task.title ?? "Focus block")
-                    .font(.headline)
+                    .font(Typo.focus)
                     .lineLimit(1)
                 Text("\(Format.duration(model.running?.elapsed(at: model.now) ?? 0)) focused")
-                    .font(.callout)
+                    .font(Typo.body)
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
             }
@@ -147,9 +147,10 @@ struct ReflectionView: View {
             }
             .controlSize(.large)
         }
-        .padding(20)
+        .font(Typo.body)
+        .padding(Space.lg + Space.xs)
         .frame(width: 460)
-        .glassEffect(.regular, in: .rect(cornerRadius: 20))
+        .glassEffect(.regular, in: .rect(cornerRadius: Radius.panel))
         .preferredColorScheme(.dark)
     }
 

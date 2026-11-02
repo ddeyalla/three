@@ -14,6 +14,41 @@ enum Theme {
     static let arrive = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.7)
 }
 
+/// The six type roles from DESIGN.md. Every piece of text uses one; views never set a size or weight.
+enum Typo {
+    /// The time left, on the dial and in the menu bar.
+    static let display = Font.system(size: 48, weight: .light).monospacedDigit()
+    /// Page titles.
+    static let title = Font.title.weight(.bold)
+    /// The task the dial is about; the reflection panel's heading.
+    static let focus = Font.title3.weight(.semibold)
+    /// Section headings inside a page.
+    static let heading = Font.headline
+    /// Task titles, steps, notes, fields, menu rows, durations.
+    static let body = Font.body
+    /// The detail line under a task; timeline labels.
+    static let meta = Font.subheadline
+    /// Literal code only.
+    static let code = Font.system(.subheadline, design: .monospaced)
+}
+
+/// The spacing scale from DESIGN.md.
+enum Space {
+    static let hairline: CGFloat = 2
+    static let xs: CGFloat = 4
+    static let sm: CGFloat = 8
+    static let md: CGFloat = 12
+    static let lg: CGFloat = 16
+    static let xl: CGFloat = 24
+    static let xxl: CGFloat = 32
+}
+
+enum Radius {
+    static let block: CGFloat = 8
+    static let card: CGFloat = 12
+    static let panel: CGFloat = 20
+}
+
 /// What the glass sits on: a dark canvas lit by the current task's colour, so the material has something to refract.
 struct Backdrop: View {
     @Environment(AppModel.self) private var model

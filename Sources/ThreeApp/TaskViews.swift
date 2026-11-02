@@ -16,36 +16,37 @@ struct TaskCard<Trailing: View>: View {
     private var isClosed: Bool { !row.task.status.isOpen }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            HStack(spacing: Space.md) {
                 CompletionButton(row: row)
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: Space.hairline) {
                     Text(row.task.title)
-                        .font(.body.weight(running || selected ? .medium : .regular))
+                        .font(Typo.body)
                         .foregroundStyle(isClosed ? .secondary : .primary)
                         .lineLimit(1)
                     detail
                 }
-                Spacer(minLength: 8)
+                Spacer(minLength: Space.sm)
                 trailing
-                    .font(.callout)
+                    .font(Typo.body)
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
             }
             .contentShape(.rect)
             .onTapGesture(perform: onTap)
             if expanded {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: Space.sm) {
                     StepList(row: row)
                     NotesField(row: row)
                 }
-                .padding(.leading, 28)
+                .padding(.leading, 30)
+                .padding(.bottom, Space.xs)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .contentShape(.rect(cornerRadius: 14))
-        .glassEffect(glass, in: .rect(cornerRadius: 14))
+        .padding(.horizontal, Space.md)
+        .padding(.vertical, Space.sm)
+        .contentShape(.rect(cornerRadius: Radius.card))
+        .glassEffect(glass, in: .rect(cornerRadius: Radius.card))
         .opacity(isClosed ? 0.7 : 1)
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(selected || running ? .isSelected : [])
@@ -58,7 +59,7 @@ struct TaskCard<Trailing: View>: View {
     }
 
     private var detail: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Space.xs) {
             Circle().fill(row.category.color).frame(width: 6, height: 6)
             Text(row.category.name)
             if !row.steps.isEmpty {
@@ -70,7 +71,7 @@ struct TaskCard<Trailing: View>: View {
                 Image(systemName: "text.alignleft").accessibilityLabel("Has notes")
             }
         }
-        .font(.caption)
+        .font(Typo.meta)
         .foregroundStyle(.secondary)
         .monospacedDigit()
     }
@@ -88,7 +89,8 @@ struct CompletionButton: View {
             model.perform { try model.store.setTaskStatus(row.id, isDone ? .todo : .done) }
         } label: {
             Image(systemName: isDone ? "checkmark.circle.fill" : "circle")
-                .font(.system(size: 16))
+                .font(Typo.body)
+                .imageScale(.large)
                 .foregroundStyle(row.task.status == .carried ? AnyShapeStyle(.tertiary) : AnyShapeStyle(row.category.color))
                 .contentTransition(.symbolEffect(.replace))
                 .frame(width: 18, height: 18)
@@ -109,9 +111,9 @@ struct StepList: View {
     @FocusState private var focused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: Space.xs + 2) {
             ForEach(row.steps) { step in
-                HStack(spacing: 8) {
+                HStack(spacing: Space.sm) {
                     Button {
                         model.perform { try model.store.setStep(step.id, done: !step.done) }
                     } label: {
@@ -131,7 +133,7 @@ struct StepList: View {
             }
             // A button first, so opening a card never drops a cursor into it.
             if adding {
-                HStack(spacing: 8) {
+                HStack(spacing: Space.sm) {
                     Image(systemName: "plus").foregroundStyle(.secondary).frame(width: 14)
                     TextField("Next small step", text: $draft)
                         .textFieldStyle(.plain)
@@ -150,7 +152,7 @@ struct StepList: View {
                 .buttonStyle(.plain)
             }
         }
-        .font(.callout)
+        .font(Typo.body)
         .onChange(of: focused) { if !focused && draft.isEmpty { adding = false } }
     }
 
@@ -175,9 +177,9 @@ struct QuickAddField: View {
     }
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: Space.md) {
             Image(systemName: "plus")
-                .font(.system(size: 13, weight: .semibold))
+                .font(Typo.body)
                 .foregroundStyle(.secondary)
                 .frame(width: 18)
             TextField(placeholder, text: $text)
@@ -188,9 +190,10 @@ struct QuickAddField: View {
                 }
             if !text.isEmpty { preview }
         }
-        .padding(.horizontal, 12)
-        .frame(height: 40)
-        .glassEffect(.regular.tint(.white.opacity(focused ? 0.06 : 0)).interactive(), in: .rect(cornerRadius: 14))
+        .font(Typo.body)
+        .padding(.horizontal, Space.md)
+        .frame(height: 36)
+        .glassEffect(.regular.tint(.white.opacity(focused ? 0.06 : 0)).interactive(), in: .rect(cornerRadius: Radius.card))
         .help("#category, a duration like 45m, and today, tomorrow, a weekday or inbox")
         .onChange(of: model.quickAddRequest) { claimQuickAdd() }
         .onAppear { claimQuickAdd() }
@@ -206,18 +209,18 @@ struct QuickAddField: View {
     private var preview: some View {
         let category = model.liveCategories.first { $0.name == parsed.category } ?? model.liveCategories.first
         let minutes = parsed.minutes ?? model.snapshot.preferences.defaultBlockMinutes
-        return HStack(spacing: 8) {
+        return HStack(spacing: Space.sm) {
             Text(parsed.title.isEmpty ? "No title yet" : parsed.title)
                 .lineLimit(1)
                 .foregroundStyle(parsed.title.isEmpty ? AnyShapeStyle(Theme.overrun) : AnyShapeStyle(.secondary))
-            HStack(spacing: 4) {
+            HStack(spacing: Space.xs) {
                 Circle().fill(category?.color ?? Theme.idle).frame(width: 6, height: 6)
                 Text(category?.name ?? "")
             }
             Text("\(minutes)m")
             Text(whenLabel)
         }
-        .font(.caption)
+        .font(Typo.meta)
         .foregroundStyle(.secondary)
         .monospacedDigit()
     }
@@ -286,7 +289,7 @@ struct NotesField: View {
     var body: some View {
         TextField("Notes", text: $text, axis: .vertical)
             .textFieldStyle(.plain)
-            .font(.callout)
+            .font(Typo.body)
             .foregroundStyle(.secondary)
             .lineLimit(1...8)
             .onAppear { text = row.task.notes }
@@ -310,16 +313,16 @@ struct ErrorNote: View {
 
     var body: some View {
         if let error = model.error {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
                 Image(systemName: "exclamationmark.circle.fill").foregroundStyle(Theme.overrun)
                 Text(error).fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 4)
+                Spacer(minLength: Space.xs)
                 Button { model.error = nil } label: { Image(systemName: "xmark") }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
                     .help("Dismiss")
             }
-            .font(.callout)
+            .font(Typo.body)
         }
     }
 }
