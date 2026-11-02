@@ -1,0 +1,371 @@
+import Foundation
+import GRDB
+import notify
+
+/// Cross-process "the database changed" ping. GRDB observation only sees writes from
+/// its own process, so every write posts this and the app reloads on receipt.
+public enum ChangeSignal {
+    static let name = "com.deyalla.three.changed"
+
+    public static func post() { notify_post(name) }
+
+    /// Calls `handler` on the main queue after any process writes. Keep the token alive.
+    public static func observe(_ handler: @escaping () -> Void) -> Int32 {
+        var token: Int32 = 0
+        notify_register_dispatch(name, &token, .main) { _ in handler() }
+        return token
+    }
+}
+
+public struct TaskRow: Hashable, Identifiable, Sendable {
+    public var task: FocusTask
+    public var category: Category
+    public var focusedSeconds: TimeInterval
+    public var id: String { task.id }
+    public var blockSeconds: TimeInterval { TimeInterval(task.blockMinutes * 60) }
+    public var progress: Double { min(1, focusedSeconds / max(1, blockSeconds)) }
+}
+
+/// Everything the Today screen, menu bar and `three today` show.
+public struct DaySnapshot: Sendable {
+    public var day: DayKey
+    public var plan: DayPlan?
+    public var tasks: [TaskRow]
+    public var sessions: [Session]
+    public var running: Session?
+    public var runningTask: TaskRow?
+    public var categories: [Category]
+
+    public var plannedMinutes: Int { tasks.filter { $0.task.status != .dropped }.reduce(0) { $0 + $1.task.blockMinutes } }
+    public var doneCount: Int { tasks.filter { $0.task.status == .done }.count }
+    public var activeTaskCount: Int { tasks.filter { $0.task.status != .dropped && $0.task.status != .carried }.count }
+    public var nextTask: TaskRow? { tasks.first { $0.task.status.isOpen && $0.id != running?.taskId } }
+
+    public func focusSeconds(at now: Date) -> TimeInterval {
+        sessions.filter { $0.kind == .focus }.reduce(0) { $0 + $1.elapsed(at: now) }
+    }
+}
+
+public struct NewTask: Sendable {
+    public var title: String
+    public var category: String
+    public var blockMinutes: Int
+    public var scheduledStart: Date?
+    public var strict: Bool
+    public var linearRef: String?
+    public var notes: String
+
+    public init(title: String, category: String, blockMinutes: Int, scheduledStart: Date? = nil,
+                strict: Bool = false, linearRef: String? = nil, notes: String = "") {
+        self.title = title
+        self.category = category
+        self.blockMinutes = blockMinutes
+        self.scheduledStart = scheduledStart
+        self.strict = strict
+        self.linearRef = linearRef
+        self.notes = notes
+    }
+}
+
+extension Store {
+    @discardableResult
+    func write<T>(_ body: (Database) throws -> T) throws -> T {
+        let result = try db.write(body)
+        ChangeSignal.post()
+        return result
+    }
+
+    // MARK: Reads
+
+    public func snapshot(for day: DayKey = .today) throws -> DaySnapshot {
+        try db.read { db in
+            let categories = try Category.filter(Column("deletedAt") == nil).order(Column("position")).fetchAll(db)
+            let byId = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0) })
+            let plan = try DayPlan.filter(Column("day") == day && Column("deletedAt") == nil).fetchOne(db)
+            let tasks = try plan.map {
+                try FocusTask.filter(Column("dayPlanId") == $0.id && Column("deletedAt") == nil)
+                    .order(Column("position")).fetchAll(db)
+            } ?? []
+            let start = day.startDate, end = day.adding(days: 1).startDate
+            let sessions = try Session.filter(Column("startedAt") >= start && Column("startedAt") < end)
+                .order(Column("startedAt")).fetchAll(db)
+            let running = try Session.filter(Column("endedAt") == nil).fetchOne(db)
+            let now = Date()
+            var focused: [String: TimeInterval] = [:]
+            if !tasks.isEmpty {
+                let ids = tasks.map(\.id)
+                for s in try Session.filter(ids.contains(Column("taskId")) && Column("kind") == SessionKind.focus).fetchAll(db) {
+                    focused[s.taskId!, default: 0] += s.elapsed(at: now)
+                }
+            }
+            let rows = tasks.compactMap { t in
+                byId[t.categoryId].map { TaskRow(task: t, category: $0, focusedSeconds: focused[t.id] ?? 0) }
+            }
+            var runningTask = rows.first { $0.id == running?.taskId }
+            if runningTask == nil, let taskId = running?.taskId, let t = try FocusTask.fetchOne(db, key: taskId), let c = byId[t.categoryId] {
+                runningTask = TaskRow(task: t, category: c, focusedSeconds: focused[t.id] ?? 0)
+            }
+            return DaySnapshot(day: day, plan: plan, tasks: rows, sessions: sessions, running: running,
+                               runningTask: runningTask, categories: categories)
+        }
+    }
+
+    public func categories() throws -> [Category] {
+        try db.read { try Category.filter(Column("deletedAt") == nil).order(Column("position")).fetchAll($0) }
+    }
+
+    // MARK: Planning
+
+    private func category(_ nameOrId: String, _ db: Database) throws -> Category {
+        let all = try Category.filter(Column("deletedAt") == nil).fetchAll(db)
+        if let c = all.first(where: { $0.id == nameOrId || $0.name.caseInsensitiveCompare(nameOrId) == .orderedSame }) {
+            return c
+        }
+        throw ThreeError.noSuchCategory(nameOrId)
+    }
+
+    private func planRow(_ day: DayKey, source: Source, _ db: Database) throws -> DayPlan {
+        if let p = try DayPlan.filter(Column("day") == day && Column("deletedAt") == nil).fetchOne(db) { return p }
+        let now = Date()
+        let p = DayPlan(id: UUID().uuidString, day: day, status: .draft, source: source,
+                        createdAt: now, committedAt: nil, updatedAt: now, deletedAt: nil)
+        try p.insert(db)
+        return p
+    }
+
+    private func liveTasks(_ planId: String, _ db: Database) throws -> [FocusTask] {
+        try FocusTask.filter(Column("dayPlanId") == planId && Column("deletedAt") == nil)
+            .order(Column("position")).fetchAll(db)
+    }
+
+    private func insertTask(_ new: NewTask, plan: DayPlan, source: Source, _ db: Database) throws -> FocusTask {
+        let title = new.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { throw ThreeError.invalid("A task needs a title.") }
+        guard (5...480).contains(new.blockMinutes) else { throw ThreeError.invalid("Blocks are 5 to 480 minutes.") }
+        let existing = try liveTasks(plan.id, db)
+        guard existing.filter({ $0.status != .dropped && $0.status != .carried }).count < Rules.maxTasks else {
+            throw ThreeError.tooManyTasks
+        }
+        let t = FocusTask(id: UUID().uuidString, dayPlanId: plan.id, position: (existing.map(\.position).max() ?? -1) + 1,
+                          title: title, categoryId: try category(new.category, db).id, blockMinutes: new.blockMinutes,
+                          scheduledStart: new.scheduledStart, strict: new.strict, status: .todo,
+                          linearRef: new.linearRef, notes: new.notes, createdBy: source, updatedAt: Date(), deletedAt: nil)
+        try t.insert(db)
+        return t
+    }
+
+    @discardableResult
+    public func addTask(_ new: NewTask, day: DayKey = .today, source: Source) throws -> FocusTask {
+        try write { db in try insertTask(new, plan: planRow(day, source: source, db), source: source, db) }
+    }
+
+    /// Replaces the day's untouched tasks with `tasks`. Tasks that already have focus time stay.
+    public func setPlan(_ tasks: [NewTask], day: DayKey, source: Source, commit: Bool) throws {
+        try write { db in
+            var plan = try planRow(day, source: source, db)
+            let worked = Set(try String.fetchAll(db, sql: "SELECT DISTINCT taskId FROM session WHERE taskId IS NOT NULL"))
+            for var t in try liveTasks(plan.id, db) where !worked.contains(t.id) {
+                t.deletedAt = Date(); t.updatedAt = Date()
+                try t.update(db)
+            }
+            for new in tasks { _ = try insertTask(new, plan: plan, source: source, db) }
+            plan.source = source
+            plan.updatedAt = Date()
+            if commit { plan.status = .committed; plan.committedAt = Date() }
+            try plan.update(db)
+        }
+    }
+
+    public func commit(day: DayKey = .today) throws {
+        try write { db in
+            guard var plan = try DayPlan.filter(Column("day") == day).fetchOne(db) else {
+                throw ThreeError.invalid("No plan for \(day).")
+            }
+            plan.status = .committed
+            plan.committedAt = plan.committedAt ?? Date()
+            plan.updatedAt = Date()
+            try plan.update(db)
+        }
+    }
+
+    public func updateTask(_ id: String, title: String? = nil, category: String? = nil,
+                           blockMinutes: Int? = nil, status: TaskStatus? = nil, notes: String? = nil) throws {
+        try write { db in
+            guard var t = try FocusTask.fetchOne(db, key: id) else { throw ThreeError.noSuchTask(id) }
+            if let title { t.title = title }
+            if let category { t.categoryId = try self.category(category, db).id }
+            if let blockMinutes {
+                guard (5...480).contains(blockMinutes) else { throw ThreeError.invalid("Blocks are 5 to 480 minutes.") }
+                t.blockMinutes = blockMinutes
+            }
+            if let status { t.status = status }
+            if let notes { t.notes = notes }
+            t.updatedAt = Date()
+            try t.update(db)
+        }
+    }
+
+    /// Moves a task to `index` among the day's tasks.
+    public func moveTask(_ id: String, to index: Int) throws {
+        try write { db in
+            guard let moving = try FocusTask.fetchOne(db, key: id) else { throw ThreeError.noSuchTask(id) }
+            var tasks = try liveTasks(moving.dayPlanId, db).filter { $0.id != id }
+            tasks.insert(moving, at: max(0, min(index, tasks.count)))
+            for (i, var t) in tasks.enumerated() where t.position != i {
+                t.position = i; t.updatedAt = Date()
+                try t.update(db)
+            }
+        }
+    }
+
+    public func removeTask(_ id: String) throws {
+        try write { db in
+            guard var t = try FocusTask.fetchOne(db, key: id) else { throw ThreeError.noSuchTask(id) }
+            let worked = try Session.filter(Column("taskId") == id).fetchCount(db) > 0
+            if worked { t.status = .dropped } else { t.deletedAt = Date() }
+            t.updatedAt = Date()
+            try t.update(db)
+        }
+    }
+
+    // MARK: Timer
+
+    private func runningSession(_ db: Database) throws -> Session? {
+        try Session.filter(Column("endedAt") == nil).fetchOne(db)
+    }
+
+    private func end(_ s: inout Session, reason: EndReason, at now: Date, _ db: Database) throws {
+        if let pausedAt = s.pausedAt {
+            s.pausedSeconds += Int(now.timeIntervalSince(pausedAt))
+            s.pausedAt = nil
+        }
+        s.endedAt = now
+        s.endReason = reason
+        s.updatedAt = now
+        try s.update(db)
+    }
+
+    /// Starts a focus session on `taskId`, or on the next open task of today.
+    /// A running break is ended first; a running focus session is an error.
+    @discardableResult
+    public func startFocus(taskId: String? = nil, minutes: Int? = nil, now: Date = Date()) throws -> Session {
+        try write { db in
+            if var running = try runningSession(db) {
+                guard running.kind == .break else { throw ThreeError.alreadyRunning }
+                try end(&running, reason: .completed, at: now, db)
+            }
+            var task: FocusTask
+            if let taskId {
+                guard let t = try FocusTask.fetchOne(db, key: taskId), t.deletedAt == nil else { throw ThreeError.noSuchTask(taskId) }
+                task = t
+            } else {
+                guard let plan = try DayPlan.filter(Column("day") == DayKey(now)).fetchOne(db),
+                      let t = try liveTasks(plan.id, db).first(where: { $0.status.isOpen }) else { throw ThreeError.nothingToStart }
+                task = t
+            }
+            let focused = try Session.filter(Column("taskId") == task.id && Column("kind") == SessionKind.focus)
+                .fetchAll(db).reduce(0) { $0 + $1.elapsed(at: now) }
+            let left = Int((TimeInterval(task.blockMinutes * 60) - focused) / 60)
+            let planned = minutes ?? (left >= 5 ? min(left, Rules.defaultSessionMinutes) : Rules.defaultSessionMinutes)
+            guard (1...480).contains(planned) else { throw ThreeError.invalid("Sessions are 1 to 480 minutes.") }
+            let s = Session(id: UUID().uuidString, taskId: task.id, kind: .focus, plannedSeconds: planned * 60,
+                            startedAt: now, pausedAt: nil, pausedSeconds: 0, endedAt: nil, endReason: nil,
+                            outcome: nil, focusRating: nil, note: nil, updatedAt: now)
+            try s.insert(db)
+            task.status = .active
+            task.updatedAt = now
+            try task.update(db)
+            return s
+        }
+    }
+
+    public func pause(now: Date = Date()) throws {
+        try write { db in
+            guard var s = try runningSession(db) else { throw ThreeError.noRunningSession }
+            guard s.pausedAt == nil else { return }
+            s.pausedAt = now; s.updatedAt = now
+            try s.update(db)
+        }
+    }
+
+    public func resume(now: Date = Date()) throws {
+        try write { db in
+            guard var s = try runningSession(db) else { throw ThreeError.noRunningSession }
+            guard let pausedAt = s.pausedAt else { return }
+            s.pausedSeconds += Int(now.timeIntervalSince(pausedAt))
+            s.pausedAt = nil; s.updatedAt = now
+            try s.update(db)
+        }
+    }
+
+    public func extend(minutes: Int, now: Date = Date()) throws {
+        try write { db in
+            guard var s = try runningSession(db) else { throw ThreeError.noRunningSession }
+            // Extending an overrun block adds time from now, not from the old end.
+            let overrun = max(0, -Int(s.remaining(at: now)))
+            s.plannedSeconds += overrun + minutes * 60
+            s.updatedAt = now
+            try s.update(db)
+        }
+    }
+
+    /// Ends whatever is running without a reflection.
+    public func stop(now: Date = Date()) throws {
+        try write { db in
+            guard var s = try runningSession(db) else { throw ThreeError.noRunningSession }
+            try end(&s, reason: .stopped, at: now, db)
+            if let taskId = s.taskId, var t = try FocusTask.fetchOne(db, key: taskId), t.status == .active {
+                t.status = .partial; t.updatedAt = now
+                try t.update(db)
+            }
+        }
+    }
+
+    /// Ends the running focus session with the reflection answers.
+    public func finishFocus(outcome: Outcome, rating: FocusRating, note: String?, markTaskDone: Bool,
+                            now: Date = Date()) throws {
+        try write { db in
+            guard var s = try runningSession(db), s.kind == .focus else { throw ThreeError.noRunningSession }
+            s.outcome = outcome
+            s.focusRating = rating
+            s.note = note?.isEmpty == true ? nil : note
+            try end(&s, reason: .completed, at: now, db)
+            if let taskId = s.taskId, var t = try FocusTask.fetchOne(db, key: taskId) {
+                t.status = markTaskDone ? .done : .partial
+                t.updatedAt = now
+                try t.update(db)
+            }
+        }
+    }
+
+    public func setTaskStatus(_ id: String, _ status: TaskStatus) throws {
+        try updateTask(id, status: status)
+    }
+
+    /// 5 minutes normally; 15 once you've focused ~100 minutes since the last long break.
+    public func suggestedBreakMinutes(now: Date = Date()) throws -> Int {
+        try db.read { db in
+            let today = try Session.filter(Column("startedAt") >= DayKey(now).startDate).order(Column("startedAt")).fetchAll(db)
+            let lastLong = today.last { $0.kind == .break && $0.elapsed(at: now) >= TimeInterval(Rules.longBreakMinutes * 60 - 60) }
+            let since = today.filter { $0.kind == .focus && $0.startedAt > (lastLong?.startedAt ?? .distantPast) }
+            let focused = since.reduce(0) { $0 + $1.elapsed(at: now) }
+            return focused >= TimeInterval(Rules.longBreakAfterFocusMinutes * 60) ? Rules.longBreakMinutes : Rules.shortBreakMinutes
+        }
+    }
+
+    @discardableResult
+    public func startBreak(minutes: Int? = nil, now: Date = Date()) throws -> Session {
+        let planned = try minutes ?? suggestedBreakMinutes(now: now)
+        return try write { db in
+            if var running = try runningSession(db) {
+                guard running.kind == .break else { throw ThreeError.alreadyRunning }
+                try end(&running, reason: .stopped, at: now, db)
+            }
+            let s = Session(id: UUID().uuidString, taskId: nil, kind: .break, plannedSeconds: planned * 60,
+                            startedAt: now, pausedAt: nil, pausedSeconds: 0, endedAt: nil, endReason: nil,
+                            outcome: nil, focusRating: nil, note: nil, updatedAt: now)
+            try s.insert(db)
+            return s
+        }
+    }
+}

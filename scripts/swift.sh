@@ -17,4 +17,10 @@ if ls "$SYSTEM_LIBS"/*/*.swiftmodule/*.private.swiftinterface >/dev/null 2>&1; t
     export SWIFTPM_CUSTOM_LIBS_DIR="$CLEAN"
 fi
 
+# SwiftBuild doesn't pass the toolchain's Swift Testing macro plugin; add it for tests.
+TESTING_PLUGINS="$(dirname "$(dirname "$(xcrun -f swift)")")/lib/swift/host/plugins/testing"
+if [ "${1:-}" = "test" ] && [ -d "$TESTING_PLUGINS" ]; then
+    exec swift "$@" -Xswiftc -plugin-path -Xswiftc "$TESTING_PLUGINS"
+fi
+
 exec swift "$@"
