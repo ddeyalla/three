@@ -1,3 +1,4 @@
+import AppKit
 import ArgumentParser
 import Foundation
 import ThreeCore
@@ -62,6 +63,18 @@ func resolveTask(_ ref: String, in snap: DaySnapshot) throws -> TaskRow {
 }
 
 func store() throws -> Store { try Store() }
+
+/// Timer commands need the app to chime and reflect at block end; launch it in the background if it's closed.
+/// Skipped when THREE_DB points elsewhere, since the launched app would use the default database.
+func ensureAppRunning() {
+    guard ProcessInfo.processInfo.environment["THREE_DB"] == nil,
+          NSRunningApplication.runningApplications(withBundleIdentifier: ThreeVersion.bundleID).isEmpty else { return }
+    let open = Process()
+    open.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+    open.arguments = ["-g", "-b", ThreeVersion.bundleID]
+    try? open.run()
+    open.waitUntilExit()
+}
 
 func emit<T: Encodable>(_ value: T) throws {
     let enc = JSONEncoder()
@@ -210,6 +223,7 @@ struct Start: ParsableCommand {
         let s = try store()
         let id = try task.map { try resolveTask($0, in: s.snapshot()).id }
         try s.startFocus(taskId: id, minutes: min.map(parseMinutes))
+        ensureAppRunning()
         printStatus(try s.snapshot())
     }
 }
@@ -219,13 +233,18 @@ struct Pause: ParsableCommand {
 }
 
 struct Resume: ParsableCommand {
-    func run() throws { let s = try store(); try s.resume(); printStatus(try s.snapshot()) }
+    func run() throws { let s = try store(); try s.resume(); ensureAppRunning(); printStatus(try s.snapshot()) }
 }
 
 struct Extend: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Add minutes to the running block.")
     @Argument var minutes = "5"
-    func run() throws { let s = try store(); try s.extend(minutes: parseMinutes(minutes)); printStatus(try s.snapshot()) }
+    func run() throws {
+        let s = try store()
+        try s.extend(minutes: parseMinutes(minutes))
+        ensureAppRunning()
+        printStatus(try s.snapshot())
+    }
 }
 
 struct Stop: ParsableCommand {

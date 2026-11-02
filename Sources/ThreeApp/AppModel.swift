@@ -19,7 +19,9 @@ final class AppModel {
 
     @ObservationIgnored private var signalToken: Int32 = 0
     @ObservationIgnored private var ticker: Timer?
-    @ObservationIgnored private var reflectedSessionId: String?
+    /// The block (session + planned length) whose end already opened the panel.
+    /// Extending changes the length, which re-arms it, whoever extended.
+    @ObservationIgnored private var reflectedBlock: String?
     @ObservationIgnored private var scheduledNotification: (id: String, end: Date)?
     @ObservationIgnored lazy var reflection = ReflectionPanelController(model: self)
 
@@ -73,9 +75,10 @@ final class AppModel {
         now = Date()
         if snapshot.day != DayKey(now) { reload() }
         try? store.finishBreakIfDue(now: now)
+        if reflection.isVisible, running?.kind != .focus { reflection.hide() }
         if let running, running.kind == .focus, !running.isPaused,
-           running.remaining(at: now) <= 0, reflectedSessionId != running.id {
-            reflectedSessionId = running.id
+           running.remaining(at: now) <= 0, reflectedBlock != blockKey(running) {
+            reflectedBlock = blockKey(running)
             NSSound(named: "Glass")?.play()
             reflection.show()
         }
@@ -149,10 +152,12 @@ final class AppModel {
     func stop() { perform { try store.stop() } }
 
     func finishEarly() {
-        guard running?.kind == .focus else { return }
-        reflectedSessionId = running?.id
+        guard let running, running.kind == .focus else { return }
+        reflectedBlock = blockKey(running)
         reflection.show()
     }
+
+    private func blockKey(_ s: Session) -> String { "\(s.id)/\(s.plannedSeconds)" }
 
     func select(_ row: TaskRow) {
         selectedTaskId = row.id
