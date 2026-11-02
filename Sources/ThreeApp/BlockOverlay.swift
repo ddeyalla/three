@@ -10,7 +10,7 @@ final class BlockOverlayController: NSObject, NSWindowDelegate {
         let rule: BlockRule
         /// The app's name for an app rule; nil for a site.
         var appName: String?
-        /// False when macOS refused to hide the app.
+        /// False once macOS has refused to hide the app.
         var hidden = true
     }
 
@@ -19,6 +19,8 @@ final class BlockOverlayController: NSObject, NSWindowDelegate {
     private unowned let model: AppModel
     private var panel: OverlayPanel?
     private(set) var subject: Subject?
+    /// What the panel shows now; Unblock… switches it inside the view.
+    private(set) var mode = Mode.blocked
     /// A blocked app was just hidden. macOS brings another app forward next; showing after that keeps the
     /// panel from losing key to it at once.
     private var pending: (subject: Subject, mode: Mode)?
@@ -33,6 +35,19 @@ final class BlockOverlayController: NSObject, NSWindowDelegate {
         guard mode == .blocked, !isVisible else { return show(subject, mode: mode) }
         pending = (subject, mode)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.showPending() }
+    }
+
+    /// Whether the panel is showing, or about to show, for this rule.
+    func isShowing(_ rule: BlockRule) -> Bool {
+        (isVisible ? subject : pending?.subject)?.rule.id == rule.id
+    }
+
+    /// The app is still on screen after several tries, so say so instead of claiming it's hidden.
+    func hideFailed(_ rule: BlockRule) {
+        if pending?.subject.rule.id == rule.id { pending?.subject.hidden = false }
+        guard isVisible, mode == .blocked, var subject, subject.rule.id == rule.id, subject.hidden else { return }
+        subject.hidden = false
+        show(subject, mode: .blocked)
     }
 
     func otherAppActivated(_ app: NSRunningApplication) {
@@ -82,6 +97,7 @@ final class BlockOverlayController: NSObject, NSWindowDelegate {
         self.panel = panel
         let wasVisible = panel.isVisible
         self.subject = subject
+        self.mode = mode
         let host = NSHostingView(rootView: BlockOverlayView(subject: subject, mode: mode, controller: self).environment(model))
         host.wantsLayer = true
         host.layer?.cornerRadius = Radius.panel
@@ -106,7 +122,9 @@ final class BlockOverlayController: NSObject, NSWindowDelegate {
                 panel.animator().setFrameOrigin(target)
             }
         }
-        // The person just tried to open this app, or chose Unblock, so the keyboard belongs here.
+        // The person just tried to open this app, or chose Unblock, so the keyboard belongs here. A nonactivating key
+        // panel hears no keys until Three asks to be active; the main window stays behind the app in front.
+        NSApp.activate()
         panel.makeKeyAndOrderFront(nil)
         let name = subject.appName ?? subject.rule.name
         NSAccessibility.post(element: panel, notification: .announcementRequested, userInfo: [
@@ -114,6 +132,8 @@ final class BlockOverlayController: NSObject, NSWindowDelegate {
             .priority: NSAccessibilityPriorityLevel.high.rawValue,
         ])
     }
+
+    func beginUnblock() { mode = .unblock }
 
     /// Keeps the top edge still when the content changes height, as when Unblock swaps in its field.
     func fit(_ size: CGSize) {
@@ -182,7 +202,7 @@ struct BlockOverlayView: View {
         .frame(width: 420, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
         .glassEffect(.regular, in: .rect(cornerRadius: Radius.panel))
-        // The panel never activates Three; keep its text and controls from drawing as inactive.
+        // Three usually isn't the frontmost app; keep the panel's text and controls from drawing as inactive.
         .environment(\.controlActiveState, .key)
         .preferredColorScheme(.dark)
         .onGeometryChange(for: CGSize.self) { $0.size } action: { controller.fit($0) }
@@ -216,9 +236,12 @@ struct BlockOverlayView: View {
                         .font(Typo.meta)
                         .foregroundStyle(.secondary)
                 } else {
-                    Button("Unblock for 5 minutes…") { mode = .unblock }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
+                    Button("Unblock for 5 minutes…") {
+                        controller.beginUnblock()
+                        mode = .unblock
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: Space.sm)
                 Button("Back to work") { controller.backToWork() }
@@ -255,12 +278,13 @@ struct BlockOverlayView: View {
                 Text("Open \(name) for 5 minutes")
                     .font(Typo.focus)
                     .lineLimit(2)
-                Text("What do you need it for? It's saved with this session.")
+                Text(blocking.policy.focus == nil ? "What do you need it for? Three keeps your answer." : "What do you need it for? It's saved with this session.")
                     .foregroundStyle(.secondary)
             }
             VStack(alignment: .leading, spacing: Space.xs) {
                 TextField("Reason", text: $reason)
                     .textFieldStyle(.plain)
+                    .accessibilityLabel("Reason")
                     .focused($reasonFocused)
                     .focusEffectDisabled()
                     .disabled(waitStarted != nil)
@@ -300,7 +324,8 @@ struct BlockOverlayView: View {
 
     private var hint: String {
         if let covering { return "\(covering.name) also blocks this site, so opening \(name) alone wouldn't help." }
-        return waitStarted == nil ? "Write at least three words." : "Saved with this focus session when you unblock."
+        if waitStarted == nil { return "Write at least three words." }
+        return blocking.policy.focus == nil ? "Saved when you unblock." : "Saved with this focus session when you unblock."
     }
 
     private var hasReason: Bool {

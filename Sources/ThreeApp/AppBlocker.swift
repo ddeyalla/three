@@ -35,11 +35,11 @@ final class AppBlocker {
             model.blockOverlay.otherAppActivated(app)
             return
         }
-        let forward = app.isActive || !launched
-        let hidden = app.hide()
-        guard forward else { return }
-        _ = try? model.store.recordBlockHit(ruleId: rule.id)
-        model.blockOverlay.present(.init(rule: rule, appName: app.localizedName ?? rule.name, hidden: hidden), mode: .blocked)
+        hide(app, rule: rule)
+        guard app.isActive || !launched else { return }
+        // Launching sends both an activation and a launch; count the attempt once.
+        if !model.blockOverlay.isShowing(rule) { _ = try? model.store.recordBlockHit(ruleId: rule.id) }
+        model.blockOverlay.present(.init(rule: rule, appName: app.localizedName ?? rule.name), mode: .blocked)
     }
 
     /// Hides every running app whose rule is in force: when blocking starts, a rule is added or an exception ends.
@@ -49,10 +49,21 @@ final class AppBlocker {
         for app in NSWorkspace.shared.runningApplications where !app.isHidden && !isThree(app) {
             guard let rule = apps.first(where: { $0.bundleID?.matches(app.bundleIdentifier) == true }) else { continue }
             let wasActive = app.isActive
-            let hidden = app.hide()
+            hide(app, rule: rule)
             if wasActive {
-                model.blockOverlay.present(.init(rule: rule, appName: app.localizedName ?? rule.name, hidden: hidden), mode: .blocked)
+                model.blockOverlay.present(.init(rule: rule, appName: app.localizedName ?? rule.name), mode: .blocked)
             }
+        }
+    }
+
+    /// `hide()` returns false even when the app hides a moment later, so look instead of trusting it. A launching
+    /// app can take a second to accept; after three more tries the overlay says it couldn't be hidden.
+    private func hide(_ app: NSRunningApplication, rule: BlockRule, tries: Int = 3) {
+        app.hide()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            guard let self, !app.isTerminated, !app.isHidden,
+                  model.blocking.blockedApps.contains(where: { $0.id == rule.id }) else { return }
+            if tries > 0 { hide(app, rule: rule, tries: tries - 1) } else { model.blockOverlay.hideFailed(rule) }
         }
     }
 

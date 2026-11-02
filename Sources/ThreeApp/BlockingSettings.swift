@@ -47,7 +47,7 @@ struct BlockingSettings: View {
             hours
             chrome
             Section("Not covered") {
-                Text("Safari, Firefox and other browsers, Chrome profiles without the extension, Guest and Incognito windows, videos embedded in other sites, and apps that show web pages. To keep Safari closed during focus, add it under Apps.")
+                Text("Safari, Firefox and other browsers, Chrome profiles without the extension, Guest and Incognito windows, videos embedded in other sites, and apps that show web pages. To hide Safari during focus, add it under Apps.")
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -373,6 +373,7 @@ private struct RuleRow: View {
         HStack(spacing: Space.sm) {
             icon
                 .frame(width: 16, height: 16)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: Space.hairline) {
                 Text(rule.name)
                     .lineLimit(1)

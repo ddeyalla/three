@@ -6,22 +6,22 @@ struct MenuBarLabel: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// The menu bar draws one symbol from a label (its first image), so the item shows one thing by priority: a saved
+    /// reflection's dot, else the blocking hand while something is really blocked, else the timer.
     var body: some View {
-        HStack(spacing: Space.xs) {
-            if !model.deferredReflections.isEmpty {
-                Image(systemName: "circle.fill")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 6, height: 6)
-                    .opacity(reminderBright ? 1 : 0.35)
-                    .animation(reduceMotion ? nil : .easeInOut(duration: 1), value: reminderBright)
-                    .accessibilityLabel("Saved reflection awaiting review")
-            }
-            // Only while something is really stopped; never pulses, so it can't compete with the reminder dot.
-            if model.blocking.isEnforcing {
-                Image(systemName: "hand.raised.fill")
-                    .accessibilityLabel(model.blocking.headline)
-            }
+        if !model.deferredReflections.isEmpty {
+            Image(systemName: "circle.fill")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 6, height: 6)
+                .opacity(reminderBright ? 1 : 0.35)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 1), value: reminderBright)
+                .accessibilityLabel("Saved reflection awaiting review")
+        } else if model.blocking.isEnforcing {
+            // Never pulses: blocking is a state, not a reminder.
+            Image(systemName: "hand.raised.fill")
+                .accessibilityLabel(model.blocking.headline)
+        } else {
             title
         }
     }
