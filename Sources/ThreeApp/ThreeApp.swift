@@ -18,6 +18,7 @@ struct ThreeApp: App {
             CommandGroup(replacing: .newItem) {
                 Button("Quick Add") {
                     if model.destination != .today && model.destination != .upcoming { model.destination = .inbox }
+                    model.quickAddPending = true
                     model.quickAddRequest += 1
                 }
                 .keyboardShortcut("n")

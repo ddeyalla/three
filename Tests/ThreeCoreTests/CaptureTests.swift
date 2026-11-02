@@ -129,3 +129,66 @@ private func task(_ title: String, _ minutes: Int = 60, _ category: String = "Co
     #expect(snap.sessions.first?.endedAt == pausedAt)
     #expect(snap.sessions.first.map { Int($0.elapsed(at: Date())) } == 60)
 }
+
+@Test func quickAddReadsDaysAndDurationsOnlyAtTheEnd() {
+    let cats = ["Coding", "Admin"]
+    let today = DayKey("2026-11-02")!
+    #expect(QuickAdd.parse("Email Tom about invoice", categories: cats, today: today)
+        == QuickAdd(title: "Email Tom about invoice", category: nil, minutes: nil, when: nil))
+    #expect(QuickAdd.parse("SAT prep", categories: cats, today: today).title == "SAT prep")
+    #expect(QuickAdd.parse("Read later", categories: cats, today: today).when == nil)
+    #expect(QuickAdd.parse("Plan today's talk tomorrow", categories: cats, today: today)
+        == QuickAdd(title: "Plan today's talk", category: nil, minutes: nil, when: .day(DayKey("2026-11-03")!)))
+    #expect(QuickAdd.parse("#admin Call bank 15m", categories: cats, today: today)
+        == QuickAdd(title: "Call bank", category: "Admin", minutes: 15, when: nil))
+    #expect(QuickAdd.parse("tomorrow 30m", categories: cats, today: today).title.isEmpty)
+}
+
+@Test func openTasksFromEarlierDaysWaitInTheInbox() throws {
+    let store = try Store(url: freshURL())
+    let yesterday = DayKey.today.adding(days: -1)
+    let left = try store.addTask(task("Left over"), day: yesterday, source: .cli)
+    let done = try store.addTask(task("Finished"), day: yesterday, source: .cli)
+    try store.setTaskStatus(done.id, .done)
+    #expect(try store.inbox().map(\.id) == [left.id])
+    try store.schedule(left.id, on: .today)
+    #expect(try store.inbox().isEmpty)
+    #expect(try store.snapshot().tasks.map(\.id) == [left.id])
+}
+
+@Test func deletingTheRunningTaskStopsItsBlock() throws {
+    let store = try Store(url: freshURL())
+    let t = try store.addTask(task("Oops"), source: .cli)
+    try store.startFocus(taskId: t.id)
+    try store.removeTask(t.id)
+    let snap = try store.snapshot()
+    #expect(snap.running == nil)
+    #expect(snap.tasks.first { $0.id == t.id }?.task.status == .dropped)
+}
+
+@Test func pushToTomorrowCopiesSteps() throws {
+    let store = try Store(url: freshURL())
+    let t = try store.addTask(task("Big one"), source: .cli)
+    let first = try store.addStep(to: t.id, title: "First")
+    try store.addStep(to: t.id, title: "Second")
+    try store.setStep(first.id, done: true)
+    try store.pushToTomorrow(t.id)
+    let copy = try store.snapshot(for: DayKey.today.adding(days: 1)).tasks[0]
+    #expect(copy.steps.map(\.title) == ["First", "Second"])
+    #expect(copy.steps.map(\.done) == [true, false])
+    #expect(try store.snapshot().tasks[0].steps.count == 2)
+    #expect(throws: ThreeError.self) { try store.schedule(t.id, on: DayKey.today.adding(days: 2)) }
+}
+
+@Test func moveSkipsHiddenDroppedTasks() throws {
+    let store = try Store(url: freshURL())
+    let b = try store.addTask(task("B"), source: .cli)
+    let a = try store.addTask(task("A"), source: .cli)
+    try store.addTask(task("C"), source: .cli)
+    try store.startFocus(taskId: a.id)
+    try store.stop()
+    try store.removeTask(a.id)  // worked on, so it's dropped and hidden
+    try store.moveTask(b.id, to: 1)
+    let visible = try store.snapshot().tasks.filter { $0.task.status != .dropped }
+    #expect(visible.map(\.task.title) == ["C", "B"])
+}

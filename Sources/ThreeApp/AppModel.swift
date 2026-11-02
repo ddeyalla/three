@@ -21,8 +21,9 @@ final class AppModel {
     var destination: Destination = .today
     /// The card opened in place in Inbox, Upcoming or a category.
     var expandedTaskId: String?
-    /// Bumped by ⌘N; quick-add fields focus themselves when it changes.
+    /// Bumped by ⌘N. The next quick-add field on screen claims it and takes focus.
     var quickAddRequest = 0
+    var quickAddPending = false
 
     @ObservationIgnored private var signalToken: Int32 = 0
     @ObservationIgnored private var ticker: Timer?
@@ -30,6 +31,8 @@ final class AppModel {
     /// Extending changes the length, which re-arms it, whoever extended.
     @ObservationIgnored private var reflectedBlock: String?
     @ObservationIgnored private var scheduledNotification: (id: String, end: Date)?
+    /// True while the panel is up because you clicked Finish, not because time ran out.
+    @ObservationIgnored private var reflectionOpenedEarly = false
     @ObservationIgnored lazy var reflection = ReflectionPanelController(model: self)
 
     init() {
@@ -55,6 +58,8 @@ final class AppModel {
         RunLoop.main.add(ticker, forMode: .common)
         self.ticker = ticker
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        // A notification left from before a relaunch may be stale; reconcile schedules a fresh one if needed.
+        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
         reconcile()
     }
 
@@ -90,15 +95,20 @@ final class AppModel {
         if snapshot.day != DayKey(now) { reload() }
         try? store.finishBreakIfDue(now: now)
         if reflection.isVisible, running?.kind != .focus { reflection.hide() }
+        // Time was added since the panel opened at the end of a block, so the block isn't over after all.
+        if reflection.isVisible, !reflectionOpenedEarly, let running, running.remaining(at: now) > 0 { reflection.hide() }
         if let running, running.kind == .focus, !running.isPaused,
            running.remaining(at: now) <= 0, reflectedBlock != blockKey(running) {
             reflectedBlock = blockKey(running)
+            reflectionOpenedEarly = false
             if UserDefaults.standard.object(forKey: "chime") as? Bool ?? true { NSSound(named: "Glass")?.play() }
             reflection.show()
         }
     }
 
     func reload() {
+        let selectedBefore = selectedTask?.id
+        defer { if selectedTask?.id != selectedBefore { dialOverride = nil } }
         do {
             snapshot = try store.snapshot(for: DayKey(Date()))
             inbox = try store.inbox()
@@ -152,7 +162,8 @@ final class AppModel {
 
     func start(_ task: TaskRow? = nil) {
         let target = task ?? selectedTask
-        let minutes = dialMinutes
+        // The dial shows the selected task's length; any other task works out its own.
+        let minutes = target?.id == selectedTask?.id ? dialMinutes : nil
         perform { try store.startFocus(taskId: target?.id, minutes: minutes) }
         selectedTaskId = nil
         dialOverride = nil
@@ -170,6 +181,7 @@ final class AppModel {
     func finishEarly() {
         guard let running, running.kind == .focus else { return }
         reflectedBlock = blockKey(running)
+        reflectionOpenedEarly = true
         reflection.show()
     }
 
@@ -204,10 +216,16 @@ final class AppModel {
 
     var liveCategories: [ThreeCore.Category] { snapshot.categories.filter { !$0.archived } }
 
-    /// Quick add: `#category`, a duration and a day word override the defaults.
-    func capture(_ text: String, defaultDay: DayKey?) {
+    /// Quick add: `#category`, a duration and a day word override the defaults. Returns whether a task was added.
+    @discardableResult
+    func capture(_ text: String, defaultDay: DayKey?) -> Bool {
+        guard !text.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
         let quick = QuickAdd.parse(text, categories: liveCategories.map(\.name), today: snapshot.day)
-        guard !quick.title.isEmpty, let fallback = liveCategories.first else { return }
+        guard !quick.title.isEmpty else {
+            error = "Give the task a title, then add #category, a length or a day after it."
+            return false
+        }
+        guard let fallback = liveCategories.first else { return false }
         let new = NewTask(title: quick.title, category: quick.category ?? fallback.name,
                           blockMinutes: quick.minutes ?? snapshot.preferences.defaultBlockMinutes)
         let day: DayKey? = switch quick.when {
@@ -218,6 +236,7 @@ final class AppModel {
         perform {
             if let day { try store.addTask(new, day: day, source: .app) } else { try store.addToInbox(new, source: .app) }
         }
+        return error == nil
     }
 }
 

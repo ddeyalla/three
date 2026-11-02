@@ -13,6 +13,18 @@ struct RootView: View {
                 .toolbar(removing: .sidebarToggle)
         } detail: {
             detail
+                .overlay(alignment: .bottom) {
+                    if model.error != nil {
+                        ErrorNote()
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .frame(maxWidth: 560)
+                            .glassEffect(.regular, in: .capsule)
+                            .padding(.bottom, 20)
+                            .transition(.opacity.combined(with: .offset(y: 8)))
+                    }
+                }
+                .animation(.easeOut(duration: 0.2), value: model.error)
                 .background(Backdrop())
                 .toolbar(removing: .sidebarToggle)
         }

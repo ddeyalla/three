@@ -37,11 +37,19 @@ public struct DaySnapshot: Sendable {
     public var runningTask: TaskRow?
     public var categories: [Category]
     public var preferences: Preferences
+    /// When the snapshot was read; `focusedSeconds` counts the running session up to here.
+    public var takenAt: Date
 
     public var plannedMinutes: Int { tasks.filter { $0.task.status != .dropped && $0.task.status != .carried }.reduce(0) { $0 + $1.task.blockMinutes } }
     public var doneCount: Int { tasks.filter { $0.task.status == .done }.count }
     public var activeTaskCount: Int { tasks.filter { $0.task.status != .dropped && $0.task.status != .carried }.count }
     public var nextTask: TaskRow? { tasks.first { $0.task.status.isOpen && $0.id != running?.taskId } }
+
+    /// A task's focused time at `now`, counting the running session live.
+    public func focusedSeconds(of row: TaskRow, at now: Date) -> TimeInterval {
+        guard let running, running.taskId == row.id else { return row.focusedSeconds }
+        return row.focusedSeconds + running.elapsed(at: now) - running.elapsed(at: takenAt)
+    }
 
     public func focusSeconds(at now: Date) -> TimeInterval {
         sessions.filter { $0.kind == .focus }.reduce(0) { $0 + $1.elapsed(at: now) }
@@ -109,7 +117,7 @@ extension Store {
                 runningTask = TaskRow(task: t, category: c, focusedSeconds: focused[t.id] ?? 0)
             }
             return DaySnapshot(day: day, plan: plan, tasks: rows, sessions: sessions, running: running,
-                               runningTask: runningTask, categories: categories, preferences: try preferences(db))
+                               runningTask: runningTask, categories: categories, preferences: try preferences(db), takenAt: now)
         }
     }
 
@@ -218,12 +226,14 @@ extension Store {
         }
     }
 
-    /// Moves a task to `index` among the day's tasks.
+    /// Moves a task to `index` among the day's visible tasks. Dropped tasks are hidden, so they sink to the end.
     public func moveTask(_ id: String, to index: Int) throws {
         try write { db in
             guard let moving = try FocusTask.fetchOne(db, key: id) else { throw ThreeError.noSuchTask(id) }
-            var tasks = try liveTasks(moving.dayPlanId, db).filter { $0.id != id }
+            let others = try liveTasks(moving.dayPlanId, db).filter { $0.id != id }
+            var tasks = others.filter { $0.status != .dropped }
             tasks.insert(moving, at: max(0, min(index, tasks.count)))
+            tasks += others.filter { $0.status == .dropped }
             for (i, var t) in tasks.enumerated() where t.position != i {
                 t.position = i; t.updatedAt = Date()
                 try t.update(db)
@@ -235,6 +245,7 @@ extension Store {
         try write { db in
             guard var t = try FocusTask.fetchOne(db, key: id) else { throw ThreeError.noSuchTask(id) }
             let worked = try Session.filter(Column("taskId") == id).fetchCount(db) > 0
+            if var s = try runningSession(db), s.taskId == id { try end(&s, reason: .stopped, at: Date(), db) }
             if worked { t.status = .dropped } else { t.deletedAt = Date() }
             t.updatedAt = Date()
             try t.update(db)
@@ -313,6 +324,12 @@ extension Store {
             let copy = try insertTask(NewTask(title: t.title, category: t.categoryId, blockMinutes: t.blockMinutes,
                                               strict: t.strict, linearRef: t.linearRef, notes: t.notes),
                                       plan: tomorrow, source: t.createdBy, db)
+            for var step in try Step.filter(Column("taskId") == id).fetchAll(db) {
+                step.id = UUID().uuidString
+                step.taskId = copy.id
+                step.updatedAt = now
+                try step.insert(db)
+            }
             t.status = .carried
             t.updatedAt = now
             try t.update(db)

@@ -76,6 +76,7 @@ struct MenuBarView: View {
             }
 
             QuickAddField(defaultDay: nil, placeholder: "Capture to inbox")
+            ErrorNote()
 
             Divider()
             HStack {

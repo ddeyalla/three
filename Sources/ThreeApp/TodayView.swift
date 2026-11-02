@@ -24,12 +24,6 @@ private struct NowPane: View {
                     TimerSection()
                     TaskList()
                         .padding(.top, 28)
-                    if let error = model.error {
-                        Text(error)
-                            .font(.callout)
-                            .foregroundStyle(Theme.now)
-                            .padding(.top, 12)
-                    }
                     Spacer(minLength: 24)
                 }
                 .padding(.horizontal, 24)
@@ -216,11 +210,10 @@ private struct TodayTaskCard: View {
     private var isSelected: Bool { model.running == nil && model.selectedTask?.id == row.id }
 
     var body: some View {
-        TaskCard(row: row, running: isRunning, selected: isSelected, expanded: isRunning || isSelected) {
+        TaskCard(row: row, running: isRunning, selected: isSelected, expanded: isRunning || isSelected,
+                 onTap: { if row.task.status.isOpen && model.running == nil { model.select(row) } }) {
             trailing
         }
-        .onTapGesture(count: 2) { if row.task.status.isOpen && model.running == nil { model.start(row) } }
-        .onTapGesture { if row.task.status.isOpen && model.running == nil { model.select(row) } }
         .contextMenu {
             TaskMenuItems(row: row)
             Divider()
@@ -236,8 +229,9 @@ private struct TodayTaskCard: View {
         case .done:
             Text(Format.duration(row.focusedSeconds))
         default:
-            if row.focusedSeconds >= 60 {
-                Text("\(Int(row.focusedSeconds / 60)) / \(row.task.blockMinutes)m")
+            let focused = model.snapshot.focusedSeconds(of: row, at: model.now)
+            if focused >= 60 {
+                Text("\(Int(focused / 60)) / \(row.task.blockMinutes)m")
             } else {
                 Text("\(row.task.blockMinutes)m")
             }

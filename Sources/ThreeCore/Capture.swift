@@ -30,12 +30,17 @@ extension Store {
 
     // MARK: Inbox
 
-    /// Open tasks with no day yet, oldest first.
-    public func inbox() throws -> [TaskRow] {
+    /// Open tasks with no day yet, plus open tasks left behind on earlier days (those first, oldest day first).
+    public func inbox(today: DayKey = .today) throws -> [TaskRow] {
         try db.read { db in
-            let tasks = try FocusTask.filter(Column("dayPlanId") == nil && Column("deletedAt") == nil)
+            let leftover = try FocusTask.fetchAll(db, sql: """
+                SELECT task.* FROM task JOIN dayPlan ON dayPlan.id = task.dayPlanId
+                WHERE dayPlan.day < ? AND dayPlan.deletedAt IS NULL AND task.deletedAt IS NULL
+                ORDER BY dayPlan.day, task.position
+                """, arguments: [today])
+            let unplanned = try FocusTask.filter(Column("dayPlanId") == nil && Column("deletedAt") == nil)
                 .order(Column("position")).fetchAll(db)
-                .filter { $0.status.isOpen }
+            let tasks = (leftover + unplanned).filter { $0.status.isOpen }
             let categories = Dictionary(uniqueKeysWithValues: try Category.fetchAll(db).map { ($0.id, $0) })
             let steps = try self.steps(for: tasks.map(\.id), db)
             return tasks.compactMap { t in
@@ -62,7 +67,8 @@ extension Store {
             if plan != nil { try checkCap(destination) }
             t.dayPlanId = plan?.id
             t.position = (destination.map(\.position).max() ?? -1) + 1
-            if !t.status.isOpen { t.status = .todo }
+            if t.status == .carried { throw ThreeError.invalid("That task already moved to another day.") }
+            if t.status == .dropped { t.status = .todo }
             t.updatedAt = Date()
             try t.update(db)
         }
@@ -152,6 +158,7 @@ extension Store {
 
 /// Todoist-style quick add: "Write the PRD #writing 45m tomorrow".
 /// `#category` matches by prefix, a duration sets the block, and a day word picks the day ("inbox" or "someday" for none).
+/// Durations and days are read from the end of the text only.
 public struct QuickAdd: Equatable, Sendable {
     public enum When: Equatable, Sendable {
         case inbox
@@ -165,29 +172,35 @@ public struct QuickAdd: Equatable, Sendable {
 
     public static func parse(_ text: String, categories: [String], today: DayKey = .today) -> QuickAdd {
         var result = QuickAdd(title: "", category: nil, minutes: nil, when: nil)
-        var words: [String] = []
-        for token in text.split(separator: " ", omittingEmptySubsequences: true).map(String.init) {
-            let lower = token.lowercased()
-            if lower.hasPrefix("#"), lower.count > 1 {
-                let key = lower.dropFirst().replacingOccurrences(of: "-", with: "")
-                if let match = categories.first(where: { $0.lowercased().replacingOccurrences(of: " ", with: "").hasPrefix(key) }) {
-                    result.category = match
-                    continue
-                }
-            }
-            // A bare number is part of the title ("Read 3 chapters"); a duration has a unit.
-            if Int(lower) == nil, token.first?.isNumber == true, let minutes = parseMinutes(lower) {
+        var words = text.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+        // A duration and a day only count at the end, so "Email Tom about invoice" keeps its words.
+        while let last = words.last {
+            let lower = last.lowercased()
+            if result.category == nil, let match = category(lower, in: categories) {
+                result.category = match
+            } else if result.minutes == nil, Int(lower) == nil, last.first?.isNumber == true, let minutes = parseMinutes(lower) {
+                // A bare number is part of the title ("Read 3 chapters"); a duration has a unit.
                 result.minutes = minutes
-                continue
-            }
-            if let when = day(lower, today: today) {
+            } else if result.when == nil, let when = day(lower, today: today) {
                 result.when = when
-                continue
+            } else {
+                break
             }
-            words.append(token)
+            words.removeLast()
+        }
+        // A #category is explicit enough to take from anywhere.
+        if result.category == nil, let i = words.firstIndex(where: { category($0.lowercased(), in: categories) != nil }) {
+            result.category = category(words[i].lowercased(), in: categories)
+            words.remove(at: i)
         }
         result.title = words.joined(separator: " ")
         return result
+    }
+
+    private static func category(_ token: String, in categories: [String]) -> String? {
+        guard token.hasPrefix("#"), token.count > 1 else { return nil }
+        let key = token.dropFirst().replacingOccurrences(of: "-", with: "")
+        return categories.first { $0.lowercased().replacingOccurrences(of: " ", with: "").hasPrefix(key) }
     }
 
     /// "45", "45m", "45min", "1h", "1h30m", "1.5h".
@@ -207,14 +220,15 @@ public struct QuickAdd: Equatable, Sendable {
 
     private static func day(_ word: String, today: DayKey) -> When? {
         switch word {
-        case "today", "tod": return .day(today)
-        case "tomorrow", "tmr", "tom": return .day(today.adding(days: 1))
-        case "inbox", "someday", "later": return .inbox
+        case "today": return .day(today)
+        case "tomorrow", "tmr": return .day(today.adding(days: 1))
+        case "inbox", "someday": return .inbox
         default: break
         }
-        let names = ["sun": 0, "sunday": 0, "mon": 1, "monday": 1, "tue": 2, "tues": 2, "tuesday": 2,
+        // No "sun" or "sat": they're words too ("Watch the sun", "SAT prep").
+        let names = ["sunday": 0, "mon": 1, "monday": 1, "tue": 2, "tues": 2, "tuesday": 2,
                      "wed": 3, "wednesday": 3, "thu": 4, "thurs": 4, "thursday": 4, "fri": 5, "friday": 5,
-                     "sat": 6, "saturday": 6]
+                     "saturday": 6]
         guard let target = names[word] else { return nil }
         let weekday = Calendar.current.component(.weekday, from: today.startDate) - 1
         let ahead = (target - weekday + 7) % 7

@@ -9,6 +9,8 @@ struct TaskCard<Trailing: View>: View {
     var selected = false
     /// Shows steps and notes in place.
     var expanded = false
+    /// Runs when the title row is clicked. Steps and notes below it stay clickable on their own.
+    var onTap: () -> Void = {}
     @ViewBuilder var trailing: Trailing
 
     private var isClosed: Bool { !row.task.status.isOpen }
@@ -30,6 +32,8 @@ struct TaskCard<Trailing: View>: View {
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
             }
+            .contentShape(.rect)
+            .onTapGesture(perform: onTap)
             if expanded {
                 VStack(alignment: .leading, spacing: 10) {
                     StepList(row: row)
@@ -132,13 +136,13 @@ struct StepList: View {
                     TextField("Next small step", text: $draft)
                         .textFieldStyle(.plain)
                         .focused($focused)
+                        .onAppear { focused = true }
                         .onSubmit(add)
                         .onExitCommand { adding = false; draft = "" }
                 }
             } else {
                 Button {
                     adding = true
-                    focused = true
                 } label: {
                     Label(row.steps.isEmpty ? "Break it down" : "Add a step", systemImage: "plus")
                         .foregroundStyle(.secondary)
@@ -180,8 +184,7 @@ struct QuickAddField: View {
                 .textFieldStyle(.plain)
                 .focused($focused)
                 .onSubmit {
-                    model.capture(text, defaultDay: defaultDay)
-                    if model.error == nil { text = "" }
+                    if model.capture(text, defaultDay: defaultDay) { text = "" }
                 }
             if !text.isEmpty { preview }
         }
@@ -189,13 +192,24 @@ struct QuickAddField: View {
         .frame(height: 40)
         .glassEffect(.regular.tint(.white.opacity(focused ? 0.06 : 0)).interactive(), in: .rect(cornerRadius: 14))
         .help("#category, a duration like 45m, and today, tomorrow, a weekday or inbox")
-        .onChange(of: model.quickAddRequest) { focused = true }
+        .onChange(of: model.quickAddRequest) { claimQuickAdd() }
+        .onAppear { claimQuickAdd() }
+    }
+
+    /// ⌘N may switch views first, so a field that appears afterwards still takes the request.
+    private func claimQuickAdd() {
+        guard model.quickAddPending else { return }
+        model.quickAddPending = false
+        DispatchQueue.main.async { focused = true }
     }
 
     private var preview: some View {
         let category = model.liveCategories.first { $0.name == parsed.category } ?? model.liveCategories.first
         let minutes = parsed.minutes ?? model.snapshot.preferences.defaultBlockMinutes
         return HStack(spacing: 8) {
+            Text(parsed.title.isEmpty ? "No title yet" : parsed.title)
+                .lineLimit(1)
+                .foregroundStyle(parsed.title.isEmpty ? AnyShapeStyle(Theme.overrun) : AnyShapeStyle(.secondary))
             HStack(spacing: 4) {
                 Circle().fill(category?.color ?? Theme.idle).frame(width: 6, height: 6)
                 Text(category?.name ?? "")
@@ -244,7 +258,9 @@ struct TaskMenuItems: View {
         if row.task.status.isOpen, model.day(of: row.id) == model.snapshot.day {
             Button("Start now") { model.start(row) }.disabled(model.running?.kind == .focus)
         }
-        Menu("Schedule") { ScheduleMenuItems(row: row) }
+        if row.task.status.isOpen || row.task.status == .dropped {
+            Menu("Schedule") { ScheduleMenuItems(row: row) }
+        }
         Menu("Block") {
             ForEach([15, 25, 30, 45, 60, 90, 120], id: \.self) { m in
                 Button("\(m) min") { model.perform { try model.store.updateTask(row.id, blockMinutes: m) } }
@@ -285,5 +301,25 @@ struct NotesField: View {
                     model.perform { try model.store.updateTask(id, notes: value) }
                 }
             }
+    }
+}
+
+/// The last thing that went wrong, with a way to wave it off. Shown wherever an action can fail.
+struct ErrorNote: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if let error = model.error {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: "exclamationmark.circle.fill").foregroundStyle(Theme.overrun)
+                Text(error).fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 4)
+                Button { model.error = nil } label: { Image(systemName: "xmark") }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("Dismiss")
+            }
+            .font(.callout)
+        }
     }
 }

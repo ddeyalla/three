@@ -32,7 +32,8 @@ struct ListTaskCard: View {
     @State private var hovering = false
 
     var body: some View {
-        TaskCard(row: row, selected: model.expandedTaskId == row.id, expanded: model.expandedTaskId == row.id) {
+        TaskCard(row: row, selected: model.expandedTaskId == row.id, expanded: model.expandedTaskId == row.id,
+                 onTap: { model.toggleExpanded(row) }) {
             HStack(spacing: 10) {
                 if hovering, row.task.status.isOpen {
                     let today = model.snapshot.day
@@ -50,7 +51,6 @@ struct ListTaskCard: View {
             .buttonStyle(.plain)
         }
         .onHover { hovering = $0 }
-        .onTapGesture { model.toggleExpanded(row) }
         .contextMenu { TaskMenuItems(row: row) }
     }
 }

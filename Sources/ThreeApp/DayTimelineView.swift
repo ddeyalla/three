@@ -90,7 +90,9 @@ struct DayTimelineGrid: View {
     private var blocks: some View {
         let byTask = Dictionary(uniqueKeysWithValues: model.snapshot.tasks.map { ($0.id, $0) })
         return ZStack(alignment: .topLeading) {
-            ForEach(model.snapshot.tasks.filter { $0.task.scheduledStart != nil }) { row in
+            ForEach(model.snapshot.tasks.filter { row in
+                row.task.status.isOpen && row.task.scheduledStart.map { DayKey($0) == model.snapshot.day } == true
+            }) { row in
                 RoundedRectangle(cornerRadius: 6)
                     .strokeBorder(row.category.color.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
                     .frame(height: CGFloat(row.task.blockMinutes) / 60 * hourHeight)

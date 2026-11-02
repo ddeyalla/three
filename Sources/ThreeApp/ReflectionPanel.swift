@@ -128,7 +128,12 @@ struct ReflectionView: View {
             .labelsHidden()
             .frame(maxWidth: .infinity)
 
+            ErrorNote()
+
             HStack(spacing: 8) {
+                Button("Cancel", action: dismiss)
+                    .keyboardShortcut(.cancelAction)
+                    .help("Close this and keep the timer as it is")
                 Button("+15 min") {
                     model.extend(15)
                     dismiss()
