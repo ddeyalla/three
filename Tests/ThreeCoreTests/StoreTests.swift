@@ -135,3 +135,33 @@ private func task(_ title: String, _ minutes: Int = 60, _ category: String = "Co
     #expect(key.adding(days: 1).rawValue == "2026-11-03")
     #expect(DayKey("nope") == nil)
 }
+
+@Test func startingWorkCommitsADraft() throws {
+    let store = try freshStore()
+    try store.addTask(task("A"), source: .app)
+    #expect(try store.snapshot().plan?.status == .draft)
+    try store.startFocus()
+    #expect(try store.snapshot().plan?.status == .committed)
+}
+
+@Test func pushToTomorrowCarriesTask() throws {
+    let store = try freshStore()
+    try store.addTask(task("Later", 30, "Writing"), source: .app)
+    let id = try store.snapshot().tasks[0].id
+    try store.pushToTomorrow(id)
+    #expect(try store.snapshot().tasks[0].task.status == .carried)
+    let tomorrow = try store.snapshot(for: DayKey.today.adding(days: 1))
+    #expect(tomorrow.tasks.map(\.task.title) == ["Later"])
+    #expect(tomorrow.tasks[0].category.name == "Writing")
+}
+
+@Test func dueBreakEndsAtItsPlannedEnd() throws {
+    let store = try freshStore()
+    let t0 = wholeSecondNow()
+    try store.startBreak(minutes: 5, now: t0)
+    try store.finishBreakIfDue(now: t0.addingTimeInterval(120))
+    #expect(try store.snapshot().running != nil)
+    try store.finishBreakIfDue(now: t0.addingTimeInterval(900))
+    let s = try #require(try store.snapshot().sessions.first)
+    #expect(s.endedAt == t0.addingTimeInterval(300))
+}

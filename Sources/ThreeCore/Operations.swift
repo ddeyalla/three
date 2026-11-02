@@ -36,7 +36,7 @@ public struct DaySnapshot: Sendable {
     public var runningTask: TaskRow?
     public var categories: [Category]
 
-    public var plannedMinutes: Int { tasks.filter { $0.task.status != .dropped }.reduce(0) { $0 + $1.task.blockMinutes } }
+    public var plannedMinutes: Int { tasks.filter { $0.task.status != .dropped && $0.task.status != .carried }.reduce(0) { $0 + $1.task.blockMinutes } }
     public var doneCount: Int { tasks.filter { $0.task.status == .done }.count }
     public var activeTaskCount: Int { tasks.filter { $0.task.status != .dropped && $0.task.status != .carried }.count }
     public var nextTask: TaskRow? { tasks.first { $0.task.status.isOpen && $0.id != running?.taskId } }
@@ -275,7 +275,43 @@ extension Store {
             task.status = .active
             task.updatedAt = now
             try task.update(db)
+            // Starting work on a draft is the commitment.
+            if var plan = try DayPlan.fetchOne(db, key: task.dayPlanId), plan.status == .draft {
+                plan.status = .committed
+                plan.committedAt = now
+                plan.updatedAt = now
+                try plan.update(db)
+            }
             return s
+        }
+    }
+
+    /// Moves an open task to tomorrow's plan; today keeps it as `carried`.
+    @discardableResult
+    public func pushToTomorrow(_ id: String, now: Date = Date()) throws -> FocusTask {
+        try write { db in
+            guard var t = try FocusTask.fetchOne(db, key: id), t.deletedAt == nil else { throw ThreeError.noSuchTask(id) }
+            guard let plan = try DayPlan.fetchOne(db, key: t.dayPlanId) else { throw ThreeError.noSuchTask(id) }
+            let tomorrow = try planRow(plan.day.adding(days: 1), source: .app, db)
+            let copy = try insertTask(NewTask(title: t.title, category: t.categoryId, blockMinutes: t.blockMinutes,
+                                              strict: t.strict, linearRef: t.linearRef, notes: t.notes),
+                                      plan: tomorrow, source: t.createdBy, db)
+            t.status = .carried
+            t.updatedAt = now
+            try t.update(db)
+            return copy
+        }
+    }
+
+    /// Closes a running break at its planned end, even if the app noticed late.
+    public func finishBreakIfDue(now: Date = Date()) throws {
+        let due = try db.read { db in try runningSession(db) }.flatMap { s in
+            s.kind == .break && !s.isPaused && s.remaining(at: now) <= 0 ? s : nil
+        }
+        guard due != nil else { return }
+        try write { db in
+            guard var s = try runningSession(db), s.kind == .break else { return }
+            try end(&s, reason: .completed, at: min(now, s.plannedEnd), db)
         }
     }
 
