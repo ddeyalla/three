@@ -22,6 +22,7 @@ public struct TaskRow: Hashable, Identifiable, Sendable {
     public var category: Category
     public var focusedSeconds: TimeInterval
     public var steps: [Step] = []
+    public var tags: [Tag] = []
     public var id: String { task.id }
     public var blockSeconds: TimeInterval { TimeInterval(task.blockMinutes * 60) }
     public var progress: Double { min(1, focusedSeconds / max(1, blockSeconds)) }
@@ -64,9 +65,11 @@ public struct NewTask: Sendable {
     public var strict: Bool
     public var linearRef: String?
     public var notes: String
+    /// Tag names; missing tags are created.
+    public var tags: [String]
 
     public init(title: String, category: String, blockMinutes: Int, scheduledStart: Date? = nil,
-                strict: Bool = false, linearRef: String? = nil, notes: String = "") {
+                strict: Bool = false, linearRef: String? = nil, notes: String = "", tags: [String] = []) {
         self.title = title
         self.category = category
         self.blockMinutes = blockMinutes
@@ -74,6 +77,7 @@ public struct NewTask: Sendable {
         self.strict = strict
         self.linearRef = linearRef
         self.notes = notes
+        self.tags = tags
     }
 }
 
@@ -90,7 +94,6 @@ extension Store {
     public func snapshot(for day: DayKey = .today) throws -> DaySnapshot {
         try db.read { db in
             let categories = try Category.filter(Column("deletedAt") == nil).order(Column("position")).fetchAll(db)
-            let byId = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0) })
             let plan = try DayPlan.filter(Column("day") == day && Column("deletedAt") == nil).fetchOne(db)
             let tasks = try plan.map {
                 try FocusTask.filter(Column("dayPlanId") == $0.id && Column("deletedAt") == nil)
@@ -101,20 +104,10 @@ extension Store {
                 .order(Column("startedAt")).fetchAll(db)
             let running = try Session.filter(Column("endedAt") == nil).fetchOne(db)
             let now = Date()
-            var focused: [String: TimeInterval] = [:]
-            if !tasks.isEmpty {
-                let ids = tasks.map(\.id)
-                for s in try Session.filter(ids.contains(Column("taskId")) && Column("kind") == SessionKind.focus).fetchAll(db) {
-                    focused[s.taskId!, default: 0] += s.elapsed(at: now)
-                }
-            }
-            let steps = try self.steps(for: tasks.map(\.id), db)
-            let rows = tasks.compactMap { t in
-                byId[t.categoryId].map { TaskRow(task: t, category: $0, focusedSeconds: focused[t.id] ?? 0, steps: steps[t.id] ?? []) }
-            }
+            let rows = try self.rows(for: tasks, db, now: now)
             var runningTask = rows.first { $0.id == running?.taskId }
-            if runningTask == nil, let taskId = running?.taskId, let t = try FocusTask.fetchOne(db, key: taskId), let c = byId[t.categoryId] {
-                runningTask = TaskRow(task: t, category: c, focusedSeconds: focused[t.id] ?? 0)
+            if runningTask == nil, let taskId = running?.taskId, let t = try FocusTask.fetchOne(db, key: taskId) {
+                runningTask = try self.rows(for: [t], db, now: now).first
             }
             return DaySnapshot(day: day, plan: plan, tasks: rows, sessions: sessions, running: running,
                                runningTask: runningTask, categories: categories, preferences: try preferences(db), takenAt: now)
@@ -161,6 +154,7 @@ extension Store {
                           scheduledStart: new.scheduledStart, strict: new.strict, status: .todo,
                           linearRef: new.linearRef, notes: new.notes, createdBy: source, updatedAt: Date(), deletedAt: nil)
         try t.insert(db)
+        try link(t.id, to: new.tags, db)
         return t
     }
 
@@ -322,7 +316,8 @@ extension Store {
             }
             let tomorrow = try planRow(plan.day.adding(days: 1), source: .app, db)
             let copy = try insertTask(NewTask(title: t.title, category: t.categoryId, blockMinutes: t.blockMinutes,
-                                              strict: t.strict, linearRef: t.linearRef, notes: t.notes),
+                                              strict: t.strict, linearRef: t.linearRef, notes: t.notes,
+                                              tags: try self.tags(for: [id], db)[id]?.map(\.name) ?? []),
                                       plan: tomorrow, source: t.createdBy, db)
             for var step in try Step.filter(Column("taskId") == id).fetchAll(db) {
                 step.id = UUID().uuidString

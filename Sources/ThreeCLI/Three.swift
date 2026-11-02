@@ -10,7 +10,7 @@ struct Three: ParsableCommand {
         abstract: "Plan three focused tasks a day and run them on a timer.",
         subcommands: [Today.self, Status.self, Add.self, Plan.self, Commit.self, Start.self, Pause.self,
                       Resume.self, Extend.self, Stop.self, Done.self, Drop.self, Tomorrow.self, Capture.self, Inbox.self,
-                      Schedule.self, Upcoming.self, Steps.self, Categories.self, Settings.self]
+                      Schedule.self, Upcoming.self, Logbook.self, Steps.self, Tags.self, Categories.self, Settings.self]
     )
 }
 
@@ -34,6 +34,9 @@ struct DayOption: ParsableArguments {
         }
     }
 }
+
+/// " @onboarding @launch", or nothing.
+func tagSuffix(_ r: TaskRow) -> String { r.tags.map { " @\($0.name)" }.joined() }
 
 /// Blocks like "90", "90m", "1h", "1h30m".
 func parseMinutes(_ s: String) throws -> Int {
@@ -89,7 +92,7 @@ func emit<T: Encodable>(_ value: T) throws {
 
 struct TaskJSON: Encodable {
     let number: Int, id: String, title: String, category: String, blockMinutes: Int
-    let focusedMinutes: Int, status: String, strict: Bool, linear: String?
+    let focusedMinutes: Int, status: String, strict: Bool, linear: String?, tags: [String]
 }
 
 struct SessionJSON: Encodable {
@@ -107,7 +110,7 @@ func dayJSON(_ snap: DaySnapshot) -> DayJSON {
     let tasks = snap.tasks.filter { $0.task.status != .dropped }.enumerated().map { i, r in
         TaskJSON(number: i + 1, id: r.id, title: r.task.title, category: r.category.name, blockMinutes: r.task.blockMinutes,
                  focusedMinutes: Int(r.focusedSeconds / 60), status: r.task.status.rawValue, strict: r.task.strict,
-                 linear: r.task.linearRef)
+                 linear: r.task.linearRef, tags: r.tags.map(\.name))
     }
     let running = snap.running.map {
         SessionJSON(id: $0.id, kind: $0.kind.rawValue, taskId: $0.taskId, startedAt: $0.startedAt, plannedEnd: $0.plannedEnd,
@@ -140,7 +143,7 @@ func printDay(_ snap: DaySnapshot) {
         case .carried: "→"
         default: " "
         }
-        print("  \(mark) \(i + 1). \(r.task.title)  [\(r.category.name) · \(Int(r.focusedSeconds / 60))/\(r.task.blockMinutes)m]")
+        print("  \(mark) \(i + 1). \(r.task.title)  [\(r.category.name) · \(Int(r.focusedSeconds / 60))/\(r.task.blockMinutes)m]\(tagSuffix(r))")
         for step in r.steps { print("       \(step.done ? "☑" : "☐") \(step.title)") }
     }
     if snap.running != nil { print(""); printStatus(snap) }
@@ -176,12 +179,13 @@ struct Add: ParsableCommand {
     @Option(help: "Time block, e.g. 45, 90m, 1h30m.") var block = "60"
     @Option(help: "Linear issue, e.g. ENG-123.") var linear: String?
     @Flag(help: "No unblocking during this task's sessions.") var strict = false
+    @Option(name: .customLong("tag"), help: "A tag, such as a product or feature. Repeat for more.") var tags: [String] = []
     @OptionGroup var day: DayOption
 
     func run() throws {
         let s = try store()
         try s.addTask(NewTask(title: title, category: category, blockMinutes: parseMinutes(block),
-                              strict: strict, linearRef: linear), day: day.day(), source: .cli)
+                              strict: strict, linearRef: linear, tags: tags), day: day.day(), source: .cli)
         printDay(try s.snapshot(for: day.day()))
     }
 }
@@ -297,7 +301,7 @@ struct Tomorrow: ParsableCommand {
 struct Capture: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Quick add, Todoist style. Goes to the inbox unless you name a day.",
-        discussion: "three capture \"Write the PRD #writing 45m tomorrow\"  ·  #category, a duration, and today/tomorrow/a weekday/inbox."
+        discussion: "three capture \"Write the PRD #writing @launch 45m tomorrow\"  ·  #category, @tags, a duration, and today/tomorrow/a weekday/inbox."
     )
     @Argument(parsing: .remaining) var words: [String]
 
@@ -307,7 +311,7 @@ struct Capture: ParsableCommand {
         let prefs = try s.preferences()
         let fallback = try s.categories().first { !$0.archived }?.name ?? ""
         let new = NewTask(title: quick.title, category: quick.category ?? fallback,
-                          blockMinutes: quick.minutes ?? prefs.defaultBlockMinutes)
+                          blockMinutes: quick.minutes ?? prefs.defaultBlockMinutes, tags: quick.tags)
         switch quick.when {
         case .day(let day)?:
             try s.addTask(new, day: day, source: .cli)
@@ -322,7 +326,7 @@ struct Capture: ParsableCommand {
 func printInbox(_ rows: [TaskRow]) {
     if rows.isEmpty { return print("Inbox is empty.") }
     for (i, r) in rows.enumerated() {
-        print("  i\(i + 1). \(r.task.title)  [\(r.category.name) · \(r.task.blockMinutes)m]")
+        print("  i\(i + 1). \(r.task.title)  [\(r.category.name) · \(r.task.blockMinutes)m]\(tagSuffix(r))")
     }
 }
 
@@ -334,7 +338,8 @@ struct Inbox: ParsableCommand {
         if common.json {
             try emit(rows.enumerated().map { i, r in
                 TaskJSON(number: i + 1, id: r.id, title: r.task.title, category: r.category.name, blockMinutes: r.task.blockMinutes,
-                         focusedMinutes: 0, status: r.task.status.rawValue, strict: r.task.strict, linear: r.task.linearRef)
+                         focusedMinutes: 0, status: r.task.status.rawValue, strict: r.task.strict, linear: r.task.linearRef,
+                         tags: r.tags.map(\.name))
             })
         } else {
             printInbox(rows)
@@ -472,6 +477,119 @@ struct Categories: ParsableCommand {
         }
         return c.id
     }
+}
+
+struct Logbook: ParsableCommand {
+    static let configuration = CommandConfiguration(abstract: "Tasks you finished, by the day you finished them.")
+    @Option(help: "How many days back.") var days = 30
+    @OptionGroup var common: Common
+
+    func run() throws {
+        let log = try store().logbook(days: days)
+        if common.json {
+            struct D: Encodable { let date: String, tasks: [TaskJSON] }
+            return try emit(log.map { d in
+                D(date: d.day.rawValue, tasks: d.tasks.enumerated().map { i, r in
+                    TaskJSON(number: i + 1, id: r.id, title: r.task.title, category: r.category.name, blockMinutes: r.task.blockMinutes,
+                             focusedMinutes: Int(r.focusedSeconds / 60), status: r.task.status.rawValue, strict: r.task.strict,
+                             linear: r.task.linearRef, tags: r.tags.map(\.name))
+                })
+            })
+        }
+        if log.isEmpty { return print("Nothing finished in the last \(days) days.") }
+        for d in log {
+            print(d.day.rawValue)
+            for r in d.tasks { print("  ✓ \(r.task.title)  [\(r.category.name) · \(clockMinutes(r.focusedSeconds))]\(tagSuffix(r))") }
+        }
+    }
+}
+
+struct Tags: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Tags group work across days, such as a product or a feature, and total its focus time.",
+        discussion: "Tag in quick add with @name: three capture \"Fix login bug @onboarding 30m\"",
+        subcommands: [List.self, Add.self, Remove.self, Rename.self, Archive.self],
+        defaultSubcommand: List.self
+    )
+
+    struct List: ParsableCommand {
+        static let configuration = CommandConfiguration(abstract: "Every tag with its focus time.")
+        @Flag(help: "Include archived tags.") var all = false
+        @OptionGroup var common: Common
+
+        func run() throws {
+            let summaries = try store().tagSummaries(includeArchived: all)
+            if common.json {
+                struct W: Encodable { let title: String, focusedMinutes: Int, done: Bool, lastWorked: Date? }
+                struct T: Encodable {
+                    let name: String, archived: Bool, focusedMinutes: Int, lastSevenDaysMinutes: Int, daysWorked: Int
+                    let lastWorked: Date?, tasks: [W]
+                }
+                return try emit(summaries.map {
+                    T(name: $0.tag.name, archived: $0.tag.archived, focusedMinutes: Int($0.seconds / 60),
+                      lastSevenDaysMinutes: Int($0.recentSeconds / 60), daysWorked: $0.daysWorked, lastWorked: $0.lastWorked,
+                      tasks: $0.work.map { W(title: $0.title, focusedMinutes: Int($0.seconds / 60), done: $0.done, lastWorked: $0.lastWorked) })
+                })
+            }
+            if summaries.isEmpty { return print("No tags yet. Add one in quick add: three capture \"Fix login @onboarding\"") }
+            for t in summaries {
+                let days = t.daysWorked == 1 ? "1 day" : "\(t.daysWorked) days"
+                print("@\(t.tag.name)  \(clockMinutes(t.seconds)) over \(days) · \(clockMinutes(t.recentSeconds)) this week\(t.tag.archived ? "  (archived)" : "")")
+                for w in t.work { print("    \(w.done ? "✓" : " ") \(w.title)  \(clockMinutes(w.seconds))") }
+            }
+        }
+    }
+
+    struct Add: ParsableCommand {
+        static let configuration = CommandConfiguration(abstract: "Tag a task: three tags add 2 onboarding launch")
+        @Argument(help: "Task number, i1 for the inbox, or an id prefix.") var task: String
+        @Argument var names: [String]
+        func run() throws {
+            let s = try store()
+            let row = try resolveTask(task, in: s.snapshot(), inbox: s.inbox())
+            for name in names { try s.addTag(name, to: row.id) }
+            printDay(try s.snapshot())
+        }
+    }
+
+    struct Remove: ParsableCommand {
+        static let configuration = CommandConfiguration(abstract: "Untag a task: three tags remove 2 launch")
+        @Argument var task: String
+        @Argument var name: String
+        func run() throws {
+            let s = try store()
+            let row = try resolveTask(task, in: s.snapshot(), inbox: s.inbox())
+            try s.removeTag(id(name, s), from: row.id)
+            printDay(try s.snapshot())
+        }
+    }
+
+    struct Rename: ParsableCommand {
+        @Argument var name: String
+        @Argument var newName: String
+        func run() throws { let s = try store(); try s.updateTag(id(name, s), name: newName) }
+    }
+
+    struct Archive: ParsableCommand {
+        static let configuration = CommandConfiguration(abstract: "Hide a finished tag from the list. Its time is kept.")
+        @Argument var name: String
+        @Flag(help: "Bring it back.") var undo = false
+        func run() throws { let s = try store(); try s.updateTag(id(name, s), archived: !undo) }
+    }
+
+    static func id(_ name: String, _ s: Store) throws -> String {
+        let clean = name.hasPrefix("@") ? String(name.dropFirst()) : name
+        guard let t = try s.tags(includeArchived: true).first(where: { $0.name.caseInsensitiveCompare(clean) == .orderedSame }) else {
+            throw ValidationError("No tag named \"\(clean)\".")
+        }
+        return t.id
+    }
+}
+
+/// "2h 05m", "45m".
+func clockMinutes(_ seconds: TimeInterval) -> String {
+    let m = Int(seconds / 60)
+    return m >= 60 ? String(format: "%dh %02dm", m / 60, m % 60) : "\(m)m"
 }
 
 struct Settings: ParsableCommand {

@@ -40,12 +40,7 @@ extension Store {
                 """, arguments: [today])
             let unplanned = try FocusTask.filter(Column("dayPlanId") == nil && Column("deletedAt") == nil)
                 .order(Column("position")).fetchAll(db)
-            let tasks = (leftover + unplanned).filter { $0.status.isOpen }
-            let categories = Dictionary(uniqueKeysWithValues: try Category.fetchAll(db).map { ($0.id, $0) })
-            let steps = try self.steps(for: tasks.map(\.id), db)
-            return tasks.compactMap { t in
-                categories[t.categoryId].map { TaskRow(task: t, category: $0, focusedSeconds: 0, steps: steps[t.id] ?? []) }
-            }
+            return try rows(for: (leftover + unplanned).filter { $0.status.isOpen }, db)
         }
     }
 
@@ -156,9 +151,10 @@ extension Store {
     }
 }
 
-/// Todoist-style quick add: "Write the PRD #writing 45m tomorrow".
-/// `#category` matches by prefix, a duration sets the block, and a day word picks the day ("inbox" or "someday" for none).
-/// Durations and days are read from the end of the text only.
+/// Todoist-style quick add: "Write the PRD #writing @launch 45m tomorrow".
+/// `#category` matches by prefix, `@tag` names a tag (new ones are created), a duration sets the block,
+/// and a day word picks the day ("inbox" or "someday" for none).
+/// Durations and days are read from the end of the text only; `#category` and `@tags` from anywhere.
 public struct QuickAdd: Equatable, Sendable {
     public enum When: Equatable, Sendable {
         case inbox
@@ -169,6 +165,7 @@ public struct QuickAdd: Equatable, Sendable {
     public var category: String?
     public var minutes: Int?
     public var when: When?
+    public var tags: [String] = []
 
     public static func parse(_ text: String, categories: [String], today: DayKey = .today) -> QuickAdd {
         var result = QuickAdd(title: "", category: nil, minutes: nil, when: nil)
@@ -178,6 +175,8 @@ public struct QuickAdd: Equatable, Sendable {
             let lower = last.lowercased()
             if result.category == nil, let match = category(lower, in: categories) {
                 result.category = match
+            } else if let found = tag(last) {
+                result.tags.insert(found, at: 0)
             } else if result.minutes == nil, Int(lower) == nil, last.first?.isNumber == true, let minutes = parseMinutes(lower) {
                 // A bare number is part of the title ("Read 3 chapters"); a duration has a unit.
                 result.minutes = minutes
@@ -193,8 +192,21 @@ public struct QuickAdd: Equatable, Sendable {
             result.category = category(words[i].lowercased(), in: categories)
             words.remove(at: i)
         }
+        // @tags are explicit too. An email address doesn't start with "@", so it stays in the title.
+        let inline = words.compactMap(tag)
+        words.removeAll { tag($0) != nil }
+        var seen = Set<String>()
+        result.tags = (inline + result.tags).filter { seen.insert($0.lowercased()).inserted }
         result.title = words.joined(separator: " ")
         return result
+    }
+
+    /// "@onboarding" → "onboarding". Letters, digits, "-" and "_" only.
+    private static func tag(_ token: String) -> String? {
+        guard token.hasPrefix("@"), token.count > 1 else { return nil }
+        let name = token.dropFirst()
+        guard name.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }) else { return nil }
+        return String(name)
     }
 
     private static func category(_ token: String, in categories: [String]) -> String? {

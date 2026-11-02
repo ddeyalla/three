@@ -227,7 +227,7 @@ final class AppModel {
         }
         guard let fallback = liveCategories.first else { return false }
         let new = NewTask(title: quick.title, category: quick.category ?? fallback.name,
-                          blockMinutes: quick.minutes ?? snapshot.preferences.defaultBlockMinutes)
+                          blockMinutes: quick.minutes ?? snapshot.preferences.defaultBlockMinutes, tags: quick.tags)
         let day: DayKey? = switch quick.when {
         case .day(let d)?: d
         case .inbox?: nil

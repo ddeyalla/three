@@ -171,6 +171,21 @@ public final class Store: @unchecked Sendable {
                 WHERE endedAt IS NULL AND taskId IN (SELECT id FROM task WHERE status = 'done')
                 """)
         }
+        // Tags: threads of work across days. Names are unique ignoring case.
+        m.registerMigration("v5-tags") { db in
+            try db.create(table: "tag") { t in
+                t.primaryKey("id", .text)
+                t.column("name", .text).notNull().unique(onConflict: .abort).collate(.nocase)
+                t.column("archived", .boolean).notNull().defaults(to: false)
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+            try db.create(table: "taskTag") { t in
+                t.column("taskId", .text).notNull().references("task", onDelete: .cascade)
+                t.column("tagId", .text).notNull().references("tag", onDelete: .cascade).indexed()
+                t.primaryKey(["taskId", "tagId"])
+            }
+        }
         return m
     }
 }
