@@ -52,6 +52,8 @@ private func startFocus(_ store: Store, strict: Bool = false, at now: Date = mon
             try db.execute(sql: "INSERT INTO blockRule (id, kind, value, enabled, createdAt, updatedAt) VALUES (?, 'domain', ?, 1, ?, ?)",
                            arguments: [UUID().uuidString, "site\(i).example.com", monday, monday])
         }
+        try db.execute(sql: "INSERT INTO blockRule (id, kind, value, enabled, createdAt, updatedAt) VALUES (?, 'domain', '127.0.0.0x1', 1, ?, ?)",
+                       arguments: [UUID().uuidString, monday, monday])
     }
     #expect(throws: BlockError.tooManyDomains) { try store.addBlockPreset(.x) }
     #expect(try store.blockStatus().rules.filter(\.enabled).count == BlockRule.maxDomains - 1)
@@ -66,6 +68,22 @@ private func startFocus(_ store: Store, strict: Bool = false, at now: Date = mon
     try store.removeBlockRule(final.id)
     try store.setBlockRule(disabled.id, enabled: true)
     #expect(try store.blockStatus().rules.filter { $0.enabled && $0.target.kind == "domain" }.count == BlockRule.maxDomains)
+}
+
+@Test func legacyListsAllowAppRulesAndUnchangedDomainsWithoutGrowingPastTheLimit() throws {
+    let store = try Store(url: freshURL())
+    let firstID = UUID().uuidString
+    try store.db.write { db in
+        for i in 0...BlockRule.maxDomains {
+            try db.execute(sql: "INSERT INTO blockRule (id, kind, value, enabled, createdAt, updatedAt) VALUES (?, 'domain', ?, 1, ?, ?)",
+                           arguments: [i == 0 ? firstID : UUID().uuidString, "legacy\(i).example.com", monday, monday])
+        }
+    }
+    try store.addBlockRule(.app(AppBundleID(parsing: "com.example.allowed")))
+    #expect(try store.addBlockRule(.domain(BlockDomain(parsing: "legacy0.example.com"))).id == firstID)
+    try store.setBlockRule(firstID, enabled: true)
+    #expect(throws: BlockError.tooManyDomains) { try store.addBlockPreset(.reddit) }
+    #expect(try store.blockStatus().rules.filter { $0.target.kind == "domain" }.count == BlockRule.maxDomains + 1)
 }
 
 @Test func looseningRulesWaitsForBlockingToEnd() throws {

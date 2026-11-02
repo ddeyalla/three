@@ -114,6 +114,7 @@ extension Store {
     @discardableResult
     public func addBlockRules(_ targets: [BlockTarget], now: Date = Date()) throws -> [BlockRule] {
         try write { db in
+            let previousCount = try enabledDomainCount(db)
             let rules = try targets.map { target in
                 if let row = try Row.fetchOne(db, sql: """
                     SELECT * FROM blockRule WHERE deletedAt IS NULL AND kind = ? AND value = ? COLLATE NOCASE
@@ -135,14 +136,18 @@ extension Store {
                     """, arguments: [rule.id, target.kind, target.value, now, now])
                 return rule
             }
-            try requireSupportedRuleCount(db)
+            try requireSupportedRuleCount(previousCount: previousCount, db)
             return rules
         }
     }
 
-    private func requireSupportedRuleCount(_ db: Database) throws {
-        let count = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM blockRule WHERE kind = 'domain' AND enabled = 1 AND deletedAt IS NULL") ?? 0
-        guard count <= BlockRule.maxDomains else { throw BlockError.tooManyDomains }
+    private func enabledDomainCount(_ db: Database) throws -> Int {
+        try blockRules(db).filter { $0.enabled && $0.target.kind == "domain" }.count
+    }
+
+    private func requireSupportedRuleCount(previousCount: Int, _ db: Database) throws {
+        let count = try enabledDomainCount(db)
+        guard count <= BlockRule.maxDomains || count <= previousCount else { throw BlockError.tooManyDomains }
     }
 
     /// Adds one window per day in `hours`, in one transaction. Windows that already exist are reused.
@@ -178,8 +183,9 @@ extension Store {
         try write { db in
             guard try ruleExists(id, db) else { throw BlockError.noSuchRule(id) }
             if !enabled { try requireBlockingOff(now: now, calendar: calendar, db) }
+            let previousCount = try enabledDomainCount(db)
             try db.execute(sql: "UPDATE blockRule SET enabled = ?, updatedAt = ? WHERE id = ?", arguments: [enabled, now, id])
-            if enabled { try requireSupportedRuleCount(db) }
+            if enabled { try requireSupportedRuleCount(previousCount: previousCount, db) }
         }
     }
 

@@ -42,6 +42,18 @@ test('Unicode display titles cannot invalidate blocking rules', () => {
   }
 });
 
+test('existing lists above the new Store limit still enforce all their rules', () => {
+  for (const count of [1001, MAX_RULES]) {
+    const rules = Array.from({ length: count }, (_, i) => ({
+      id: `00000000-0000-4000-8000-${i.toString(16).padStart(12, '0')}`,
+      domain: `legacy${i}.example.com`, label: `legacy${i}.example.com`,
+    }));
+    const parsed = parseState(host({ rules }), now);
+    assert.equal(rulesInForce(parsed, now).length, count);
+    assert.equal(sessionRules(parsed.rules).length, count);
+  }
+});
+
 test('an inactive state carries no rules, and a lapsed lease enforces none', () => {
   assert.deepEqual(parseState(host({ active: false }), now).rules, []);
   const s = parseState(host(), now);

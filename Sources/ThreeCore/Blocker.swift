@@ -29,7 +29,7 @@ public enum BlockError: LocalizedError, Equatable {
         case .noSuchRule(let id): "No block rule matches \"\(id)\"."
         case .noSuchWindow(let id): "No focus hours match \"\(id)\"."
         case .missingReason: "Say in a few words why you need it."
-        case .tooManyDomains: "Three supports up to \(BlockRule.maxDomains) enabled website rules. No rules were changed."
+        case .tooManyDomains: "Adding or enabling websites would exceed the limit of \(BlockRule.maxDomains) enabled rules. No rules were changed."
         case .coveredByRule(let domain): "This website is also blocked by \(domain). Unblock that rule first."
         }
     }

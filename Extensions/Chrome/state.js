@@ -4,8 +4,8 @@ export const HOST = 'com.deyalla.three';
 export const PROTOCOL = 1;
 /** Rules never outlive this without a fresh state, whatever lease the host claims. */
 export const MAX_LEASE_MS = 3 * 60_000;
-/** Matches BlockRule.maxDomains, including room for maximum-length domains in a native message. */
-export const MAX_RULES = 1000;
+/** Accept older lists up to the original wire limit. Store caps new additions at 1000 for message-size headroom. */
+export const MAX_RULES = 4000;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DOMAIN = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
