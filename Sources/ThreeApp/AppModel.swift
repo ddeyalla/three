@@ -187,13 +187,18 @@ final class AppModel {
         NSTimeZone.resetSystemTimeZone()
         let at = Date()
         do {
-            blocking = BlockingState(status: try store.blockStatus(now: at, calendar: .current), now: at)
+            blocking = BlockingState(status: try store.blockStatus(now: at, calendar: .current), now: at,
+                                     failedAppRuleIDs: appBlocker.failedRuleIDs)
         } catch {
             self.error = error.localizedDescription
             return
         }
         appBlocker.enforce(blocking)
         blockOverlay.reconcile(with: blocking)
+    }
+
+    func updateAppBlockingFailures(_ ids: Set<String>) {
+        blocking.failedAppRuleIDs = ids
     }
 
     /// Keeps the one pending notification in step with the running session, whoever changed it.

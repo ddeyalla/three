@@ -169,7 +169,7 @@ private struct BlockingRow: View {
             .accessibilityElement(children: .combine)
             Spacer(minLength: Space.xs)
             Menu {
-                if state.isDegraded {
+                if !state.blockedSites.isEmpty && state.workingProfiles.isEmpty {
                     Button("Set Up Chrome…") { openBlockingSettings(chrome: true) }
                 }
                 if !state.unblockable.isEmpty || !state.policy.exceptions.isEmpty {

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Blocker race fixes: connection removal holds the Store's writer lock, delayed panels cancel when protection ends, and the unblock wait uses elapsed time rather than the Mac's clock. Failed app hides now appear in coverage, Back to work rechecks its destination, and midnight-to-midnight focus hours stay editable as full days.
 - **Blocking during focus.** Settings has a Blocking tab for websites, apps, weekly focus hours and the Chrome connection. It starts empty; X, Reddit and YouTube are one-click suggestions that add their domains as ordinary rows (X adds x.com and twitter.com, not t.co). Blocking is on during every focus session, for at most 15 minutes of a paused or overrunning one, and during focus hours, which may run past midnight but can't cover the whole week.
 - **Chrome** shows a calm block page instead of a blocked site: the site, the task, the time until blocking ends and Back to work. It keeps working with Three closed. Setup is a step you take: Three shows what it will write and writes it only when you click Add Connection, then you load the extension in each profile. Guest and Incognito windows, other profiles and other browsers aren't covered, and Settings says so.
 - **Apps** you block are hidden, never quit, whenever they come forward while blocking is on, and again when an unblock ends. A small glass panel says so and offers Back to work. Hiding needs Three running. Three never hides itself, apps macOS needs, or a browser you didn't add.

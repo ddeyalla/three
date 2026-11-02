@@ -23,7 +23,7 @@ final class BlockOverlayController: NSObject, NSWindowDelegate {
     private(set) var mode = Mode.blocked
     /// A blocked app was just hidden. macOS brings another app forward next; showing after that keeps the
     /// panel from losing key to it at once.
-    private var pending: (subject: Subject, mode: Mode)?
+    private var pending: (id: UUID, subject: Subject, mode: Mode)?
 
     init(model: AppModel) { self.model = model }
 
@@ -31,10 +31,15 @@ final class BlockOverlayController: NSObject, NSWindowDelegate {
 
     func present(_ subject: Subject, mode: Mode) {
         // A blocked app that keeps coming forward gets the same panel, unmoved, with nothing restarted.
-        if isVisible, self.subject?.rule.id == subject.rule.id { return }
+        if isVisible, self.subject?.rule.id == subject.rule.id, mode == .blocked || self.mode == mode { return }
+        pending = nil
         guard mode == .blocked, !isVisible else { return show(subject, mode: mode) }
-        pending = (subject, mode)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.showPending() }
+        let id = UUID()
+        pending = (id, subject, mode)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            guard self?.pending?.id == id else { return }
+            self?.showPending()
+        }
     }
 
     /// Whether the panel is showing, or about to show, for this rule.
@@ -42,11 +47,10 @@ final class BlockOverlayController: NSObject, NSWindowDelegate {
         (isVisible ? subject : pending?.subject)?.rule.id == rule.id
     }
 
-    /// The app is still on screen after several tries, so say so instead of claiming it's hidden.
-    func hideFailed(_ rule: BlockRule) {
-        if pending?.subject.rule.id == rule.id { pending?.subject.hidden = false }
-        guard isVisible, mode == .blocked, var subject, subject.rule.id == rule.id, subject.hidden else { return }
-        subject.hidden = false
+    func setHidden(_ hidden: Bool, for rule: BlockRule) {
+        if pending?.subject.rule.id == rule.id { pending?.subject.hidden = hidden }
+        guard isVisible, mode == .blocked, var subject, subject.rule.id == rule.id, subject.hidden != hidden else { return }
+        subject.hidden = hidden
         show(subject, mode: .blocked)
     }
 
@@ -58,12 +62,14 @@ final class BlockOverlayController: NSObject, NSWindowDelegate {
     private func showPending() {
         guard let pending else { return }
         self.pending = nil
+        guard let policy = try? model.store.blockPolicy(),
+              policy.blocked.contains(where: { $0.id == pending.subject.rule.id }) else { return }
         show(pending.subject, mode: pending.mode)
     }
 
     /// Closes the panel when its rule is no longer in force: blocking ended, it was opened, or it was removed.
     func reconcile(with state: BlockingState) {
-        guard let subject, isVisible || pending != nil else { return }
+        guard let subject = pending?.subject ?? subject, isVisible || pending != nil else { return }
         if !state.policy.blocked.contains(where: { $0.id == subject.rule.id }) { dismiss() }
     }
 
@@ -179,11 +185,10 @@ struct BlockOverlayView: View {
     let controller: BlockOverlayController
 
     @State private var reason = ""
-    @State private var waitStarted: Date?
+    @State private var wait: UnblockWait?
     @State private var error: String?
     @FocusState private var reasonFocused: Bool
 
-    static let wait: TimeInterval = 20
     static let reasonLimit = 140
 
     private var blocking: BlockingState { model.blocking }
@@ -287,7 +292,7 @@ struct BlockOverlayView: View {
                     .accessibilityLabel("Reason")
                     .focused($reasonFocused)
                     .focusEffectDisabled()
-                    .disabled(waitStarted != nil)
+                    .disabled(wait != nil)
                     .onSubmit(startWait)
                     .onExitCommand { controller.backToWork() }
                     .padding(.horizontal, Space.md)
@@ -309,7 +314,9 @@ struct BlockOverlayView: View {
                 }
             }
             HStack(spacing: Space.sm) {
-                unblockButton
+                TimelineView(.periodic(from: .now, by: 1)) { _ in
+                    unblockButton
+                }
                 Spacer(minLength: Space.sm)
                 Button("Back to work") { controller.backToWork() }
                     .buttonStyle(.glassProminent)
@@ -324,7 +331,7 @@ struct BlockOverlayView: View {
 
     private var hint: String {
         if let covering { return "\(covering.name) also blocks this site, so opening \(name) alone wouldn't help." }
-        if waitStarted == nil { return "Write at least three words." }
+        if wait == nil { return "Write at least three words." }
         return blocking.policy.focus == nil ? "Saved when you unblock." : "Saved with this focus session when you unblock."
     }
 
@@ -333,7 +340,7 @@ struct BlockOverlayView: View {
     }
 
     private var waitLeft: TimeInterval? {
-        waitStarted.map { max(0, Self.wait - model.now.timeIntervalSince($0)) }
+        wait?.remaining()
     }
 
     @ViewBuilder private var unblockButton: some View {
@@ -344,8 +351,11 @@ struct BlockOverlayView: View {
                 .disabled(true)
         } else if waitLeft != nil {
             // No keyboard shortcut: holding Return through the wait must not open anything.
-            Button("Unblock for 5 minutes") { error = controller.grant(reason: reason) }
-                .buttonStyle(.glass)
+            Button("Unblock for 5 minutes") {
+                guard wait?.remaining() == 0 else { return }
+                error = controller.grant(reason: reason)
+            }
+            .buttonStyle(.glass)
         } else {
             Button("Start 20-second wait", action: startWait)
                 .buttonStyle(.glass)
@@ -355,7 +365,20 @@ struct BlockOverlayView: View {
     }
 
     private func startWait() {
-        guard waitStarted == nil, hasReason, covering == nil else { return }
-        waitStarted = model.now
+        guard wait == nil, hasReason, covering == nil else { return }
+        wait = UnblockWait()
+    }
+}
+
+struct UnblockWait {
+    private let deadline: ContinuousClock.Instant
+
+    init(startedAt: ContinuousClock.Instant = .now) {
+        deadline = startedAt.advanced(by: .seconds(20))
+    }
+
+    func remaining(at now: ContinuousClock.Instant = .now) -> TimeInterval {
+        let parts = now.duration(to: deadline).components
+        return max(0, Double(parts.seconds) + Double(parts.attoseconds) / 1e18)
     }
 }

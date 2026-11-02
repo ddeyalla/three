@@ -443,7 +443,7 @@ private struct FocusHoursSheet: View {
     }
 
     private var start: ClockTime { ClockTime(from) }
-    private var end: ClockTime { ClockTime(to) }
+    private var end: ClockTime { ClockTime.windowEnd(to) }
 
     /// What stops Add, said where the person looks, never as a red error.
     private var problem: String? {
@@ -482,7 +482,7 @@ private struct FocusHoursSheet: View {
                     Text("To").foregroundStyle(.secondary)
                     VStack(alignment: .leading, spacing: Space.xs) {
                         DatePicker("To", selection: $to, displayedComponents: .hourAndMinute).labelsHidden()
-                        if end < start {
+                        if end < start || end.minutes == 1440 {
                             Text("Ends the next day at \(end.formatted)")
                                 .font(Typo.meta)
                                 .foregroundStyle(.secondary)

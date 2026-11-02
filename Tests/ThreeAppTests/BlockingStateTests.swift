@@ -101,6 +101,37 @@ struct BlockingStateTests {
         #expect(try state(s, at: t).coverage == "Chrome (2 profiles) and apps")
     }
 
+    @Test func failedAppHidingChangesCoverageWithoutHidingWorkingChrome() throws {
+        let s = try store()
+        let app = try s.addBlockRule(.app(AppBundleID(parsing: "com.example.blocked")), now: monday)
+        try focus(s, at: monday)
+        let t = monday.addingTimeInterval(60)
+        var on = try state(s, at: t)
+        on.failedAppRuleIDs = [app.id]
+        #expect(!on.isEnforcing && on.isDegraded)
+        #expect(on.headline == "Apps couldn't be hidden" && on.value == "On, apps not hidden")
+        #expect(on.detail.contains("com.example.blocked couldn't be hidden"))
+        #expect(on.coverage != "Apps only")
+
+        try site(s, "example.com")
+        try s.recordBrowserHello(clientId: "working", extensionVersion: ChromeExtension.version, hostAccess: true, now: t)
+        on = try state(s, at: t)
+        on.failedAppRuleIDs = [app.id]
+        #expect(on.isEnforcing && !on.isDegraded)
+        #expect(on.coverage == "Chrome (1 profile) · com.example.blocked couldn't be hidden")
+        on.failedAppRuleIDs = []
+        #expect(on.coverage == "Chrome (1 profile) and apps")
+    }
+
+    @Test func unblockWaitRequiresTwentyElapsedSeconds() {
+        let start = ContinuousClock.now
+        let wait = UnblockWait(startedAt: start)
+        #expect(wait.remaining(at: start) == 20)
+        #expect(wait.remaining(at: start.advanced(by: .milliseconds(19_999))) > 0)
+        #expect(wait.remaining(at: start.advanced(by: .seconds(20))) == 0)
+        #expect(wait.remaining(at: start.advanced(by: .seconds(120))) == 0)
+    }
+
     @Test func exceptionsAndStrictTasksChangeWhatCanBeUnblocked() throws {
         let s = try store()
         let reddit = try site(s, "reddit.com")
@@ -169,5 +200,21 @@ struct BlockingStateTests {
         let connected = link(ours, [good, try profile("closed2", access: false)])
         #expect(connected.value == "Connected in 1 profile" && connected.action == .remove && connected.detail != nil)
         #expect(link(.missing, [good]).value == "Connected in 1 profile")
+    }
+
+    @Test func midnightPickerEndsPreserveFullDaysAndOvernightHours() throws {
+        let midnight = ClockTime(minutes: 0)!.date
+        let start = ClockTime(midnight), end = ClockTime.windowEnd(midnight)
+        #expect(start.minutes == 0 && end.minutes == 1440)
+        let s = try store()
+        let saved = try s.addFocusHours(FocusHours(days: [.monday], start: start, end: end))
+        let group = try #require(FocusHoursGroup.groups(saved).first)
+        #expect(ClockTime.windowEnd(group.end.date) == group.end)
+        #expect(group.isOvernight)
+
+        let overnightEnd = ClockTime(minutes: 120)!
+        #expect(ClockTime.windowEnd(overnightEnd.date) == overnightEnd)
+        let overnight = try FocusHours(days: [.tuesday], start: ClockTime(minutes: 1320)!, end: ClockTime.windowEnd(overnightEnd.date))
+        #expect(overnight.start.minutes == 1320 && overnight.end.minutes == 120)
     }
 }

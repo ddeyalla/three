@@ -6,6 +6,7 @@ import ThreeCore
 struct BlockingState {
     let status: BlockStatus
     let now: Date
+    var failedAppRuleIDs: Set<String> = []
 
     var policy: BlockPolicy { status.policy }
 
@@ -16,12 +17,13 @@ struct BlockingState {
 
     var blockedSites: [BlockRule] { policy.blocked.filter(\.isSite) }
     var blockedApps: [BlockRule] { policy.blocked.filter { !$0.isSite } }
+    var failedApps: [BlockRule] { blockedApps.filter { failedAppRuleIDs.contains($0.id) } }
+    private var enforcedApps: [BlockRule] { blockedApps.filter { !failedAppRuleIDs.contains($0.id) } }
 
     /// Something is really stopped right now: an app (Three hides apps while it runs) or a site in a working profile.
-    var isEnforcing: Bool { !blockedApps.isEmpty || (!blockedSites.isEmpty && !workingProfiles.isEmpty) }
+    var isEnforcing: Bool { !enforcedApps.isEmpty || (!blockedSites.isEmpty && !workingProfiles.isEmpty) }
 
-    /// Blocking is on and rules are in force, but nothing on this Mac can enforce them. Only sites can be in this
-    /// state, because any app rule is enforced while Three runs.
+    /// Blocking is on and rules are in force, but nothing on this Mac can enforce them.
     var isDegraded: Bool { policy.isActive && !policy.blocked.isEmpty && !isEnforcing }
 
     /// Rules the person may open for five minutes now: those in force, unless the running task is strict.
@@ -30,13 +32,19 @@ struct BlockingState {
     /// The Settings status value: "Off", "On until 3:45 PM", or that sites aren't being blocked.
     var value: String {
         guard policy.isActive else { return "Off" }
-        if isDegraded { return "On, websites not blocked" }
+        if isDegraded {
+            if failedApps.isEmpty { return "On, websites not blocked" }
+            return blockedSites.isEmpty ? "On, apps not hidden" : "On, nothing blocked"
+        }
         return policy.until.map { "On until \(Format.until($0, now: now))" } ?? "On"
     }
 
     /// The menu-bar popover's line while blocking is on.
     var headline: String {
-        if isDegraded { return "Websites aren't blocked" }
+        if isDegraded {
+            if failedApps.isEmpty { return "Websites aren't blocked" }
+            return blockedSites.isEmpty ? "Apps couldn't be hidden" : "Nothing is blocked"
+        }
         return policy.until.map { "Blocking until \(Format.until($0, now: now))" } ?? "Blocking"
     }
 
@@ -49,7 +57,10 @@ struct BlockingState {
             return "Turns on with your next focus session, or \(Format.until(next, now: now))."
         }
         if isDegraded {
-            return [chromeProblem, reason].joined(separator: " · ")
+            var parts: [String] = []
+            if !blockedSites.isEmpty { parts.append(chromeProblem) }
+            if let appProblem { parts.append(appProblem) }
+            return (parts + [reason]).joined(separator: " · ")
         }
         var parts = [reason]
         if let coverage { parts.append(coverage) }
@@ -80,15 +91,22 @@ struct BlockingState {
     /// What really enforces the rules in force, from live facts only. Chrome can't say how many profiles exist,
     /// so this counts connected ones and never claims all of them.
     var coverage: String? {
-        let sites = !blockedSites.isEmpty, apps = !blockedApps.isEmpty
+        let sites = !blockedSites.isEmpty, apps = !enforcedApps.isEmpty
         let profiles = workingProfiles.count
         let chrome = "Chrome (\(profiles) profile\(profiles == 1 ? "" : "s"))"
-        switch (sites, apps) {
-        case (true, true): return profiles > 0 ? "\(chrome) and apps" : "Apps only. Websites aren't blocked."
-        case (true, false): return profiles > 0 ? chrome : nil
-        case (false, true): return "Apps only"
-        case (false, false): return nil
+        let covered: String? = switch (sites, apps) {
+        case (true, true): profiles > 0 ? "\(chrome) and apps" : "Apps only. Websites aren't blocked."
+        case (true, false): profiles > 0 ? chrome : nil
+        case (false, true): "Apps only"
+        case (false, false): nil
         }
+        let parts = [covered, appProblem].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    private var appProblem: String? {
+        guard !failedApps.isEmpty else { return nil }
+        return "\(failedApps.map(\.name).joined(separator: ", ")) couldn't be hidden"
     }
 
     /// Why no profile can block sites.
@@ -198,7 +216,7 @@ struct FocusHoursGroup: Identifiable, Equatable {
     let end: ClockTime
 
     var id: String { ids.joined(separator: ",") }
-    var isOvernight: Bool { end <= start }
+    var isOvernight: Bool { end.minutes == 1440 || end <= start }
 
     static func groups(_ windows: [FocusWindow]) -> [FocusHoursGroup] {
         var order: [String] = []
@@ -256,6 +274,11 @@ extension ClockTime {
     init(_ date: Date) {
         let c = Calendar.current.dateComponents([.hour, .minute], from: date)
         self = ClockTime(minutes: (c.hour ?? 0) * 60 + (c.minute ?? 0))!
+    }
+
+    static func windowEnd(_ date: Date) -> ClockTime {
+        let time = ClockTime(date)
+        return time.minutes == 0 ? ClockTime(minutes: 1440)! : time
     }
 
     /// Today at this time, for a time picker.

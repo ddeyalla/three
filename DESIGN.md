@@ -200,6 +200,10 @@ Three radii: 8pt for timeline blocks, 12pt for cards and the quick-add field, 20
 
 ## macOS interaction details
 
+- A midnight end in Focus Hours means the end of that day. Midnight to midnight is a full day, and the sheet shows that the end is on the next day. Editing days preserves that boundary.
+- A confirmed app-hide failure appears in the existing blocking status text. If no other app or connected website rule can be enforced, the hand disappears and the existing warning state explains the failed app.
+- The unblock wait measures 20 elapsed seconds, independent of changes to the Mac's clock. Pending block overlays are cancelled when their rule stops being enforced or a newer presentation replaces them. Back to work rechecks that its destination is still allowed.
+
 - Native buttons own task selection, tag disclosure and checklist actions. Tab and Shift-Tab follow the system keyboard-navigation setting, Space activates a focused button, and labels describe the task or step they affect. Checklist labels toggle their checkbox.
 - Keep the system focus indicator. Plain text fields show a quiet change in their glass while focused. Automatic reflection prompts never take the keyboard from another app. Choosing Finish or Review makes the panel key so Escape works immediately, with no automatic cursor in the note. Choosing Finish again brings the existing panel forward without clearing its draft.
 - Scrollbars follow the user's macOS preference. Do not hide them unconditionally.
