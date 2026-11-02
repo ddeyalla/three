@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Now is one centred column: the task, its category and its next step; the dial, time left and status; then the controls. The dial grows from 240 to 400pt with the pane. The title is larger and wraps to two lines. Click the next step to tick it off. The status is plain text and says Paused while paused. A break names the task up next, an empty day offers Add Task, and an all-done day shows its summary. The dial takes input only when there is a task to start.
+- Drag a Today card by its title row to change the order. A line marks where it will land; Escape or a drop anywhere else changes nothing. Move Up and Move Down are also in the card's menu, in Edit (⌥⌘↑ and ⌥⌘↓, for the task you selected) and in VoiceOver's actions.
+- Add Task and ⌘N put the cursor in quick add even when they switch lists. Previously the list being replaced kept the request.
 - After two minutes without an answer or edit, the reflection panel saves Made progress and Okay, keeps any note, ends the block, and hides. A pulsing menu-bar dot reminds you to review or dismiss it. Saved reflections survive relaunch, and editing one leaves newer timers alone. Reduce Motion keeps the dot still.
 - The workspace fills the window, including full screen, with three rounded translucent panes and plain headers. Drag a header onto another pane to reorder, or use the header menu or View → Arrange Panes. Order is remembered, Reset Pane Order restores the default, and invisible native dividers adjust widths. Draft input and scroll state stay with each pane when it moves.
 - Invalid or overflowing durations no longer crash the app or CLI. Extensions and breaks reject invalid lengths before changing a timer.

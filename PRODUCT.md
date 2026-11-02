@@ -81,6 +81,8 @@ The record is local-first. Every row carries `id` (UUID), `updatedAt` and `delet
 
 Two surfaces: a **menu-bar item** that is always there, and a **main window** for planning and history. Since 0.2.4 the main window has no sidebar. Its three panes are **Tasks** (Today, Inbox, Upcoming, Done, Tags), **Now** (the dial) and **Timeline** (the day). They initially appear in that order. The workspace fills the window, including full screen, with rounded translucent pane bodies and plain headers. Drag a header onto another pane to move it to that position, or use the header menu or View → Arrange Panes. Order survives relaunch; Reset Pane Order restores the default. Invisible native dividers adjust widths with minimums that keep controls usable. Reordering preserves draft input, selection, scroll positions and timers. Settings is a separate window (⌘,) and holds category editing.
 
+Now is one centred column: the task (up to two lines), its category and next step; the dial, time left and a plain status line; then the controls. The dial grows from 240 to 400pt with the pane. Today's order is its priority: drag a card by its title row, or use Move Up and Move Down in the card menu, Edit (⌥⌘↑/↓) or VoiceOver. See [docs/focus-design.md](docs/focus-design.md).
+
 **Tags (0.2.4).** A tag (`@onboarding`) marks a thread of work that runs for days or weeks, such as a product, project or feature. A task can carry several. A tag's time is every focus block on every task that carried it, including copies carried to later days. The Tags view shows the total, the past week, days worked and each task's share. This is the first piece of §5.4 and §5.5; per-tag trends belong in v0.6.
 
 ### 5.1 Today (main window, default)

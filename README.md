@@ -22,7 +22,8 @@ The full product spec, with principles, data model and roadmap, is in [PRODUCT.m
 - **Quick add**, Todoist style: `Fix signup bug #coding @onboarding 30m fri`. Press ⌘N anywhere, or use the field in the menu bar.
 - **Tags** for work that runs for days or weeks, such as a product, project or feature. Tags shows how much time each one has taken in total and in the past week, and each task's share. A task carried to tomorrow keeps its tags.
 - **Done.** What you finished in the last 30 days, with the time each task took.
-- **Steps.** Break a task into small checkboxes. The running task shows its steps and notes in place, so the next step stays in view.
+- **Steps.** Break a task into small checkboxes. The running task shows its steps and notes in place, and Now shows the next step with a one-click check.
+- **Priority order.** Drag a Today card by its title row to reorder, or use Move Up and Move Down. The top open task is the one the dial offers next.
 - **Categories** with colours, which carry through the timer, cards and timeline. Edit them in Settings.
 - **Menu bar.** The timer, the next task and a capture field are always one click away.
 - **A CLI for you and your AI.** `three` reads and writes the same database as the app, so Claude Code, Codex or a script can plan your day. Changes show up in the app straight away.
@@ -31,7 +32,7 @@ The full product spec, with principles, data model and roadmap, is in [PRODUCT.m
 
 ## Keyboard controls
 
-The Focus and Go menus show these commands and disable actions that do not apply.
+The Edit, Focus and Go menus show these commands and disable actions that do not apply.
 
 | Action | Shortcut |
 | --- | --- |
@@ -43,6 +44,7 @@ The Focus and Go menus show these commands and disable actions that do not apply
 | Finish and reflect | ⇧⌘Return |
 | Review a saved reflection | ⇧⌘R |
 | Adjust the focused idle dial | Arrow keys, five minutes at a time |
+| Move the selected Today task up or down | ⌥⌘↑ / ⌥⌘↓ |
 | Start the suggested break in a reflection | Return |
 | Close a reflection | Escape |
 
