@@ -268,43 +268,47 @@ extension Store {
     /// A running break is ended first; a running focus session is an error.
     @discardableResult
     public func startFocus(taskId: String? = nil, minutes: Int? = nil, now: Date = Date()) throws -> Session {
-        try write { db in
-            if var running = try runningSession(db) {
-                guard running.kind == .break else { throw ThreeError.alreadyRunning }
-                try end(&running, reason: .completed, at: now, db)
-            }
-            var task: FocusTask
-            if let taskId {
-                guard let t = try FocusTask.fetchOne(db, key: taskId), t.deletedAt == nil else { throw ThreeError.noSuchTask(taskId) }
-                task = t
-            } else {
-                guard let plan = try DayPlan.filter(Column("day") == DayKey(now)).fetchOne(db),
-                      let t = try liveTasks(plan.id, db).first(where: { $0.status.isOpen }) else { throw ThreeError.nothingToStart }
-                task = t
-            }
-            let focused = try Session.filter(Column("taskId") == task.id && Column("kind") == SessionKind.focus)
-                .fetchAll(db).reduce(0) { $0 + $1.elapsed(at: now) }
-            let left = Int((TimeInterval(task.blockMinutes * 60) - focused) / 60)
-            let session = try preferences(db).sessionMinutes
-            let planned = minutes ?? (left >= 5 ? min(left, session) : session)
-            guard (1...480).contains(planned) else { throw ThreeError.invalid("Sessions are 1 to 480 minutes.") }
-            let s = Session(id: UUID().uuidString, taskId: task.id, kind: .focus, plannedSeconds: planned * 60,
-                            startedAt: now, pausedAt: nil, pausedSeconds: 0, endedAt: nil, endReason: nil,
-                            outcome: nil, focusRating: nil, note: nil, updatedAt: now)
-            try s.insert(db)
-            task.status = .active
-            task.updatedAt = now
-            try task.update(db)
-            // Starting work on a draft is the commitment.
-            guard task.dayPlanId != nil else { throw ThreeError.invalid("Plan it for today before starting it.") }
-            if let planId = task.dayPlanId, var plan = try DayPlan.fetchOne(db, key: planId), plan.status == .draft {
-                plan.status = .committed
-                plan.committedAt = now
-                plan.updatedAt = now
-                try plan.update(db)
-            }
-            return s
+        try write { try startFocus(taskId: taskId, minutes: minutes, now: now, $0) }
+    }
+
+    @discardableResult
+    private func startFocus(taskId: String?, minutes: Int? = nil, now: Date, _ db: Database) throws -> Session {
+        if var running = try runningSession(db) {
+            guard running.kind == .break else { throw ThreeError.alreadyRunning }
+            try end(&running, reason: .completed, at: now, db)
         }
+        var task: FocusTask
+        if let taskId {
+            guard let t = try FocusTask.fetchOne(db, key: taskId), t.deletedAt == nil else { throw ThreeError.noSuchTask(taskId) }
+            task = t
+        } else {
+            guard let plan = try DayPlan.filter(Column("day") == DayKey(now)).fetchOne(db),
+                  let t = try liveTasks(plan.id, db).first(where: { $0.status.isOpen }) else { throw ThreeError.nothingToStart }
+            task = t
+        }
+        guard task.status.isOpen else { throw ThreeError.invalid("Reopen the task before starting it.") }
+        guard task.dayPlanId != nil else { throw ThreeError.invalid("Plan it for today before starting it.") }
+        let focused = try Session.filter(Column("taskId") == task.id && Column("kind") == SessionKind.focus)
+            .fetchAll(db).reduce(0) { $0 + $1.elapsed(at: now) }
+        let left = Int((TimeInterval(task.blockMinutes * 60) - focused) / 60)
+        let session = try preferences(db).sessionMinutes
+        let planned = minutes ?? (left >= 5 ? min(left, session) : session)
+        guard (1...480).contains(planned) else { throw ThreeError.invalid("Sessions are 1 to 480 minutes.") }
+        let s = Session(id: UUID().uuidString, taskId: task.id, kind: .focus, plannedSeconds: planned * 60,
+                        startedAt: now, pausedAt: nil, pausedSeconds: 0, endedAt: nil, endReason: nil,
+                        outcome: nil, focusRating: nil, note: nil, updatedAt: now)
+        try s.insert(db)
+        task.status = .active
+        task.updatedAt = now
+        try task.update(db)
+        // Starting work on a draft is the commitment.
+        if let planId = task.dayPlanId, var plan = try DayPlan.fetchOne(db, key: planId), plan.status == .draft {
+            plan.status = .committed
+            plan.committedAt = now
+            plan.updatedAt = now
+            try plan.update(db)
+        }
+        return s
     }
 
     /// Moves an open task to tomorrow's plan; today keeps it as `carried`.
@@ -312,6 +316,10 @@ extension Store {
     public func pushToTomorrow(_ id: String, now: Date = Date()) throws -> FocusTask {
         try write { db in
             guard var t = try FocusTask.fetchOne(db, key: id), t.deletedAt == nil else { throw ThreeError.noSuchTask(id) }
+            guard t.status.isOpen else { throw ThreeError.invalid("Only open tasks can be carried to tomorrow.") }
+            guard try runningSession(db)?.taskId != id else {
+                throw ThreeError.invalid("Finish the running block before moving its task.")
+            }
             guard let planId = t.dayPlanId, let plan = try DayPlan.fetchOne(db, key: planId) else {
                 throw ThreeError.invalid("That task isn't planned for a day.")
             }
@@ -340,7 +348,7 @@ extension Store {
         }
         guard due != nil else { return }
         try write { db in
-            guard var s = try runningSession(db), s.kind == .break else { return }
+            guard var s = try runningSession(db), s.kind == .break, !s.isPaused, s.remaining(at: now) <= 0 else { return }
             try end(&s, reason: .completed, at: min(now, s.plannedEnd), db)
         }
     }
@@ -365,6 +373,7 @@ extension Store {
     }
 
     public func extend(minutes: Int, expectedSession: Session? = nil, now: Date = Date()) throws {
+        guard (1...480).contains(minutes) else { throw ThreeError.invalid("Add 1 to 480 minutes.") }
         try write { db in
             guard var s = try runningSession(db) else { throw ThreeError.noRunningSession }
             if let expectedSession, !ReflectionPrompt(session: expectedSession, openedAt: now).matches(s) {
@@ -392,13 +401,19 @@ extension Store {
 
     /// Ends the running focus session with the reflection answers.
     public func finishFocus(outcome: Outcome, rating: FocusRating, note: String?, markTaskDone: Bool,
-                            expectedSession: Session? = nil, now: Date = Date()) throws {
+                            expectedSession: Session? = nil, continuation: FocusContinuation = .stop,
+                            now: Date = Date()) throws {
         try write { db in
             guard var s = try runningSession(db), s.kind == .focus else { throw ThreeError.noRunningSession }
             if let expectedSession, !ReflectionPrompt(session: expectedSession, openedAt: now).matches(s) {
                 throw ThreeError.invalid("This focus block changed. Open its reflection again.")
             }
             try finishFocus(&s, outcome: outcome, rating: rating, note: note, markTaskDone: markTaskDone, now: now, db)
+            switch continuation {
+            case .stop: break
+            case .break: try startBreak(minutes: nil, now: now, db)
+            case .task(let id): try startFocus(taskId: id, now: now, db)
+            }
         }
     }
 
@@ -428,29 +443,35 @@ extension Store {
 
     /// 5 minutes normally; 15 once you've focused ~100 minutes since the last long break.
     public func suggestedBreakMinutes(now: Date = Date()) throws -> Int {
-        try db.read { db in
-            let prefs = try preferences(db)
-            let today = try Session.filter(Column("startedAt") >= DayKey(now).startDate).order(Column("startedAt")).fetchAll(db)
-            let lastLong = today.last { $0.kind == .break && $0.elapsed(at: now) >= TimeInterval(prefs.longBreakMinutes * 60 - 60) }
-            let since = today.filter { $0.kind == .focus && $0.startedAt > (lastLong?.startedAt ?? .distantPast) }
-            let focused = since.reduce(0) { $0 + $1.elapsed(at: now) }
-            return focused >= TimeInterval(prefs.longBreakAfterMinutes * 60) ? prefs.longBreakMinutes : prefs.shortBreakMinutes
-        }
+        try db.read { try suggestedBreakMinutes(now: now, $0) }
+    }
+
+    private func suggestedBreakMinutes(now: Date, _ db: Database) throws -> Int {
+        let prefs = try preferences(db)
+        let today = try Session.filter(Column("startedAt") >= DayKey(now).startDate).order(Column("startedAt")).fetchAll(db)
+        let lastLong = today.last { $0.kind == .break && $0.elapsed(at: now) >= TimeInterval(prefs.longBreakMinutes * 60 - 60) }
+        let since = today.filter { $0.kind == .focus && $0.startedAt > (lastLong?.startedAt ?? .distantPast) }
+        let focused = since.reduce(0) { $0 + $1.elapsed(at: now) }
+        return focused >= TimeInterval(prefs.longBreakAfterMinutes * 60) ? prefs.longBreakMinutes : prefs.shortBreakMinutes
     }
 
     @discardableResult
     public func startBreak(minutes: Int? = nil, now: Date = Date()) throws -> Session {
-        let planned = try minutes ?? suggestedBreakMinutes(now: now)
-        return try write { db in
-            if var running = try runningSession(db) {
-                guard running.kind == .break else { throw ThreeError.alreadyRunning }
-                try end(&running, reason: .stopped, at: now, db)
-            }
-            let s = Session(id: UUID().uuidString, taskId: nil, kind: .break, plannedSeconds: planned * 60,
-                            startedAt: now, pausedAt: nil, pausedSeconds: 0, endedAt: nil, endReason: nil,
-                            outcome: nil, focusRating: nil, note: nil, updatedAt: now)
-            try s.insert(db)
-            return s
+        try write { try startBreak(minutes: minutes, now: now, $0) }
+    }
+
+    @discardableResult
+    private func startBreak(minutes: Int?, now: Date, _ db: Database) throws -> Session {
+        let planned = try minutes ?? suggestedBreakMinutes(now: now, db)
+        guard (1...120).contains(planned) else { throw ThreeError.invalid("Breaks are 1 to 120 minutes.") }
+        if var running = try runningSession(db) {
+            guard running.kind == .break else { throw ThreeError.alreadyRunning }
+            try end(&running, reason: .stopped, at: now, db)
         }
+        let s = Session(id: UUID().uuidString, taskId: nil, kind: .break, plannedSeconds: planned * 60,
+                        startedAt: now, pausedAt: nil, pausedSeconds: 0, endedAt: nil, endReason: nil,
+                        outcome: nil, focusRating: nil, note: nil, updatedAt: now)
+        try s.insert(db)
+        return s
     }
 }

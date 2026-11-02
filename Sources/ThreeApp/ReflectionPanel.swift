@@ -10,7 +10,7 @@ final class ReflectionPanelController {
 
     init(model: AppModel) { self.model = model }
 
-    func show(_ presentation: ReflectionPresentation) {
+    func show(_ presentation: ReflectionPresentation, takeFocus: Bool) {
         let panel = self.panel ?? makePanel()
         self.panel = panel
         let host = NSHostingView(rootView: ReflectionView(presentation: presentation, dismiss: { [weak self] in self?.model.closeReflection() })
@@ -30,7 +30,7 @@ final class ReflectionPanelController {
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         panel.setFrameOrigin(NSPoint(x: target.x, y: target.y - (reduceMotion ? 0 : 10)))
         panel.alphaValue = 0
-        if presentation.isSaved {
+        if takeFocus {
             panel.makeKeyAndOrderFront(nil)
         } else {
             // An automatic prompt must not take keystrokes from another app.
@@ -46,6 +46,10 @@ final class ReflectionPanelController {
 
     func hide() {
         panel?.orderOut(nil)
+    }
+
+    func activate() {
+        panel?.makeKeyAndOrderFront(nil)
     }
 
     private func makePanel() -> NSPanel {
@@ -88,7 +92,7 @@ struct ReflectionView: View {
 
     private var candidates: [TaskRow] {
         model.snapshot.tasks.filter { $0.task.status.isOpen && $0.id != presentation.session.taskId }
-            + (outcome == .done ? [] : presentation.task.map { [$0] } ?? [])
+            + (outcome == .done ? [] : model.runningTask.map { [$0] } ?? [])
     }
 
     private var next: TaskRow? { candidates.first { $0.id == nextId } ?? candidates.first }
@@ -191,6 +195,7 @@ struct ReflectionView: View {
                 .menuIndicator(.hidden)
                 .fixedSize()
                 .help("Adjust the next task")
+                .accessibilityLabel("Adjust next task")
             }
             .padding(.horizontal, Space.md)
             .frame(height: 36)
@@ -243,7 +248,7 @@ struct ReflectionView: View {
                 .foregroundStyle(.secondary)
                 .help("Keep this block going")
                 Spacer(minLength: Space.sm)
-                Button("Skip break") { finish(then: .next) }
+                Button("Skip break") { finish(then: next.map { .task($0.id) } ?? .stop) }
                     .buttonStyle(.glass)
                     .help(next.map { "Start \($0.task.title) now" } ?? "End this block")
                 Button("Start \(breakMinutes)m break") { finish(then: .break) }
@@ -254,17 +259,10 @@ struct ReflectionView: View {
         }
     }
 
-    private enum Then { case `break`, next }
-
-    private func finish(then: Then) {
-        let nextTask = next
+    private func finish(then continuation: FocusContinuation) {
         if model.perform({
             try model.store.finishFocus(outcome: outcome, rating: rating, note: note, markTaskDone: outcome == .done,
-                                        expectedSession: presentation.session)
-            switch then {
-            case .break: try model.store.startBreak()
-            case .next: if let nextTask { try model.store.startFocus(taskId: nextTask.id) }
-            }
+                                        expectedSession: presentation.session, continuation: continuation)
         }) { model.hideReflection() }
     }
 }

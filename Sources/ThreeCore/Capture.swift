@@ -222,10 +222,13 @@ public struct QuickAdd: Equatable, Sendable {
         if s.hasSuffix("min"), let n = Int(s.dropLast(3)) { return n }
         if s.hasSuffix("m"), !s.contains("h"), let n = Int(s.dropLast()) { return n }
         if let h = s.firstIndex(of: "h") {
-            guard let hours = Double(s[..<h]) else { return nil }
-            let rest = s[s.index(after: h)...].replacingOccurrences(of: "m", with: "")
-            guard rest.isEmpty || Int(rest) != nil else { return nil }
-            return Int(hours * 60) + (Int(rest) ?? 0)
+            guard let hours = Double(s[..<h]),
+                  let hourMinutes = Int(exactly: (hours * 60).rounded(.towardZero)) else { return nil }
+            let suffix = s[s.index(after: h)...]
+            let rest = suffix.hasSuffix("m") ? suffix.dropLast() : suffix
+            guard let minutes = rest.isEmpty ? 0 : Int(rest) else { return nil }
+            let (total, overflow) = hourMinutes.addingReportingOverflow(minutes)
+            return overflow ? nil : total
         }
         return nil
     }

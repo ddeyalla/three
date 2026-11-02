@@ -124,6 +124,12 @@ public enum FocusRating: Int, Codable, Sendable, CaseIterable, DatabaseValueConv
     case scattered = 1, okay = 2, focused = 3
 }
 
+public enum FocusContinuation: Sendable {
+    case stop
+    case `break`
+    case task(String)
+}
+
 /// One timer run. At most one row has `endedAt == nil`; that row is the running timer.
 public struct Session: Codable, Hashable, Identifiable, FetchableRecord, PersistableRecord, Sendable {
     public static let databaseTableName = "session"

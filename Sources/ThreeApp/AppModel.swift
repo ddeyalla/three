@@ -196,9 +196,13 @@ final class AppModel {
     func stop() { perform { try store.stop() } }
 
     func finishEarly() {
+        if reflectionPresentation != nil {
+            reflection.activate()
+            return
+        }
         guard let running, running.kind == .focus else { return }
         reflectedBlock = blockKey(running)
-        showReflection(.live(ReflectionPrompt(session: running, openedAt: Date()), task: runningTask))
+        showReflection(.live(ReflectionPrompt(session: running, openedAt: Date()), task: runningTask), takeFocus: true)
     }
 
     private func blockKey(_ s: Session) -> String { "\(s.id)/\(s.plannedSeconds)/\(s.plannedEnd.timeIntervalSince1970)" }
@@ -233,10 +237,10 @@ final class AppModel {
         reflection.hide()
     }
 
-    private func showReflection(_ presentation: ReflectionPresentation) {
+    private func showReflection(_ presentation: ReflectionPresentation, takeFocus: Bool = false) {
         reflectionPresentation = presentation
         reflectionNote = presentation.session.note ?? ""
-        reflection.show(presentation)
+        reflection.show(presentation, takeFocus: takeFocus || presentation.isSaved)
     }
 
     private func reconcileReflection() {
