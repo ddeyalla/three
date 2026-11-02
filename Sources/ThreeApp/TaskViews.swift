@@ -11,9 +11,12 @@ struct TaskCard<Trailing: View>: View {
     var expanded = false
     /// Runs when the title row is clicked. Steps and notes below it stay clickable on their own.
     var onTap: () -> Void = {}
+    /// Set on an ordered list: the title row becomes a drag handle and VoiceOver gets the moves.
+    var reorder: CardReorder?
     @ViewBuilder var trailing: Trailing
 
     private var isClosed: Bool { !row.task.status.isOpen }
+    private var isTravelling: Bool { reorder?.dragging.wrappedValue == row.id }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.sm) {
@@ -34,11 +37,16 @@ struct TaskCard<Trailing: View>: View {
                 .help(row.task.title)
                 .accessibilityLabel(row.task.title)
                 .accessibilityValue(expanded ? "Details expanded" : "Details collapsed")
+                .accessibilityActions {
+                    if let up = reorder?.moveUp { Button("Move Up", action: up) }
+                    if let down = reorder?.moveDown { Button("Move Down", action: down) }
+                }
                 trailing
                     .font(Typo.body)
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
             }
+            .modifier(CardDragSource(row: row, reorder: reorder) { dragPreview })
             if expanded {
                 VStack(alignment: .leading, spacing: Space.sm) {
                     StepList(row: row)
@@ -49,6 +57,8 @@ struct TaskCard<Trailing: View>: View {
                 .padding(.bottom, Space.xs)
             }
         }
+        // Inside the glass: a GlassEffectContainer ignores opacity applied to the card from outside.
+        .opacity(isTravelling ? 0.5 : 1)
         .padding(.horizontal, Space.md)
         .padding(.vertical, Space.sm)
         .contentShape(.rect(cornerRadius: Radius.card))
@@ -58,10 +68,65 @@ struct TaskCard<Trailing: View>: View {
         .accessibilityAddTraits(selected || running ? .isSelected : [])
     }
 
+    /// The collapsed title row, even when the card is open.
+    private var dragPreview: some View {
+        HStack(spacing: Space.md) {
+            Image(systemName: row.task.status == .done ? "checkmark.circle.fill" : "circle")
+                .imageScale(.large)
+                .foregroundStyle(row.category.color)
+            Text(row.task.title)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            trailing
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+        }
+        .font(Typo.body)
+        .padding(.horizontal, Space.md)
+        .padding(.vertical, Space.sm)
+        .frame(width: 288)
+        .glassEffect(.regular, in: .rect(cornerRadius: Radius.card))
+    }
+
     private var glass: Glass {
         if running { return .regular.tint(row.category.color.opacity(0.3)).interactive() }
         if selected { return .regular.tint(.white.opacity(0.08)).interactive() }
         return .regular.interactive()
+    }
+}
+
+/// What a card on an ordered list needs: where to report that it is being dragged, and its menu moves.
+struct CardReorder {
+    var dragging: Binding<String?>
+    var moveUp: (() -> Void)?
+    var moveDown: (() -> Void)?
+}
+
+/// Makes a title row the drag handle for its card. The list reads `dragging` to know a card is in flight.
+private struct CardDragSource<Preview: View>: ViewModifier {
+    let row: TaskRow
+    let reorder: CardReorder?
+    @ViewBuilder var preview: () -> Preview
+
+    func body(content: Content) -> some View {
+        if let reorder {
+            content
+                .draggable(TodayTaskDrag(taskId: row.id), preview: preview)
+                .dragConfiguration(.init(operationsWithinApp: .init(allowCopy: false, allowMove: true),
+                                         operationsOutsideApp: .init(allowCopy: false)))
+                .onDragSessionUpdated { session in
+                    switch session.phase {
+                    case .initial, .active:
+                        if reorder.dragging.wrappedValue != row.id { reorder.dragging.wrappedValue = row.id }
+                    case .ended:
+                        if reorder.dragging.wrappedValue == row.id { reorder.dragging.wrappedValue = nil }
+                    default:
+                        break
+                    }
+                }
+        } else {
+            content
+        }
     }
 }
 
@@ -327,6 +392,7 @@ struct QuickAddField: View {
         .font(Typo.body)
         .padding(.horizontal, Space.md)
         .glassEffect(.regular.tint(.white.opacity(focused ? 0.06 : 0)).interactive(), in: .rect(cornerRadius: Radius.card))
+        .focusedValue(\.todayFocus, .entry)
         .help("#category, @tag, a duration like 45m, and today, tomorrow, a weekday or inbox")
         .onChange(of: model.quickAddRequest) { claimQuickAdd() }
         .onAppear { claimQuickAdd() }

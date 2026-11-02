@@ -7,15 +7,28 @@ import ThreeCore
 struct DialView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    var size: CGFloat = 220
+    let size: CGFloat
     /// The longest session Settings allows.
     static let maxMinutes = 240
+    /// Smallest and largest faces: below 240 the ticks crowd, above 400 the time under it reads as a caption.
+    static let diameters: ClosedRange<CGFloat> = 240...400
+
+    /// As wide as the Now pane allows inside its 24pt margins, and under half its height, so the
+    /// task, time left and controls keep their room.
+    static func diameter(fitting pane: CGSize) -> CGFloat {
+        let fit = min(pane.width - 2 * Space.xl, (pane.height - 2 * Space.xl) * 0.48).rounded(.down)
+        return min(diameters.upperBound, max(diameters.lowerBound, fit))
+    }
     /// 0 → 1 when a block starts: the wedge sweeps open to its length.
     @State private var sweep: Double = 1
     @State private var dragAngle: Double?
     @State private var dragMinutes: Double?
 
     private var isIdle: Bool { model.running == nil }
+    /// Only an idle dial with a task to start takes drags, focus and keys.
+    private var acceptsInput: Bool { isIdle && model.selectedTask != nil }
+    /// Nothing to time: an empty or finished day shows the face as a picture.
+    private var isPicture: Bool { isIdle && model.selectedTask == nil }
 
     private var minutesLeft: Double {
         model.remaining.map { max(0, $0 / 60) } ?? Double(model.dialMinutes)
@@ -37,30 +50,33 @@ struct DialView: View {
                 .frame(width: face, height: face)
                 .glassEffect(.regular, in: .circle)
             ForEach(0..<extraHours, id: \.self) { i in
+                let ring = face + size * 0.033 + CGFloat(i) * size * 0.025
                 Circle()
                     .stroke(model.accent.opacity(model.running?.isPaused == true ? 0.4 : 0.9), lineWidth: 2)
-                    .frame(width: face + 8 + CGFloat(i) * 6, height: face + 8 + CGFloat(i) * 6)
+                    .frame(width: ring, height: ring)
                     .transition(.opacity)
             }
             Wedge(fraction: fraction * sweep)
                 .fill(model.accent.opacity(model.running?.isPaused == true ? 0.4 : 1))
                 .frame(width: face, height: face)
                 .animation(isIdle && dragAngle == nil && !reduceMotion ? .snappy(duration: 0.18) : nil, value: fraction)
+            let hub = max(22, size * 0.07)
             Circle()
                 .fill(.clear)
-                .frame(width: 22, height: 22)
+                .frame(width: hub, height: hub)
                 .glassEffect(.regular.tint(model.accent.opacity(0.4)), in: .circle)
         }
         .frame(width: size, height: size)
         .contentShape(Circle())
-        .gesture(isIdle ? drag : nil)
-        .focusable(isIdle)
+        .gesture(acceptsInput ? drag : nil)
+        .focusable(acceptsInput)
         .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow]) { press in
-            guard isIdle else { return .ignored }
+            guard acceptsInput else { return .ignored }
             adjust(press.key == .rightArrow || press.key == .upArrow ? 5 : -5)
             return .handled
         }
-        .help(isIdle ? "Drag to adjust; wind past twelve for another hour. Arrow keys change five minutes." : "Time left in this block")
+        .help(acceptsInput ? "Drag to adjust; wind past twelve for another hour. Arrow keys change five minutes."
+              : isIdle ? "" : "Time left in this block")
         .onChange(of: model.selectedTask?.id) { resetDrag() }
         .onChange(of: model.running?.id) { _, id in
             resetDrag()
@@ -72,9 +88,10 @@ struct DialView: View {
         .accessibilityLabel(isIdle ? "Block length" : "Time left")
         .accessibilityValue(isIdle ? "\(model.dialMinutes) minutes" : Format.clock(model.remaining ?? 0))
         .accessibilityAdjustableAction { direction in
-            guard isIdle else { return }
+            guard acceptsInput else { return }
             adjust(direction == .increment ? 5 : -5)
         }
+        .accessibilityHidden(isPicture)
     }
 
     private var drag: some Gesture {
@@ -113,7 +130,7 @@ struct DialView: View {
         for i in 0..<60 {
             let major = i % 5 == 0
             let a = Double(i) / 60 * 2 * .pi - .pi / 2
-            let inner = outer - (major ? 9 : 4)
+            let inner = outer - canvas.width * (major ? 0.0375 : 0.0167)
             var p = Path()
             p.move(to: CGPoint(x: c.x + cos(a) * inner, y: c.y + sin(a) * inner))
             p.addLine(to: CGPoint(x: c.x + cos(a) * outer, y: c.y + sin(a) * outer))

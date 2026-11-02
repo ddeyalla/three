@@ -25,7 +25,8 @@ final class AppModel {
     var destination: Destination = .today
     /// The card opened in place in Inbox, Upcoming or Done, or the tag opened in Tags.
     var expandedTaskId: String?
-    /// Bumped by ⌘N. The next quick-add field on screen claims it and takes focus.
+    /// Bumped by `requestQuickAdd` when the list on screen stays; its field claims the pending request.
+    /// A list that appears instead claims `quickAddPending` on appear.
     var quickAddRequest = 0
     var quickAddPending = false
 
@@ -81,6 +82,18 @@ final class AppModel {
     }
 
     var remaining: TimeInterval? { running.map { $0.remaining(at: now) } }
+
+    /// Today's list in the order `Store.moveTask` counts: every task except dropped ones.
+    var todayRows: [TaskRow] { snapshot.tasks.filter { $0.task.status != .dropped } }
+
+    /// "2 of 3 done", "1h 28m focused": the day so far, for Today's summary and Now's all-done state.
+    var dayProgress: [String] {
+        var parts: [String] = []
+        if snapshot.activeTaskCount > 0 { parts.append("\(snapshot.doneCount) of \(snapshot.activeTaskCount) done") }
+        let focus = snapshot.focusSeconds(at: now)
+        if focus >= 60 { parts.append("\(Format.duration(focus)) focused") }
+        return parts
+    }
 
     /// What Start would run for: the dragged value, else the task's block left, capped at a session.
     var dialMinutes: Int {
@@ -258,6 +271,35 @@ final class AppModel {
     func select(_ row: TaskRow) {
         selectedTaskId = row.id
         dialOverride = nil
+    }
+
+    /// Puts the cursor in quick add on `preferred`, or in the Inbox when that list can't take another task.
+    /// Switching lists leaves the claim to the field that appears, so the outgoing list's field can't take it.
+    func requestQuickAdd(on preferred: Destination? = nil) {
+        let shown = destination
+        if let preferred { destination = preferred }
+        if ![.today, .inbox, .upcoming].contains(destination)
+            || (destination == .today && snapshot.activeTaskCount >= Rules.maxTasks) {
+            destination = .inbox
+        }
+        quickAddPending = true
+        if destination == shown { quickAddRequest += 1 }
+    }
+
+    func canMoveTodayTask(_ id: String, by offset: Int) -> Bool {
+        guard let index = todayRows.firstIndex(where: { $0.id == id }) else { return false }
+        return todayRows.indices.contains(index + offset)
+    }
+
+    func moveTodayTask(_ id: String, by offset: Int) {
+        guard canMoveTodayTask(id, by: offset), let index = todayRows.firstIndex(where: { $0.id == id }) else { return }
+        perform { try store.moveTask(id, to: index + offset) }
+    }
+
+    /// A dropped card: reads the order fresh, so a reload during the drag can't shift where it lands.
+    func moveTodayTask(_ id: String, toGap gap: Int) {
+        guard let index = TodayOrder.destination(of: id, gap: gap, in: todayRows.map(\.id)) else { return }
+        perform { try store.moveTask(id, to: index) }
     }
 
     func toggleExpanded(_ row: TaskRow) {

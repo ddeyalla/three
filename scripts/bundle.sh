@@ -47,6 +47,10 @@ cat > "$APP/Contents/Info.plist" <<EOF
         <key>UTTypeIdentifier</key><string>com.deyalla.three.workspace-pane</string>
         <key>UTTypeConformsTo</key><array><string>public.data</string></array>
         <key>UTTypeDescription</key><string>Three Workspace Pane</string>
+    </dict><dict>
+        <key>UTTypeIdentifier</key><string>com.deyalla.three.today-task</string>
+        <key>UTTypeConformsTo</key><array><string>public.data</string></array>
+        <key>UTTypeDescription</key><string>Three Today Task</string>
     </dict></array>
 </dict>
 </plist>

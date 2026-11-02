@@ -1,118 +1,287 @@
 import SwiftUI
 import ThreeCore
 
-/// The middle pane: what the dial is about, the dial, the time left and the controls, centred.
+/// The middle pane: one column of what the dial is about, how long is left, and what to do.
 struct NowPane: View {
     var body: some View {
         GeometryReader { geo in
             ScrollView {
-                TimerSection()
+                TimerSection(dial: DialView.diameter(fitting: geo.size))
                     .padding(Space.xl)
-                    .frame(maxWidth: .infinity, minHeight: geo.size.height)
+                    .frame(maxWidth: .infinity, minHeight: geo.size.height,
+                           alignment: Alignment(horizontal: .center, vertical: .optical))
             }
         }
     }
 }
 
+private extension VerticalAlignment {
+    /// Two parts of the spare height above the column and three below, so it reads as centred.
+    enum Optical: AlignmentID {
+        static func defaultValue(in d: ViewDimensions) -> CGFloat { d.height * 0.4 }
+    }
+
+    static let optical = VerticalAlignment(Optical.self)
+}
+
 // MARK: Timer
+
+/// What Now shows. Every group in the column reads this instead of re-deriving it from the timer.
+private enum NowState {
+    /// Nothing running; Start would time this task.
+    case ready(TaskRow)
+    /// A focus block, running, paused or past its end. A block started without a task has none.
+    case focus(Session, TaskRow?)
+    case rest(Session, next: TaskRow?)
+    /// Nothing open and nothing done yet.
+    case empty
+    /// Nothing open, and at least one task done.
+    case allDone
+
+    @MainActor init(_ model: AppModel) {
+        if let running = model.running {
+            self = running.kind == .focus ? .focus(running, model.runningTask) : .rest(running, next: model.snapshot.nextTask)
+        } else if let task = model.selectedTask {
+            self = .ready(task)
+        } else {
+            self = model.snapshot.doneCount > 0 ? .allDone : .empty
+        }
+    }
+
+    /// The task whose title, category and current step lead the column.
+    var task: TaskRow? {
+        switch self {
+        case .ready(let task): task
+        case .focus(_, let task): task
+        default: nil
+        }
+    }
+
+    /// Whether there is a time to read: empty and finished days show the dial as a picture only.
+    var isTiming: Bool {
+        switch self {
+        case .empty, .allDone: false
+        default: true
+        }
+    }
+
+    var isPaused: Bool {
+        if case .focus(let session, _) = self { return session.isPaused }
+        return false
+    }
+}
 
 private struct TimerSection: View {
     @Environment(AppModel.self) private var model
+    let dial: CGFloat
 
     var body: some View {
-        VStack(spacing: Space.md) {
-            VStack(spacing: Space.xs) {
-                Text(heading)
-                    .font(Typo.focus)
-                    .lineLimit(1)
-                if let row = model.running?.kind == .break ? nil : (model.runningTask ?? model.selectedTask) {
-                    TaskDetailLine(row: row)
+        let state = NowState(model)
+        VStack(spacing: Space.xl) {
+            what(state)
+            VStack(spacing: 0) {
+                DialView(size: dial)
+                if state.isTiming {
+                    Text(readout)
+                        .font(Typo.display)
+                        .foregroundStyle(readoutStyle(state))
+                        .contentTransition(.numericText(countsDown: true))
+                        .padding(.top, Space.md)
+                    status(state)
+                        .font(Typo.body)
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .padding(.top, Space.xs)
                 }
             }
-            DialView(size: 240)
-            VStack(spacing: Space.sm) {
-                Text(readout)
-                    .font(Typo.display)
-                    .foregroundStyle((model.remaining ?? 1) <= 0 ? Theme.overrun : .primary)
-                    .contentTransition(.numericText(countsDown: true))
-                Text(span)
-                    .font(Typo.body)
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, Space.md)
-                    .padding(.vertical, Space.xs)
-                    .glassEffect(.regular, in: .capsule)
+            if case .allDone = state {} else {
+                Controls(state: state)
             }
-            Controls()
-                .padding(.top, Space.xs)
         }
         .frame(maxWidth: .infinity)
     }
 
-    private var heading: String {
-        if let running = model.running {
-            if running.kind == .break { return "Break" }
-            return model.runningTask?.task.title ?? "Focus"
+    private func what(_ state: NowState) -> some View {
+        VStack(spacing: Space.sm) {
+            VStack(spacing: Space.hairline) {
+                Text(title(state))
+                    .font(Typo.title)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .frame(maxWidth: 420)
+                    .help(state.task?.task.title ?? "")
+                    .accessibilityAddTraits(.isHeader)
+                subtitle(state)
+            }
+            if let task = state.task, !task.steps.isEmpty {
+                CurrentStep(row: task)
+            }
         }
-        return model.selectedTask?.task.title ?? (model.snapshot.tasks.isEmpty ? "What are your three today?" : "All done for today")
+    }
+
+    private func title(_ state: NowState) -> String {
+        switch state {
+        case .ready(let task): task.task.title
+        case .focus(_, let task): task?.task.title ?? "Focus"
+        case .rest: "Break"
+        case .empty: "What are your three today?"
+        case .allDone: "All done for today"
+        }
+    }
+
+    @ViewBuilder private func subtitle(_ state: NowState) -> some View {
+        switch state {
+        case .ready(let task), .focus(_, let task?):
+            HStack(spacing: Space.xs) {
+                Circle().fill(task.category.color).frame(width: 6, height: 6)
+                Text(task.category.name)
+            }
+            .font(Typo.meta)
+            .foregroundStyle(.secondary)
+            .accessibilityElement(children: .combine)
+        case .rest(_, let next?):
+            Text("Up next · \(next.task.title)")
+                .font(Typo.meta)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        case .empty:
+            Text("Add a task, then start a block.")
+                .font(Typo.body)
+                .foregroundStyle(.secondary)
+        case .allDone:
+            Text(model.dayProgress.joined(separator: " · "))
+                .font(Typo.body)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+        default:
+            EmptyView()
+        }
     }
 
     private var readout: String {
         Format.clock(model.remaining ?? TimeInterval(model.dialMinutes * 60))
     }
 
-    private var span: String {
-        if let running = model.running {
-            if running.isPaused { return "Paused" }
-            if running.remaining(at: model.now) <= 0 { return "Ended \(Format.time(running.plannedEnd))" }
-            return Format.span(running.startedAt, running.plannedEnd)
+    private func readoutStyle(_ state: NowState) -> AnyShapeStyle {
+        if (model.remaining ?? 1) <= 0 { return AnyShapeStyle(Theme.overrun) }
+        return state.isPaused ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary)
+    }
+
+    /// One plain line under the time left: the span, Paused, or when an overrunning block was due to end.
+    @ViewBuilder private func status(_ state: NowState) -> some View {
+        if state.isPaused {
+            Label("Paused", systemImage: "pause.fill")
+        } else if let running = model.running {
+            Text(running.remaining(at: model.now) <= 0
+                 ? "Ended \(Format.time(running.plannedEnd))"
+                 : Format.span(running.startedAt, running.plannedEnd))
+        } else {
+            Text(Format.span(model.now, model.now.addingTimeInterval(TimeInterval(model.dialMinutes * 60))))
         }
-        return Format.span(model.now, model.now.addingTimeInterval(TimeInterval(model.dialMinutes * 60)))
+    }
+}
+
+/// The first unchecked step of the task Now is about. Clicking ticks it off and brings up the next.
+private struct CurrentStep: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let row: TaskRow
+
+    private var current: Int? { row.steps.firstIndex { !$0.done } }
+
+    var body: some View {
+        Group {
+            if let index = current {
+                let step = row.steps[index]
+                let position = "\(index + 1) of \(row.steps.count)"
+                Button {
+                    model.perform { try model.store.setStep(step.id, done: true) }
+                } label: {
+                    HStack(spacing: Space.sm) {
+                        Image(systemName: "square")
+                            .foregroundStyle(.secondary)
+                        Text(step.title)
+                            .lineLimit(1)
+                            .contentTransition(.opacity)
+                        Text(position)
+                            .font(Typo.meta)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                    .frame(minHeight: Space.xl)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .help("Mark this step done")
+                .accessibilityLabel("Current step: \(step.title), \(position)")
+                .accessibilityHint("Marks this step done")
+            } else {
+                HStack(spacing: Space.sm) {
+                    Image(systemName: "checkmark.square.fill")
+                        .foregroundStyle(row.category.color)
+                    Text("All \(row.steps.count) steps done")
+                        .foregroundStyle(.secondary)
+                }
+                .frame(minHeight: Space.xl)
+                .accessibilityElement(children: .combine)
+            }
+        }
+        .font(Typo.body)
+        .frame(maxWidth: 360)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: current)
     }
 }
 
 private struct Controls: View {
     @Environment(AppModel.self) private var model
+    let state: NowState
 
     var body: some View {
         GlassEffectContainer(spacing: Space.sm) {
             HStack(spacing: Space.sm) {
-                if let running = model.running {
-                    if running.kind == .focus {
-                        Button("+5") { model.extend(5) }
-                            .buttonStyle(.glass)
-                            .help("Add 5 minutes (⌘+)")
-                        Button { model.togglePause() } label: {
-                            Label(running.isPaused ? "Resume" : "Pause",
-                                  systemImage: running.isPaused ? "play.fill" : "pause.fill")
-                                .frame(minWidth: 96)
+                switch state {
+                case .focus(let running, _):
+                    Button("+5") { model.extend(5) }
+                        .buttonStyle(.glass)
+                        .help("Add 5 minutes (⌘+)")
+                    Button { model.togglePause() } label: {
+                        Label(running.isPaused ? "Resume" : "Pause",
+                              systemImage: running.isPaused ? "play.fill" : "pause.fill")
+                            .frame(minWidth: 96)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .tint(model.accent)
+                    .help(running.isPaused ? "Resume (⇧⌘P)" : "Pause (⇧⌘P)")
+                    Button("Finish") { model.finishEarly() }
+                        .buttonStyle(.glass)
+                        .help("Reflect on this block (⇧⌘Return)")
+                case .rest(_, let next):
+                    Button("End break") { model.stop() }
+                        .buttonStyle(.glass)
+                    if let next {
+                        Button { model.start(next) } label: {
+                            Label("Start next", systemImage: "play.fill")
                         }
                         .buttonStyle(.glassProminent)
-                        .tint(model.accent)
-                        .help(running.isPaused ? "Resume (⇧⌘P)" : "Pause (⇧⌘P)")
-                        Button("Finish") { model.finishEarly() }
-                            .buttonStyle(.glass)
-                            .help("Reflect on this block (⇧⌘Return)")
-                    } else {
-                        Button("End break") { model.stop() }
-                            .buttonStyle(.glass)
-                        if let next = model.snapshot.nextTask {
-                            Button { model.start(next) } label: {
-                                Label("Start next", systemImage: "play.fill")
-                            }
-                            .buttonStyle(.glassProminent)
-                            .tint(next.category.color)
-                            .help("Start \(next.task.title)")
-                        }
+                        .tint(next.category.color)
+                        .help("Start \(next.task.title)")
                     }
-                } else {
+                case .ready:
                     Button { model.start() } label: {
                         Label("Start", systemImage: "play.fill").frame(minWidth: 112)
                     }
                     .buttonStyle(.glassProminent)
                     .tint(model.accent)
-                    .disabled(model.selectedTask == nil)
                     .help("Start focus (⌘Return)")
+                case .empty:
+                    Button { model.requestQuickAdd(on: .today) } label: {
+                        Label("Add Task", systemImage: "plus").frame(minWidth: 112)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .tint(Theme.idle)
+                    .help("Add a task (⌘N)")
+                case .allDone:
+                    EmptyView()
                 }
             }
         }
@@ -122,10 +291,15 @@ private struct Controls: View {
 // MARK: Tasks
 
 /// Today in the tasks pane: the day's summary, its tasks and a field to add one.
+/// Cards drag by their title row; the order is the day's priority.
 struct TodayList: View {
     @Environment(AppModel.self) private var model
-
-    private var rows: [TaskRow] { model.snapshot.tasks.filter { $0.task.status != .dropped } }
+    /// The card whose title row is being dragged, as its drag session reports it.
+    @State private var draggingTaskId: String?
+    /// The gap that card would drop into while it is over the list.
+    @State private var dropGap: Int?
+    @State private var cardFrames: [String: CGRect] = [:]
+    private nonisolated static let space = "today-list"
 
     var body: some View {
         PaneList(subtitle: summary) {
@@ -139,22 +313,23 @@ struct TodayList: View {
         } content: {
             list
         }
+        .focusedSceneValue(\.todayList, true)
     }
 
     private var summary: String {
-        let snap = model.snapshot
-        var parts = [snap.day.startDate.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))]
-        if snap.activeTaskCount > 0 { parts.append("\(snap.doneCount) of \(snap.activeTaskCount) done") }
-        let focus = snap.focusSeconds(at: model.now)
-        if focus >= 60 { parts.append("\(Format.duration(focus)) focused") }
-        return parts.joined(separator: " · ")
+        let date = model.snapshot.day.startDate.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
+        return ([date] + model.dayProgress).joined(separator: " · ")
     }
 
     private var list: some View {
-        GlassEffectContainer(spacing: Space.sm) {
+        let rows = model.todayRows
+        return GlassEffectContainer(spacing: Space.sm) {
             VStack(alignment: .leading, spacing: Space.sm) {
                 ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                    TodayTaskCard(row: row, index: index, count: rows.count)
+                    TodayTaskCard(row: row, index: index, count: rows.count, dragging: $draggingTaskId)
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: {
+                            cardFrames[row.id] = $0
+                        }
                 }
                 if model.snapshot.activeTaskCount < Rules.maxTasks {
                     QuickAddField(defaultDay: model.snapshot.day,
@@ -170,6 +345,58 @@ struct TodayList: View {
                         .padding(.top, Space.xs)
                 }
             }
+            .coordinateSpace(.named(Self.space))
+            .overlay(alignment: .topLeading) { insertionMark(rows.map(\.id)) }
+            // Present only while a Today card is in flight: a drop target here at any other time
+            // would hide the Tasks pane's own drop target from pane drags.
+            .overlay { if draggingTaskId != nil { dropZone } }
+        }
+        .onChange(of: rows.map(\.id)) { _, ids in
+            cardFrames = cardFrames.filter { ids.contains($0.key) }
+            if let id = draggingTaskId, !ids.contains(id) {
+                draggingTaskId = nil
+                dropGap = nil
+            }
+        }
+    }
+
+    private func gap(at y: CGFloat) -> Int {
+        TodayOrder.gap(at: y, ids: model.todayRows.map(\.id), frames: cardFrames)
+    }
+
+    /// Covers the cards, quick add and the note, above any text field, so a card can't drop into one.
+    private var dropZone: some View {
+        Color.clear
+            .contentShape(.rect)
+            .dropDestination(for: TodayTaskDrag.self) { items, session in
+                defer { dropGap = nil }
+                guard items.count == 1, let id = items.first?.taskId else { return }
+                model.moveTodayTask(id, toGap: gap(at: session.location.y))
+            }
+            .dropConfiguration { _ in DropConfiguration(operation: .move) }
+            .onDropSessionUpdated { session in
+                switch session.phase {
+                case .entering, .active: dropGap = gap(at: session.location.y)
+                default: dropGap = nil
+                }
+            }
+            .allowsHitTesting(false)
+    }
+
+    /// A neutral line in the gap the card would land in, shown only where the order would change.
+    @ViewBuilder private func insertionMark(_ ids: [String]) -> some View {
+        let frames = ids.compactMap { cardFrames[$0] }
+        if let id = draggingTaskId, let gap = dropGap, frames.count == ids.count, let first = frames.first,
+           TodayOrder.destination(of: id, gap: gap, in: ids) != nil {
+            let y = gap == 0 ? first.minY - Space.xs
+                : gap >= frames.count ? frames[frames.count - 1].maxY + Space.xs
+                : (frames[gap - 1].maxY + frames[gap].minY) / 2
+            Capsule()
+                .fill(.primary.opacity(0.5))
+                .frame(width: first.width - 2 * Space.md, height: 2)
+                .offset(x: first.minX + Space.md, y: y - 1)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
         }
     }
 }
@@ -179,6 +406,7 @@ private struct TodayTaskCard: View {
     let row: TaskRow
     let index: Int
     let count: Int
+    let dragging: Binding<String?>
 
     private var isRunning: Bool { model.running?.taskId == row.id }
     private var isSelected: Bool { model.running == nil && model.selectedTask?.id == row.id }
@@ -189,15 +417,19 @@ private struct TodayTaskCard: View {
                  onTap: {
                      if row.task.status.isOpen && model.running == nil { model.select(row) }
                      else { model.toggleExpanded(row) }
-                 }) {
+                 },
+                 reorder: CardReorder(dragging: dragging,
+                                      moveUp: index > 0 ? { model.moveTodayTask(row.id, by: -1) } : nil,
+                                      moveDown: index < count - 1 ? { model.moveTodayTask(row.id, by: 1) } : nil)) {
             trailing
         }
         .contextMenu {
             TaskMenuItems(row: row)
             Divider()
-            Button("Move up") { model.perform { try model.store.moveTask(row.id, to: index - 1) } }.disabled(index == 0)
-            Button("Move down") { model.perform { try model.store.moveTask(row.id, to: index + 1) } }.disabled(index == count - 1)
+            Button("Move Up") { model.moveTodayTask(row.id, by: -1) }.disabled(index == 0)
+            Button("Move Down") { model.moveTodayTask(row.id, by: 1) }.disabled(index == count - 1)
         }
+        .focusedValue(\.todayFocus, .card(row.id))
     }
 
     @ViewBuilder private var trailing: some View {

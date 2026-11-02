@@ -21,16 +21,15 @@ struct ThreeApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("Quick Add") {
-                    if ![.today, .inbox, .upcoming].contains(model.destination)
-                        || (model.destination == .today && model.snapshot.activeTaskCount >= Rules.maxTasks) {
-                        model.destination = .inbox
-                    }
-                    model.quickAddPending = true
-                    model.quickAddRequest += 1
+                    model.requestQuickAdd()
                     openWindow(id: "main")
                     NSApp.activate()
                 }
                 .keyboardShortcut("n")
+            }
+            CommandGroup(after: .pasteboard) {
+                Divider()
+                TodayMoveCommands(model: model)
             }
             CommandMenu("Focus") {
                 Button("Start Focus") { model.start() }
