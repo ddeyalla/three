@@ -17,6 +17,11 @@ struct MenuBarLabel: View {
                     .animation(reduceMotion ? nil : .easeInOut(duration: 1), value: reminderBright)
                     .accessibilityLabel("Saved reflection awaiting review")
             }
+            // Only while something is really stopped; never pulses, so it can't compete with the reminder dot.
+            if model.blocking.isEnforcing {
+                Image(systemName: "hand.raised.fill")
+                    .accessibilityLabel(model.blocking.headline)
+            }
             title
         }
     }
@@ -95,6 +100,10 @@ struct MenuBarView: View {
                 .tint(next.category.color)
             }
 
+            if model.blocking.policy.isActive {
+                BlockingRow()
+            }
+
             if !model.snapshot.tasks.isEmpty {
                 VStack(alignment: .leading, spacing: Space.sm) {
                     ForEach(model.snapshot.tasks.filter { $0.task.status != .dropped }) { row in
@@ -133,5 +142,68 @@ struct MenuBarView: View {
         .padding(Space.lg)
         .frame(width: 300)
         .preferredColorScheme(.dark)
+    }
+}
+
+/// While blocking is on: until when, why and what covers it, with the one route to open a rule for five minutes.
+private struct BlockingRow: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.openSettings) private var openSettings
+
+    var body: some View {
+        let state = model.blocking
+        HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
+            Image(systemName: state.isDegraded ? "exclamationmark.circle.fill" : "hand.raised.fill")
+                .foregroundStyle(state.isDegraded ? AnyShapeStyle(Theme.overrun) : AnyShapeStyle(.secondary))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: Space.hairline) {
+                Text(state.headline)
+                    .font(Typo.body)
+                    .monospacedDigit()
+                Text(state.detail)
+                    .font(Typo.meta)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .accessibilityElement(children: .combine)
+            Spacer(minLength: Space.xs)
+            Menu {
+                if state.isDegraded {
+                    Button("Set Up Chrome…") { openBlockingSettings(chrome: true) }
+                }
+                if !state.unblockable.isEmpty || !state.policy.exceptions.isEmpty {
+                    Menu("Unblock for 5 Minutes") {
+                        ForEach(state.unblockable) { rule in
+                            if let parent = state.policy.coveringRule(for: rule) {
+                                Button("\(rule.name) (also blocked by \(parent.name))") {}.disabled(true)
+                            } else {
+                                Button(rule.name) { model.requestUnblock(rule) }
+                            }
+                        }
+                        ForEach(state.policy.exceptions, id: \.id) { e in
+                            if let rule = state.status.rules.first(where: { $0.id == e.ruleId }) {
+                                Button("\(rule.name) · open until \(Format.time(e.expiresAt))") {}.disabled(true)
+                            }
+                        }
+                    }
+                }
+                Button("Blocking Settings…") { openBlockingSettings(chrome: false) }
+            } label: {
+                Image(systemName: "ellipsis")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Blocking options")
+            .accessibilityLabel("Blocking options")
+        }
+    }
+
+    private func openBlockingSettings(chrome: Bool) {
+        model.settingsTab = .blocking
+        if chrome { model.chromeSetupRequested = true }
+        openSettings()
+        NSApp.activate()
     }
 }

@@ -29,6 +29,12 @@ final class AppModel {
     /// A list that appears instead claims `quickAddPending` on appear.
     var quickAddRequest = 0
     var quickAddPending = false
+    /// The blocker as this Mac enforces it, re-read on every change, at the policy's next change and every few seconds.
+    private(set) var blocking: BlockingState
+    /// The Settings tab to show, so Blocking Settings… can open it there.
+    var settingsTab: SettingsTab = .timer
+    /// Set by the menu bar's Set Up Chrome…; the Blocking tab claims it and opens the setup sheet.
+    var chromeSetupRequested = false
 
     @ObservationIgnored private var signalToken: Int32 = 0
     @ObservationIgnored private var ticker: Timer?
@@ -38,6 +44,9 @@ final class AppModel {
     @ObservationIgnored private var scheduledNotification: (id: String, end: Date)?
     @ObservationIgnored private var reflectionNote = ""
     @ObservationIgnored lazy var reflection = ReflectionPanelController(model: self)
+    @ObservationIgnored lazy var appBlocker = AppBlocker(model: self)
+    @ObservationIgnored lazy var blockOverlay = BlockOverlayController(model: self)
+    @ObservationIgnored private var systemObservers: [NSObjectProtocol] = []
 
     init() {
         do {
@@ -48,6 +57,7 @@ final class AppModel {
             logbook = try store.logbook()
             tagSummaries = try store.tagSummaries()
             deferredReflections = try store.deferredReflections()
+            blocking = BlockingState(status: try store.blockStatus(), now: Date())
         } catch {
             fatalError("Three can't open its database: \(error)")
         }
@@ -64,6 +74,21 @@ final class AppModel {
         // A notification left from before a relaunch may be stale; reconcile schedules a fresh one if needed.
         UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
         reconcile()
+        // A new time zone, a changed clock or a wake can move every focus-hours boundary at once.
+        let local = NotificationCenter.default, workspace = NSWorkspace.shared.notificationCenter
+        systemObservers = [
+            local.addObserver(forName: .NSSystemTimeZoneDidChange, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.reload() }
+            },
+            local.addObserver(forName: .NSSystemClockDidChange, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.reload() }
+            },
+            workspace.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.reload() }
+            },
+        ]
+        appBlocker.start()
+        refreshBlocking()
     }
 
     // MARK: Derived
@@ -108,6 +133,8 @@ final class AppModel {
     private func tick() {
         now = Date()
         if snapshot.day != DayKey(now) { reload() }
+        // A clock set back by more than a tick leaves the last policy in the future, so read it again.
+        if now >= blockingRefreshDue || now < blocking.now.addingTimeInterval(-1) { refreshBlocking() }
         try? store.finishBreakIfDue(now: now)
         reconcileReflection()
         if case .live(let prompt, _) = reflectionPresentation, now >= prompt.deadline {
@@ -145,6 +172,28 @@ final class AppModel {
         } catch {
             self.error = error.localizedDescription
         }
+        refreshBlocking()
+    }
+
+    /// Browser heartbeats are written silently, so connections are re-read this often even when nothing else changes.
+    private static let blockingRecheck: TimeInterval = 15
+
+    private var blockingRefreshDue: Date {
+        min(blocking.policy.nextChange ?? .distantFuture, blocking.now.addingTimeInterval(Self.blockingRecheck))
+    }
+
+    /// Re-reads the blocker and applies it: hides apps now in force and closes an overlay whose rule no longer is.
+    func refreshBlocking() {
+        NSTimeZone.resetSystemTimeZone()
+        let at = Date()
+        do {
+            blocking = BlockingState(status: try store.blockStatus(now: at, calendar: .current), now: at)
+        } catch {
+            self.error = error.localizedDescription
+            return
+        }
+        appBlocker.enforce(blocking)
+        blockOverlay.reconcile(with: blocking)
     }
 
     /// Keeps the one pending notification in step with the running session, whoever changed it.
@@ -266,6 +315,11 @@ final class AppModel {
         default:
             break
         }
+    }
+
+    /// Opens the panel where a person asks for one rule for five minutes. Only ever from Three's own UI.
+    func requestUnblock(_ rule: BlockRule) {
+        blockOverlay.present(.init(rule: rule, appName: rule.bundleID == nil ? nil : rule.name), mode: .unblock)
     }
 
     func select(_ row: TaskRow) {

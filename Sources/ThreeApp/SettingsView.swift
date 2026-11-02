@@ -2,12 +2,20 @@ import AppKit
 import SwiftUI
 import ThreeCore
 
+enum SettingsTab: Hashable {
+    case timer, categories, blocking, connect
+}
+
 struct SettingsView: View {
+    @Environment(AppModel.self) private var model
+
     var body: some View {
-        TabView {
-            Tab("Timer", systemImage: "timer") { TimerSettings() }
-            Tab("Categories", systemImage: "circle.grid.2x2") { CategorySettings() }
-            Tab("Connect", systemImage: "point.3.connected.trianglepath.dotted") { ConnectSettings() }
+        @Bindable var model = model
+        TabView(selection: $model.settingsTab) {
+            Tab("Timer", systemImage: "timer", value: .timer) { TimerSettings() }
+            Tab("Categories", systemImage: "circle.grid.2x2", value: .categories) { CategorySettings() }
+            Tab("Blocking", systemImage: "hand.raised", value: .blocking) { BlockingSettings() }
+            Tab("Connect", systemImage: "point.3.connected.trianglepath.dotted", value: .connect) { ConnectSettings() }
         }
         .frame(width: 520, height: 460)
         .preferredColorScheme(.dark)
@@ -198,7 +206,6 @@ private struct ConnectSettings: View {
             Section("Coming next") {
                 LabeledContent("MCP server", value: "v0.4")
                 LabeledContent("Calendar sync", value: "v0.5")
-                LabeledContent("Site and app blocker", value: "v0.3")
             }
         }
         .formStyle(.grouped)

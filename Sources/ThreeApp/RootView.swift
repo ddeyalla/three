@@ -24,7 +24,11 @@ struct RootView: View {
         .animation(.easeOut(duration: 0.2), value: model.error)
         .background(Backdrop())
         .background(InitialFocusSink())
-        .onAppear { if ProcessInfo.processInfo.environment["THREE_OPEN"] == "settings" { openSettings() } }
+        .onAppear {
+            let open = ProcessInfo.processInfo.environment["THREE_OPEN"]
+            if open == "blocking" { model.settingsTab = .blocking }
+            if open == "settings" || open == "blocking" { openSettings() }
+        }
         .preferredColorScheme(.dark)
         .frame(minWidth: 1060, minHeight: 640)
     }

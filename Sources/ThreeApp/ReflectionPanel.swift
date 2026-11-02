@@ -67,7 +67,7 @@ final class ReflectionPanelController {
     }
 }
 
-private final class KeyablePanel: NSPanel {
+class KeyablePanel: NSPanel {
     override var canBecomeKey: Bool { true }
 }
 

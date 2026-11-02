@@ -168,7 +168,19 @@ private struct TimerSection: View {
     }
 
     /// One plain line under the time left: the span, Paused, or when an overrunning block was due to end.
-    @ViewBuilder private func status(_ state: NowState) -> some View {
+    /// While something is really being blocked, a quiet "· Blocking" follows it.
+    private func status(_ state: NowState) -> some View {
+        HStack(spacing: 0) {
+            timing(state)
+            if model.blocking.isEnforcing {
+                Text(" · \(Image(systemName: "hand.raised.fill")) Blocking")
+                    .help("\(model.blocking.headline). \(model.blocking.detail)")
+                    .accessibilityLabel(model.blocking.headline)
+            }
+        }
+    }
+
+    @ViewBuilder private func timing(_ state: NowState) -> some View {
         if state.isPaused {
             Label("Paused", systemImage: "pause.fill")
         } else if let running = model.running {
