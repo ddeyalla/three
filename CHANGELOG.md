@@ -3,6 +3,7 @@
 ## Unreleased
 
 - After two minutes without an answer or edit, the reflection panel saves Made progress and Okay, keeps any note, ends the block, and hides. A pulsing menu-bar dot reminds you to review or dismiss it. Saved reflections survive relaunch, and editing one leaves newer timers alone. Reduce Motion keeps the dot still.
+- Full screen keeps the three panes together in a centred workspace, with space above the controls. Wider windows no longer push the task list and timeline to opposite edges.
 
 ## 0.2.4 — 2026-11-02
 

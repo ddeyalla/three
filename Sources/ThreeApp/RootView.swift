@@ -16,6 +16,9 @@ struct RootView: View {
             DayTimelineView()
                 .frame(width: 340)
         }
+        .padding(.top, Space.lg)
+        .frame(maxWidth: 1240)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay(alignment: .bottom) {
             if model.error != nil {
                 ErrorNote()

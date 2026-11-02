@@ -155,6 +155,8 @@ One window, three panes, no sidebar and no toolbar:
 
 Panes sit straight on the canvas, separated by space, not lines. Categories are managed in Settings, not in the window.
 
+The three panes form one centred workspace, at most 1240pt wide. Wider windows and full screen add equal space on either side instead of stretching the gap around the dial. Keep at least 16pt above the pane controls, including in full screen.
+
 Spacing uses one scale: 2 (a title and its subtitle), 4, 8, 12, 16, 24, 32. Inside a group the gap is 4 to 8; between groups 16 to 24; between page sections 24 to 32. Page margins are 24pt.
 
 ## Elevation & Depth
