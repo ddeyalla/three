@@ -480,7 +480,8 @@ private struct FocusHoursSheet: View {
                     Text("From").foregroundStyle(.secondary)
                     DatePicker("From", selection: $from, displayedComponents: .hourAndMinute).labelsHidden()
                 }
-                GridRow {
+                // The label sits on the picker's line, not halfway down to the caption under it.
+                GridRow(alignment: .firstTextBaseline) {
                     Text("To").foregroundStyle(.secondary)
                     VStack(alignment: .leading, spacing: Space.xs) {
                         DatePicker("To", selection: $to, displayedComponents: .hourAndMinute).labelsHidden()
