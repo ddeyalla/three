@@ -124,7 +124,7 @@ private func task(_ title: String, _ minutes: Int = 60, _ category: String = "Co
         }
     }
     let store = try Store(url: url)
-    let snap = try store.snapshot()
+    let snap = try store.snapshot(for: DayKey(pausedAt.addingTimeInterval(-60)))
     #expect(snap.running == nil)
     #expect(snap.sessions.first?.endedAt == pausedAt)
     #expect(snap.sessions.first.map { Int($0.elapsed(at: Date())) } == 60)

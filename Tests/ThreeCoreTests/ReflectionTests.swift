@@ -104,8 +104,9 @@ func changedFocusCannotBeEndedByOldReflection(change: String) throws {
 
 @Test func reflectionAcceptsTheSessionReturnedByStartFocus() throws {
     let store = try reflectionStore()
-    try store.addTask(NewTask(title: "Review the draft", category: "Coding", blockMinutes: 30), source: .app)
-    let session = try store.startFocus(now: Date(timeIntervalSince1970: 1_793_619_000.123456))
+    let start = Date(timeIntervalSince1970: 1_793_619_000.123456)
+    try store.addTask(NewTask(title: "Review the draft", category: "Coding", blockMinutes: 30), day: DayKey(start), source: .app)
+    let session = try store.startFocus(now: start)
     let prompt = ReflectionPrompt(session: session, openedAt: session.plannedEnd)
     #expect(try store.deferReflection(prompt, now: prompt.deadline))
     #expect(try store.deferredReflections().first?.id == session.id)
@@ -138,7 +139,7 @@ func changedFocusCannotBeEndedByOldReflection(change: String) throws {
             """)
     }
     let migrated = try Store(url: url)
-    let session = try #require(try migrated.snapshot().sessions.first { $0.id == "old" })
+    let session = try #require(try migrated.db.read { try Session.fetchOne($0, key: "old") })
     #expect(!session.reflectionPending)
     #expect(session.outcome == .done)
     #expect(try migrated.deferredReflections().isEmpty)
