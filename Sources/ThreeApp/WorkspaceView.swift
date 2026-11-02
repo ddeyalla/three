@@ -37,12 +37,17 @@ private struct WorkspaceSplitView: NSViewControllerRepresentable {
     }
 }
 
+private final class BorderlessSplitView: NSSplitView {
+    override func drawDivider(in rect: NSRect) {}
+}
+
 private final class PaneSplitController: NSSplitViewController {
     private var items: [WorkspacePane: NSSplitViewItem] = [:]
     private var order: [WorkspacePane] = []
 
     init(model: AppModel, layout: WorkspaceLayout, order: [WorkspacePane]) {
         super.init(nibName: nil, bundle: nil)
+        splitView = BorderlessSplitView()
         splitView.isVertical = true
         splitView.dividerStyle = .thin
         for pane in WorkspacePane.allCases {
@@ -162,7 +167,6 @@ private struct WorkspacePaneView: View {
         .font(Typo.heading)
         .padding(.leading, Space.md)
         .padding(.trailing, Space.xs)
-        .glassEffect(.regular, in: .rect(cornerRadius: Radius.card))
     }
 
     @ViewBuilder private var content: some View {

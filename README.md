@@ -14,7 +14,7 @@ The full product spec, with principles, data model and roadmap, is in [PRODUCT.m
 
 ## What it does
 
-- **Three movable panes.** Tasks (Today, Inbox, Upcoming, Done or Tags), the focus dial, and the day's timeline fill the window as rounded translucent panes with glass headers. Drag a header onto another pane to reorder, or use its menu or View → Arrange Panes. Order is remembered; Reset Pane Order restores Tasks, Now, Timeline. Drag the dividers to adjust widths.
+- **Three movable panes.** Tasks (Today, Inbox, Upcoming, Done or Tags), the focus dial, and the day's timeline fill the window as rounded translucent panes with plain headers. Drag a header onto another pane to reorder, or use its menu or View → Arrange Panes. Order is remembered; Reset Pane Order restores Tasks, Now, Timeline. Drag the gaps between panes to adjust widths.
 - **Three by default, five at most.** A fourth or fifth task brings a gentle warning, and a sixth is refused.
 - **Focus blocks.** Each task has a block, for example 90 minutes, that you work through in sessions (45 minutes by default, up to 4 hours, set in Settings → Timer). Drag the dial to change one; past 12 o'clock it winds on into another hour. You can pause, add five minutes or finish early.
 - **Reflection, then a break.** When a block ends, a small panel asks how it went, then starts a short or long break based on how long you've been focusing. After two minutes without an answer or edit, it ends the block with Made progress and Okay and keeps your note. A menu-bar dot lets you review or dismiss that reflection later.
