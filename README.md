@@ -29,6 +29,25 @@ The full product spec, with principles, data model and roadmap, is in [PRODUCT.m
 
 ![Tags: time spent on each thread of work](docs/tags.png)
 
+## Keyboard controls
+
+The Focus and Go menus show these commands and disable actions that do not apply.
+
+| Action | Shortcut |
+| --- | --- |
+| Quick add | ⌘N |
+| Today, Inbox, Upcoming, Done, Tags | ⌘1 through ⌘5 |
+| Start focus | ⌘Return |
+| Pause or resume | ⇧⌘P |
+| Add five minutes | ⌘+ |
+| Finish and reflect | ⇧⌘Return |
+| Review a saved reflection | ⇧⌘R |
+| Adjust the focused idle dial | Arrow keys, five minutes at a time |
+| Start the suggested break in a reflection | Return |
+| Close a reflection | Escape |
+
+Task titles, tag headers, and checklist rows use native buttons. Tab navigation follows your macOS keyboard-navigation setting. Quick Add uses Inbox when today's five slots are full.
+
 ## Install
 
 You need macOS 26 or later and the Xcode Command Line Tools (`xcode-select --install`). Full Xcode isn't required.

@@ -1,11 +1,13 @@
 import AppKit
 import SwiftUI
+import ThreeCore
 import UserNotifications
 
 @main
 struct ThreeApp: App {
     @NSApplicationDelegateAdaptor private var delegate: AppDelegate
     @State private var model = AppModel()
+    @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {
         Window("Three", id: "main") {
@@ -17,11 +19,30 @@ struct ThreeApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("Quick Add") {
-                    if ![.today, .inbox, .upcoming].contains(model.destination) { model.destination = .inbox }
+                    if ![.today, .inbox, .upcoming].contains(model.destination)
+                        || (model.destination == .today && model.snapshot.activeTaskCount >= Rules.maxTasks) {
+                        model.destination = .inbox
+                    }
                     model.quickAddPending = true
                     model.quickAddRequest += 1
+                    openWindow(id: "main")
+                    NSApp.activate()
                 }
                 .keyboardShortcut("n")
+            }
+            CommandMenu("Focus") {
+                Button("Start Focus") { model.start() }
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .disabled(model.running?.kind == .focus || model.selectedTask == nil)
+                Button(model.running?.isPaused == true ? "Resume" : "Pause") { model.togglePause() }
+                    .keyboardShortcut("p", modifiers: [.command, .shift])
+                    .disabled(model.running?.kind != .focus)
+                Button("Add 5 Minutes") { model.extend(5) }
+                    .keyboardShortcut("+")
+                    .disabled(model.running?.kind != .focus)
+                Button("Finish Block") { model.finishEarly() }
+                    .keyboardShortcut(.return, modifiers: [.command, .shift])
+                    .disabled(model.running?.kind != .focus)
             }
             CommandMenu("Go") {
                 Button("Today") { model.destination = .today }.keyboardShortcut("1")
@@ -34,6 +55,7 @@ struct ThreeApp: App {
                 Button("Review Saved Reflection") {
                     if let saved = model.deferredReflections.first { model.reviewReflection(saved) }
                 }
+                .keyboardShortcut("r", modifiers: [.command, .shift])
                 .disabled(model.deferredReflections.isEmpty || model.reflectionPresentation != nil)
             }
         }

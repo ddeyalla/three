@@ -25,7 +25,6 @@ struct PaneList<Accessory: View, Content: View>: View {
             .padding(.horizontal, Space.lg)
             .padding(.bottom, Space.xl)
         }
-        .scrollIndicators(.never)
     }
 }
 
@@ -64,10 +63,12 @@ struct ListTaskCard: View {
                     if model.day(of: row.id) != today {
                         Button { model.schedule(row, on: today) } label: { Image(systemName: "sun.max") }
                             .help("Do it today")
+                            .accessibilityLabel("Plan \(row.task.title) for today")
                     }
                     if model.day(of: row.id) != today.adding(days: 1) {
                         Button { model.schedule(row, on: today.adding(days: 1)) } label: { Image(systemName: "sunrise") }
                             .help("Tomorrow")
+                            .accessibilityLabel("Plan \(row.task.title) for tomorrow")
                     }
                 }
                 Text(row.task.status == .done ? Format.duration(row.focusedSeconds) : "\(row.task.blockMinutes)m")
@@ -211,23 +212,27 @@ private struct TagCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.sm) {
-            HStack(spacing: Space.md) {
-                VStack(alignment: .leading, spacing: Space.hairline) {
-                    Text("@\(summary.tag.name)")
+            Button { model.expandedTaskId = expanded ? nil : summary.id } label: {
+                HStack(spacing: Space.md) {
+                    VStack(alignment: .leading, spacing: Space.hairline) {
+                        Text("@\(summary.tag.name)")
+                            .font(Typo.body)
+                            .lineLimit(1)
+                        Text(detail)
+                            .font(Typo.meta)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: Space.sm)
+                    Text(Format.duration(summary.seconds))
                         .font(Typo.body)
-                        .lineLimit(1)
-                    Text(detail)
-                        .font(Typo.meta)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
                 }
-                Spacer(minLength: Space.sm)
-                Text(Format.duration(summary.seconds))
-                    .font(Typo.body)
-                    .foregroundStyle(.secondary)
+                .contentShape(.rect)
             }
-            .contentShape(.rect)
-            .onTapGesture { model.expandedTaskId = expanded ? nil : summary.id }
+            .buttonStyle(.plain)
+            .accessibilityLabel("@\(summary.tag.name)")
+            .accessibilityValue("\(Format.duration(summary.seconds)), \(expanded ? "expanded" : "collapsed")")
             if expanded {
                 VStack(alignment: .leading, spacing: Space.xs + Space.hairline) {
                     ForEach(summary.work) { w in

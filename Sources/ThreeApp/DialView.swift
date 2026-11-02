@@ -12,9 +12,8 @@ struct DialView: View {
     static let maxMinutes = 240
     /// 0 → 1 when a block starts: the wedge sweeps open to its length.
     @State private var sweep: Double = 1
-    /// The angle and lap of the drag so far, so crossing 12 o'clock winds on instead of jumping back.
     @State private var dragAngle: Double?
-    @State private var dragLaps = 0
+    @State private var dragMinutes: Double?
 
     private var isIdle: Bool { model.running == nil }
 
@@ -46,7 +45,7 @@ struct DialView: View {
             Wedge(fraction: fraction * sweep)
                 .fill(model.accent.opacity(model.running?.isPaused == true ? 0.4 : 1))
                 .frame(width: face, height: face)
-                .animation(isIdle && !reduceMotion ? .snappy(duration: 0.18) : nil, value: fraction)
+                .animation(isIdle && dragAngle == nil && !reduceMotion ? .snappy(duration: 0.18) : nil, value: fraction)
             Circle()
                 .fill(.clear)
                 .frame(width: 22, height: 22)
@@ -55,7 +54,16 @@ struct DialView: View {
         .frame(width: size, height: size)
         .contentShape(Circle())
         .gesture(isIdle ? drag : nil)
+        .focusable(isIdle)
+        .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow]) { press in
+            guard isIdle else { return .ignored }
+            adjust(press.key == .rightArrow || press.key == .upArrow ? 5 : -5)
+            return .handled
+        }
+        .help(isIdle ? "Drag to adjust; wind past twelve for another hour. Arrow keys change five minutes." : "Time left in this block")
+        .onChange(of: model.selectedTask?.id) { resetDrag() }
         .onChange(of: model.running?.id) { _, id in
+            resetDrag()
             guard id != nil, model.running?.kind == .focus, !reduceMotion else { return }
             sweep = 0
             withAnimation(Theme.arrive) { sweep = 1 }
@@ -65,7 +73,7 @@ struct DialView: View {
         .accessibilityValue(isIdle ? "\(model.dialMinutes) minutes" : Format.clock(model.remaining ?? 0))
         .accessibilityAdjustableAction { direction in
             guard isIdle else { return }
-            model.dialOverride = min(Self.maxMinutes, max(5, model.dialMinutes + (direction == .increment ? 5 : -5)))
+            adjust(direction == .increment ? 5 : -5)
         }
     }
 
@@ -75,20 +83,28 @@ struct DialView: View {
                 let dx = value.location.x - size / 2, dy = value.location.y - size / 2
                 var degrees = atan2(dx, -dy) * 180 / .pi
                 if degrees < 0 { degrees += 360 }
-                if let last = dragAngle {
-                    // Crossing 12 o'clock clockwise winds on an hour; anticlockwise unwinds one.
-                    if last > 270 && degrees < 90 { dragLaps += 1 }
-                    if last < 90 && degrees > 270 { dragLaps -= 1 }
+                if let last = dragAngle, let minutes = dragMinutes {
+                    var delta = degrees - last
+                    if delta > 180 { delta -= 360 }
+                    if delta < -180 { delta += 360 }
+                    let adjusted = min(Double(Self.maxMinutes), max(5, minutes + delta / 6))
+                    dragMinutes = adjusted
+                    model.dialOverride = Int((adjusted / 5).rounded()) * 5
                 } else {
-                    dragLaps = max(0, (model.dialMinutes - 1) / 60)
+                    dragMinutes = Double(model.dialMinutes)
                 }
-                let maxLaps = Self.maxMinutes / 60
-                dragLaps = min(maxLaps, max(0, dragLaps))
                 dragAngle = degrees
-                let minutes = dragLaps * 60 + Int((degrees / 30).rounded()) * 5
-                model.dialOverride = min(Self.maxMinutes, max(5, minutes))
             }
-            .onEnded { _ in dragAngle = nil }
+            .onEnded { _ in resetDrag() }
+    }
+
+    private func adjust(_ minutes: Int) {
+        model.dialOverride = min(Self.maxMinutes, max(5, model.dialMinutes + minutes))
+    }
+
+    private func resetDrag() {
+        dragAngle = nil
+        dragMinutes = nil
     }
 
     private func drawTicks(_ ctx: GraphicsContext, _ canvas: CGSize) {

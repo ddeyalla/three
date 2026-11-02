@@ -6,6 +6,7 @@ import ThreeCore
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 0) {
@@ -27,7 +28,7 @@ struct RootView: View {
                     .frame(maxWidth: 560)
                     .glassEffect(.regular, in: .capsule)
                     .padding(.bottom, Space.xl)
-                    .transition(.opacity.combined(with: .offset(y: 8)))
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 8)))
             }
         }
         .animation(.easeOut(duration: 0.2), value: model.error)
@@ -74,7 +75,7 @@ private struct TasksPane: View {
     private var header: some View {
         ChoiceCapsules(selection: Binding(get: { model.destination }, set: { model.destination = $0 }), options: [
             .init(.today, "Today"),
-            .init(.inbox, model.inbox.isEmpty ? "Inbox" : "Inbox \(model.inbox.count)"),
+            .init(.inbox, "Inbox"),
             .init(.upcoming, "Upcoming"),
             .init(.done, "Done", symbol: "checkmark.circle"),
             .init(.tags, "Tags", symbol: "number"),

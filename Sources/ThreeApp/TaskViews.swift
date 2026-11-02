@@ -19,28 +19,33 @@ struct TaskCard<Trailing: View>: View {
         VStack(alignment: .leading, spacing: Space.sm) {
             HStack(spacing: Space.md) {
                 CompletionButton(row: row)
-                VStack(alignment: .leading, spacing: Space.hairline) {
-                    Text(row.task.title)
-                        .font(Typo.body)
-                        .foregroundStyle(isClosed ? .secondary : .primary)
-                        .lineLimit(1)
-                    TaskDetailLine(row: row)
+                Button(action: onTap) {
+                    VStack(alignment: .leading, spacing: Space.hairline) {
+                        Text(row.task.title)
+                            .font(Typo.body)
+                            .foregroundStyle(isClosed ? .secondary : .primary)
+                            .lineLimit(1)
+                        TaskDetailLine(row: row)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(.rect)
                 }
-                Spacer(minLength: Space.sm)
+                .buttonStyle(.plain)
+                .help(row.task.title)
+                .accessibilityLabel(row.task.title)
+                .accessibilityValue(expanded ? "Details expanded" : "Details collapsed")
                 trailing
                     .font(Typo.body)
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
             }
-            .contentShape(.rect)
-            .onTapGesture(perform: onTap)
             if expanded {
                 VStack(alignment: .leading, spacing: Space.sm) {
                     StepList(row: row)
                     TagAdder(row: row)
                     NotesField(row: row)
                 }
-                .padding(.leading, 30)
+                .padding(.leading, Space.xl + Space.md)
                 .padding(.bottom, Space.xs)
             }
         }
@@ -91,13 +96,14 @@ struct TaskDetailLine: View {
                 Image(systemName: "text.alignleft").accessibilityLabel("Has notes")
             }
         }
-        .fixedSize()
+        .fixedSize(horizontal: tags, vertical: true)
     }
 }
 
 /// Pick one, as a row of glass capsules each sized to its label. The chosen one lightens and its text turns primary;
 /// none of them is a prominent button. Used for the reflection panel's answers and for switching the tasks pane.
 struct ChoiceCapsules<Value: Hashable>: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     struct Option: Identifiable {
         var value: Value
         var title: String
@@ -129,6 +135,8 @@ struct ChoiceCapsules<Value: Hashable>: View {
                             }
                         }
                         .font(Typo.body)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                         .monospacedDigit()
                         .foregroundStyle(chosen ? .primary : .secondary)
                         .padding(.horizontal, option.symbol == nil ? Space.md : 0)
@@ -142,13 +150,14 @@ struct ChoiceCapsules<Value: Hashable>: View {
                 }
             }
         }
-        .animation(.easeOut(duration: 0.15), value: selection)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: selection)
     }
 }
 
 /// The one way to mark a task done, or undo it.
 struct CompletionButton: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let row: TaskRow
 
     private var isDone: Bool { row.task.status == .done }
@@ -161,19 +170,21 @@ struct CompletionButton: View {
                 .font(Typo.body)
                 .imageScale(.large)
                 .foregroundStyle(row.task.status == .carried ? AnyShapeStyle(.tertiary) : AnyShapeStyle(row.category.color))
-                .contentTransition(.symbolEffect(.replace))
-                .frame(width: 18, height: 18)
+                .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                .frame(width: Space.xl, height: Space.xl)
+                .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .disabled(row.task.status == .carried)
         .help(isDone ? "Mark not done" : model.running?.taskId == row.id ? "Mark done and end this block" : "Mark done")
-        .accessibilityLabel(isDone ? "Done" : "Not done")
+        .accessibilityLabel("\(isDone ? "Mark not done" : "Mark done"): \(row.task.title)")
     }
 }
 
 /// A task's checklist, with a field to add the next step.
 struct StepList: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let row: TaskRow
     @State private var draft = ""
     @State private var adding = false
@@ -182,20 +193,24 @@ struct StepList: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Space.xs + 2) {
             ForEach(row.steps) { step in
-                HStack(spacing: Space.sm) {
-                    Button {
-                        model.perform { try model.store.setStep(step.id, done: !step.done) }
-                    } label: {
+                Button {
+                    model.perform { try model.store.setStep(step.id, done: !step.done) }
+                } label: {
+                    HStack(spacing: Space.sm) {
                         Image(systemName: step.done ? "checkmark.square.fill" : "square")
                             .foregroundStyle(step.done ? AnyShapeStyle(row.category.color) : AnyShapeStyle(.secondary))
-                            .contentTransition(.symbolEffect(.replace))
+                            .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                        Text(step.title)
+                            .foregroundStyle(step.done ? .secondary : .primary)
+                            .strikethrough(step.done, color: .secondary)
+                            .lineLimit(2)
                     }
-                    .buttonStyle(.plain)
-                    Text(step.title)
-                        .foregroundStyle(step.done ? .secondary : .primary)
-                        .strikethrough(step.done, color: .secondary)
-                        .lineLimit(2)
+                    .frame(maxWidth: .infinity, minHeight: Space.xl, alignment: .leading)
+                    .contentShape(.rect)
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel(step.title)
+                .accessibilityValue(step.done ? "Done" : "Not done")
                 .contextMenu {
                     Button("Delete step", role: .destructive) { model.perform { try model.store.removeStep(step.id) } }
                 }
@@ -279,6 +294,7 @@ struct QuickAddField: View {
     @Environment(AppModel.self) private var model
     let defaultDay: DayKey?
     var placeholder = "Add a task"
+    var claimsKeyboardShortcut = true
     @State private var text = ""
     @FocusState private var focused: Bool
 
@@ -318,7 +334,7 @@ struct QuickAddField: View {
 
     /// ⌘N may switch views first, so a field that appears afterwards still takes the request.
     private func claimQuickAdd() {
-        guard model.quickAddPending else { return }
+        guard claimsKeyboardShortcut, model.quickAddPending else { return }
         model.quickAddPending = false
         DispatchQueue.main.async { focused = true }
     }
@@ -451,6 +467,7 @@ struct ErrorNote: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
                     .help("Dismiss")
+                    .accessibilityLabel("Dismiss error")
             }
             .font(Typo.body)
         }

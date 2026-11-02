@@ -14,7 +14,7 @@ struct MenuBarLabel: View {
                     .scaledToFit()
                     .frame(width: 6, height: 6)
                     .opacity(reminderBright ? 1 : 0.35)
-                    .animation(.easeInOut(duration: 1), value: reminderBright)
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 1), value: reminderBright)
                     .accessibilityLabel("Saved reflection awaiting review")
             }
             title
@@ -114,7 +114,7 @@ struct MenuBarView: View {
                 }
             }
 
-            QuickAddField(defaultDay: nil, placeholder: "Capture to inbox")
+            QuickAddField(defaultDay: nil, placeholder: "Capture to inbox", claimsKeyboardShortcut: false)
             ErrorNote()
 
             Divider()

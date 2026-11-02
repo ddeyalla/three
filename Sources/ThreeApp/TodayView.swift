@@ -10,7 +10,6 @@ struct NowPane: View {
                     .padding(Space.xl)
                     .frame(maxWidth: .infinity, minHeight: geo.size.height)
             }
-            .scrollIndicators(.never)
         }
     }
 }
@@ -82,7 +81,7 @@ private struct Controls: View {
                     if running.kind == .focus {
                         Button("+5") { model.extend(5) }
                             .buttonStyle(.glass)
-                            .help("Add 5 minutes")
+                            .help("Add 5 minutes (⌘+)")
                         Button { model.togglePause() } label: {
                             Label(running.isPaused ? "Resume" : "Pause",
                                   systemImage: running.isPaused ? "play.fill" : "pause.fill")
@@ -90,8 +89,10 @@ private struct Controls: View {
                         }
                         .buttonStyle(.glassProminent)
                         .tint(model.accent)
+                        .help(running.isPaused ? "Resume (⇧⌘P)" : "Pause (⇧⌘P)")
                         Button("Finish") { model.finishEarly() }
                             .buttonStyle(.glass)
+                            .help("Reflect on this block (⇧⌘Return)")
                     } else {
                         Button("End break") { model.stop() }
                             .buttonStyle(.glass)
@@ -111,7 +112,7 @@ private struct Controls: View {
                     .buttonStyle(.glassProminent)
                     .tint(model.accent)
                     .disabled(model.selectedTask == nil)
-                    .keyboardShortcut(.return, modifiers: .command)
+                    .help("Start focus (⌘Return)")
                 }
             }
         }
@@ -183,8 +184,12 @@ private struct TodayTaskCard: View {
     private var isSelected: Bool { model.running == nil && model.selectedTask?.id == row.id }
 
     var body: some View {
-        TaskCard(row: row, running: isRunning, selected: isSelected, expanded: isRunning || isSelected,
-                 onTap: { if row.task.status.isOpen && model.running == nil { model.select(row) } }) {
+        TaskCard(row: row, running: isRunning, selected: isSelected,
+                 expanded: isRunning || isSelected || model.expandedTaskId == row.id,
+                 onTap: {
+                     if row.task.status.isOpen && model.running == nil { model.select(row) }
+                     else { model.toggleExpanded(row) }
+                 }) {
             trailing
         }
         .contextMenu {

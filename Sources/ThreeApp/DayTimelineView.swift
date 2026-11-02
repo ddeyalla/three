@@ -11,7 +11,6 @@ struct DayTimelineView: View {
             DayTimelineGrid()
                 .padding(.vertical, 24)
         }
-        .scrollIndicators(.never)
         .scrollPosition($position)
         // Put now 40% down once the viewport has a real size, and again each new day.
         .onScrollGeometryChange(for: CGFloat.self, of: { $0.containerSize.height }) { _, height in
@@ -120,7 +119,7 @@ struct DayTimelineGrid: View {
     private var nowLine: some View {
         HStack(spacing: 0) {
             Text(Format.time(model.now))
-                .font(Typo.meta.weight(.semibold))
+                .font(Typo.meta)
                 .monospacedDigit()
                 .foregroundStyle(Theme.now)
                 .frame(width: gutter - 8, alignment: .trailing)
@@ -151,7 +150,7 @@ private struct SessionBlock: View {
                 if height >= 14 {
                     HStack(spacing: Space.xs) {
                         Text(isBreak ? "Break" : (row?.task.title ?? "Focus"))
-                            .font(Typo.meta.weight(.semibold))
+                            .font(Typo.meta)
                             .foregroundStyle(isBreak ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
                             .lineLimit(1)
                         Spacer(minLength: 4)

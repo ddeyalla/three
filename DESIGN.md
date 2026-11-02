@@ -149,7 +149,7 @@ Defined once in `Typo` (Sources/ThreeApp/Theme.swift). Views use these roles and
 
 One window, three panes, no sidebar and no toolbar:
 
-- **Tasks** (left, 320pt): one row of choice capsules (Today, Inbox, Upcoming, then icons for Done and Tags), each sized to its label, then the list for that choice. The control sits below the window's traffic lights.
+- **Tasks** (left, 320pt): one row of choice capsules (Today, Inbox, Upcoming, then icons for Done and Tags), each sized to its label, then the list for that choice. Labels stay on one line. Counts belong in the list summary so navigation never shifts as tasks arrive. The control sits below the window's traffic lights.
 - **Now** (middle, fills the space, at least 380pt): the task the dial is about, the dial, the time left and the controls, centred vertically. Nothing else.
 - **Timeline** (right, 340pt): the day on an hour grid.
 
@@ -172,15 +172,24 @@ Three radii: 8pt for timeline blocks, 12pt for cards and the quick-add field, 20
 
 ## Components
 
-- **Task card**: completion circle (category colour), title in Body, a Meta line with the category dot and name, its tags, the step count, then steps and notes when open. Padding 8 by 12. Clicking the title row selects it on Today and opens it everywhere else.
+- **Task card**: completion circle (category colour), title in Body, a Meta line with the category dot and name, its tags, the step count, then steps and notes when open. Padding 8 by 12. The completion button has a 24pt target. The title is a native plain button, separate from completion and scheduling controls. It selects an open task on Today and opens details elsewhere. A closed task on Today can also open its details. Full titles are available in a tooltip and to VoiceOver.
 - **Tag**: `@name` in Meta, secondary. Tags carry no colour (the Meaning Rule): the category already colours the task. A tag groups work that spans days or weeks, such as a product or a feature, and its time is the sum of every focus block on its tasks.
-- **Dial**: one turn is an hour. The wedge is the time left in the current hour; each further hour is a 2pt ring in the accent around the face. Drag to set, winding past 12 o'clock to add an hour, up to 240 minutes.
-- **Quick-add field**: a 36pt glass field in Body. The parsed preview sits on the right in Meta.
+- **Dial**: one turn is an hour. The wedge is the time left in the current hour; each further hour is a 2pt ring in the accent around the face. Drag to set, winding past 12 o'clock to add an hour, from 5 to 240 minutes. A drag starts from the current length without jumping to the pointer. At either limit, reversing responds immediately. When idle, Tab can focus the dial and arrow keys adjust by five minutes. Its tooltip explains dragging and keys.
+- **Quick-add field**: a 36pt glass field in Body. The parsed preview sits on its own line below the input in Meta.
 - **Controls**: system glass buttons at regular size. One prominent button at a time, tinted with the accent.
 - **Timeline block**: glass tinted with the category, label and duration in Meta. A planned block is a dashed outline in the category colour.
 - **Choice capsules**: a row of glass capsules for picking one answer. The chosen one lightens by 15% white and its text turns primary; the rest stay secondary. They are not prominent buttons, so a view keeps one primary action. They switch the tasks pane and answer the reflection panel's questions.
 - **Reflection panel**: 420pt floating glass panel. A header with the task (Focus) and time focused (Body, secondary) and a close button. Each question is a left-aligned Body label over its choice capsules. The next task is a glass row. The note is a plain field on glass, like quick add, and never takes focus by itself. The footer has a quiet "15 more minutes" on the left and Skip break (glass) and Start break (the one prominent button) on the right. Esc closes it.
 - **Saved reflection reminder**: after two minutes without an answer or edit, save Made progress and Okay, keep any typed note, end the block, and hide the panel. A neutral dot pulses in the menu bar until the saved reflection is reviewed or dismissed. Reduce Motion keeps the dot still. The popover names the oldest saved reflection and offers Review and Dismiss. If several are waiting, it shows their count and presents the next one after each review or dismissal. Go → Review Saved Reflection opens the same review from the main window. Reviewing opens the same glass panel with its saved answers, note, and a Save reflection button. It edits that session only and never changes a newer timer or the task's current status. It never opens automatically. Closing or pressing Esc dismisses the reminder and keeps the saved answers.
+
+## macOS interaction details
+
+- Native buttons own task selection, tag disclosure and checklist actions. Tab and Shift-Tab follow the system keyboard-navigation setting, Space activates a focused button, and labels describe the task or step they affect. Checklist labels toggle their checkbox.
+- Keep the system focus indicator. Plain text fields show a quiet change in their glass while focused. Automatic reflection prompts never take the keyboard from another app. Choosing Finish or Review makes the panel key so Escape works immediately, with no automatic cursor in the note. Choosing Finish again brings the existing panel forward without clearing its draft.
+- Scrollbars follow the user's macOS preference. Do not hide them unconditionally.
+- Reduce Motion disables authored movement, symbol replacements and repeating pulses. Keep state changes immediate and use opacity only where feedback needs it. Native glass remains responsible for the system's transparency and contrast preferences.
+- Timer actions are discoverable in the menu bar, with shortcuts shown beside the commands and in control tooltips. Commands disable when they do not apply.
+- Saving a live reflection and starting its break or next task is one operation. If the next step cannot start, the original block and answers stay available for retry.
 
 ## Do's and Don'ts
 

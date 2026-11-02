@@ -4,6 +4,13 @@
 
 - After two minutes without an answer or edit, the reflection panel saves Made progress and Okay, keeps any note, ends the block, and hides. A pulsing menu-bar dot reminds you to review or dismiss it. Saved reflections survive relaunch, and editing one leaves newer timers alone. Reduce Motion keeps the dot still.
 - Full screen keeps the three panes together in a centred workspace, with space above the controls. Wider windows no longer push the task list and timeline to opposite edges.
+- Invalid or overflowing durations no longer crash the app or CLI. Extensions and breaks reject invalid lengths before changing a timer.
+- A running task must finish before it can move to tomorrow. Closed or already-carried tasks cannot create more copies or restart silently.
+- Saving a reflection and starting the next task or break now happen together. If the next task cannot start, the original session stays intact. Choosing Finish makes the panel ready for Escape and Return without focusing its note. Choosing Finish again preserves the draft.
+- The dial no longer jumps from five to 55 minutes when unwound past twelve. Dragging starts from its current length, respects both limits, and responds immediately when reversed. Arrow keys adjust an idle dial by five minutes.
+- Task titles and tag headers are native buttons. Checklist labels toggle their steps, completion controls have larger targets, and controls have descriptive accessibility labels. Inbox counts stay in the summary, so navigation keeps its width. Scrollbars follow macOS preferences, and authored motion respects Reduce Motion.
+- The Focus menu exposes Start, Pause/Resume, Add 5 Minutes, and Finish Block with shortcuts. Quick Add opens the main window and falls back to Inbox when today is full.
+- Design lint now catches type-weight overrides as well as raw fonts. Timeline labels use the existing Meta role.
 
 ## 0.2.4 — 2026-11-02
 
