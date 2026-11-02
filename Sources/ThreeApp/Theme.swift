@@ -111,6 +111,11 @@ enum Format {
         date.formatted(date: .omitted, time: .shortened)
     }
 
+    /// "3:45 PM" later today, else "Sat 2:00 AM", so an end on another day never reads as today.
+    static func until(_ date: Date, now: Date) -> String {
+        Calendar.current.isDate(date, inSameDayAs: now) ? time(date) : date.formatted(.dateTime.weekday(.abbreviated).hour().minute())
+    }
+
     /// "4:35 → 5:20 PM", dropping the first period when both share it.
     static func span(_ start: Date, _ end: Date) -> String {
         let a = time(start), b = time(end)
