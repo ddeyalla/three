@@ -28,7 +28,7 @@ struct MenuBarLabel: View {
         return model.running?.kind == .break ? "cup.and.saucer.fill" : "timer"
     }
 
-    /// "24:13", "Paused 24:13", "+03:12" or "Break 4:12": worded to stand alone, since the symbol may be showing
+    /// "24:13", "Paused 24:13", "+03:12" or "Break 04:12": worded to stand alone, since the symbol may be showing
     /// the reminder or blocking instead.
     private var time: String? {
         guard let running = model.running else { return nil }

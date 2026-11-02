@@ -105,7 +105,7 @@ Split view, as in Session's first screenshot, with less on it.
 
 ### 5.2 Menu bar
 
-- Title: a symbol and the time left, such as `23:41`, `Paused 23:41` or `Break 4:12`; the symbol alone when nothing runs. The symbol is a dot while a saved reflection waits, a raised hand while something is blocked, else a timer. The task and what's next are in the popover and in the item's VoiceOver label.
+- Title: a symbol and the time left, such as `23:41`, `Paused 23:41` or `Break 04:12`; the symbol alone when nothing runs. The symbol is a dot while a saved reflection waits, a raised hand while something is blocked, else a timer. The task and what's next are in the popover and in the item's VoiceOver label.
 - Popover (glass): the current task, time left, Start/Pause, `+5`, the list of today's tasks with ticks, and "Open Three". While blocking is on, a row says until when and why, with Unblock for 5 Minutes and Blocking Settings in its menu (§7). Unblock for 5 Minutes is also in the Focus menu, because macOS can hide the menu-bar item.
 - Global hotkey (default ⌥⌘Space) opens the popover from anywhere.
 
