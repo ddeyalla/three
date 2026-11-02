@@ -66,10 +66,43 @@ struct Backdrop: View {
     }
 }
 
+/// The one prominent button: system glass tinted with the accent. The glass renders category colours brighter than
+/// the palette, and white labels measured 2.1 to 2.8:1 on them, so a light tint gets a canvas-coloured label. Only while
+/// the tint shows, though: an inactive window or a disabled button draws grey glass, where the system's label reads.
+struct PrimaryButtonStyle: PrimitiveButtonStyle {
+    let tint: Color
+    @Environment(\.controlActiveState) private var activeState
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        Button(role: configuration.role, action: configuration.trigger) {
+            // .glassProminent overrides a foreground set on the button, so the colour goes on the label itself.
+            if isEnabled && activeState != .inactive && tint.isLight {
+                configuration.label.foregroundStyle(Theme.canvas)
+            } else {
+                configuration.label
+            }
+        }
+        .buttonStyle(.glassProminent)
+        .tint(tint)
+    }
+}
+
+extension PrimitiveButtonStyle where Self == PrimaryButtonStyle {
+    static func primary(_ tint: Color) -> PrimaryButtonStyle { PrimaryButtonStyle(tint: tint) }
+}
+
 extension Color {
     init(hex: String) {
         let v = UInt64(hex.trimmingCharacters(in: CharacterSet(charactersIn: "#")), radix: 16) ?? 0x888888
         self.init(red: Double((v >> 16) & 0xFF) / 255, green: Double((v >> 8) & 0xFF) / 255, blue: Double(v & 0xFF) / 255)
+    }
+
+    /// Relative luminance of at least 0.3: every category colour, but not idle grey, which the glass renders darker
+    /// (white reads 4.7:1 on it, the canvas colour 4.1:1), nor a dark custom colour.
+    var isLight: Bool {
+        let c = resolve(in: EnvironmentValues())
+        return 0.2126 * c.linearRed + 0.7152 * c.linearGreen + 0.0722 * c.linearBlue >= 0.3
     }
 }
 

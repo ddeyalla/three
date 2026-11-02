@@ -92,8 +92,7 @@ struct MenuBarView: View {
                 HStack(spacing: Space.sm) {
                     if running.kind == .focus {
                         Button(running.isPaused ? "Resume" : "Pause") { model.togglePause() }
-                            .buttonStyle(.glassProminent)
-                            .tint(model.accent)
+                            .buttonStyle(.primary(model.accent))
                         Button("+5") { model.extend(5) }.buttonStyle(.glass)
                         Button("Finish") { model.finishEarly() }.buttonStyle(.glass)
                     } else {
@@ -104,8 +103,7 @@ struct MenuBarView: View {
                 Button { model.start(next) } label: {
                     Label("Start \(next.task.title)", systemImage: "play.fill").lineLimit(1)
                 }
-                .buttonStyle(.glassProminent)
-                .tint(next.category.color)
+                .buttonStyle(.primary(next.category.color))
             }
 
             if model.blocking.policy.isActive {

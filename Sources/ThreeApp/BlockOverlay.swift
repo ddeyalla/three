@@ -253,8 +253,7 @@ struct BlockOverlayView: View {
                 }
                 Spacer(minLength: Space.sm)
                 Button("Back to work") { controller.backToWork() }
-                    .buttonStyle(.glassProminent)
-                    .tint(accent)
+                    .buttonStyle(.primary(accent))
                     .keyboardShortcut(.defaultAction)
                     .help("Back to work (Return or Esc)")
             }
@@ -322,8 +321,7 @@ struct BlockOverlayView: View {
                 }
                 Spacer(minLength: Space.sm)
                 Button("Back to work") { controller.backToWork() }
-                    .buttonStyle(.glassProminent)
-                    .tint(accent)
+                    .buttonStyle(.primary(accent))
                     .help("Back to work (Esc)")
             }
         }

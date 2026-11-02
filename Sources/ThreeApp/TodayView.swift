@@ -261,8 +261,7 @@ private struct Controls: View {
                               systemImage: running.isPaused ? "play.fill" : "pause.fill")
                             .frame(minWidth: 96)
                     }
-                    .buttonStyle(.glassProminent)
-                    .tint(model.accent)
+                    .buttonStyle(.primary(model.accent))
                     .help(running.isPaused ? "Resume (⇧⌘P)" : "Pause (⇧⌘P)")
                     Button("Finish") { model.finishEarly() }
                         .buttonStyle(.glass)
@@ -274,23 +273,20 @@ private struct Controls: View {
                         Button { model.start(next) } label: {
                             Label("Start next", systemImage: "play.fill")
                         }
-                        .buttonStyle(.glassProminent)
-                        .tint(next.category.color)
+                        .buttonStyle(.primary(next.category.color))
                         .help("Start \(next.task.title)")
                     }
                 case .ready:
                     Button { model.start() } label: {
                         Label("Start", systemImage: "play.fill").frame(minWidth: 112)
                     }
-                    .buttonStyle(.glassProminent)
-                    .tint(model.accent)
+                    .buttonStyle(.primary(model.accent))
                     .help("Start focus (⌘Return)")
                 case .empty:
                     Button { model.requestQuickAdd(on: .today) } label: {
                         Label("Add Task", systemImage: "plus").frame(minWidth: 112)
                     }
-                    .buttonStyle(.glassProminent)
-                    .tint(Theme.idle)
+                    .buttonStyle(.primary(Theme.idle))
                     .help("Add a task (⌘N)")
                 case .allDone:
                     EmptyView()

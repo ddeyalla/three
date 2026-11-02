@@ -227,8 +227,7 @@ struct ReflectionView: View {
                         try model.store.saveDeferredReflection(presentation.session.id, outcome: outcome, rating: rating, note: note)
                     }) { model.hideReflection() }
                 }
-                .buttonStyle(.glassProminent)
-                .tint(presentation.task?.category.color ?? Theme.idle)
+                .buttonStyle(.primary(presentation.task?.category.color ?? Theme.idle))
                 .keyboardShortcut(.defaultAction)
             }
         } else {
@@ -252,8 +251,7 @@ struct ReflectionView: View {
                     .buttonStyle(.glass)
                     .help(next.map { "Start \($0.task.title) now" } ?? "End this block")
                 Button("Start \(breakMinutes)m break") { finish(then: .break) }
-                    .buttonStyle(.glassProminent)
-                    .tint(model.accent)
+                    .buttonStyle(.primary(model.accent))
                     .keyboardShortcut(.defaultAction)
             }
         }
