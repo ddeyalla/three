@@ -228,3 +228,9 @@ private let t0 = at("2026-11-02T08:00:00Z")
     let closed = evaluate(t0 + 15 * 60, rules: rules, running: focus(t0, minutes: 25), exceptions: [unblock])
     #expect(closed.blocked.map(\.id) == ["r", "y"] && closed.exceptions.isEmpty)
 }
+
+@Test func noEnabledRulesMeansNothingIsProtected() {
+    let p = evaluate(t0 + 60, rules: [rule("off", "x.com", enabled: false)], windows: [window(.monday, "07:00", "09:00")],
+                     running: focus(t0, minutes: 25))
+    #expect(!p.isActive && p.focus == nil && p.focusHours == nil && p.nextChange == nil)
+}

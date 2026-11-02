@@ -340,7 +340,8 @@ public struct BlockPolicy: Hashable, Sendable {
     public let focus: FocusCover?
     /// The merged focus-hours span containing `evaluatedAt`.
     public let focusHours: DateInterval?
-    /// Enabled rules in force, minus active exceptions. Empty while blocking is off.
+    /// Enabled rules in force, minus active exceptions. Empty while blocking is off. Blocking is off whenever there
+    /// are no enabled rules, even during a session or focus hours.
     public let blocked: [BlockRule]
     /// Active temporary unblocks. Empty while blocking is off.
     public let exceptions: [BlockException]
@@ -361,11 +362,12 @@ public struct BlockPolicy: Hashable, Sendable {
         if let focus { changes += [focus.phase == .running ? focus.plannedEnd : focus.expiresAt] }
         if let hours { changes.append(hours.end) } else if let next = spans.first(where: { $0.start > now }) { changes.append(next.start) }
 
-        guard focus != nil || hours != nil else {
-            return BlockPolicy(evaluatedAt: now, focus: nil, focusHours: nil, blocked: [], exceptions: [],
-                               nextChange: changes.filter { $0 > now }.min())
-        }
         let enabled = rules.filter(\.enabled)
+        // With nothing to block there is nothing to protect, so the lists stay editable.
+        guard focus != nil || hours != nil, !enabled.isEmpty else {
+            return BlockPolicy(evaluatedAt: now, focus: nil, focusHours: nil, blocked: [], exceptions: [],
+                               nextChange: enabled.isEmpty ? nil : changes.filter { $0 > now }.min())
+        }
         let live = exceptions.filter { e in e.expiresAt > now && enabled.contains { $0.id == e.ruleId } }
         changes += live.map(\.expiresAt)
         return BlockPolicy(evaluatedAt: now, focus: focus, focusHours: hours,

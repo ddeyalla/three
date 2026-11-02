@@ -195,6 +195,49 @@ public final class Store: @unchecked Sendable {
                 t.add(column: "reflectionPending", .boolean).notNull().defaults(to: false)
             }
         }
+        // Distraction blocker. Starts empty: no rules, no focus hours, so nothing is blocked until the user adds some.
+        m.registerMigration("v7-blocker") { db in
+            try db.create(table: "blockRule") { t in
+                t.primaryKey("id", .text)
+                t.column("kind", .text).notNull().check { ["domain", "app"].contains($0) }
+                t.column("value", .text).notNull()
+                t.column("enabled", .boolean).notNull().defaults(to: true)
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+                t.column("deletedAt", .datetime)
+            }
+            try db.execute(sql: "CREATE UNIQUE INDEX blockRule_live ON blockRule(kind, value COLLATE NOCASE) WHERE deletedAt IS NULL")
+            try db.create(table: "focusWindow") { t in
+                t.primaryKey("id", .text)
+                t.column("weekday", .integer).notNull().check { $0 >= 1 && $0 <= 7 }
+                t.column("startMinute", .integer).notNull().check { $0 >= 0 && $0 < 1440 }
+                t.column("endMinute", .integer).notNull().check { $0 >= 0 && $0 <= 1440 }
+                t.check(sql: "startMinute <> endMinute")
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+                t.column("deletedAt", .datetime)
+            }
+            try db.execute(sql: "CREATE UNIQUE INDEX focusWindow_live ON focusWindow(weekday, startMinute, endMinute) WHERE deletedAt IS NULL")
+            // Hits and temporary unblocks. Never a URL or page title: only which rule matched, and when.
+            try db.create(table: "blockEvent") { t in
+                t.primaryKey("id", .text)
+                t.column("at", .datetime).notNull()
+                t.column("ruleId", .text).notNull().references("blockRule")
+                t.column("sessionId", .text).references("session")
+                t.column("action", .text).notNull().check { ["blocked", "unblocked"].contains($0) }
+                t.column("reason", .text)
+                t.column("expiresAt", .datetime)
+            }
+            try db.create(index: "blockEvent_rule_at", on: "blockEvent", columns: ["ruleId", "at"])
+            // One row per browser profile running the extension, so the app can say what is actually covered.
+            try db.create(table: "browserClient") { t in
+                t.primaryKey("id", .text)
+                t.column("extensionVersion", .text).notNull()
+                t.column("hostAccess", .boolean).notNull()
+                t.column("connectedAt", .datetime).notNull()
+                t.column("seenAt", .datetime).notNull()
+            }
+        }
         return m
     }
 }
