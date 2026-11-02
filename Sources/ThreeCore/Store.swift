@@ -185,6 +185,10 @@ public final class Store: @unchecked Sendable {
                 t.column("tagId", .text).notNull().references("tag", onDelete: .cascade).indexed()
                 t.primaryKey(["taskId", "tagId"])
             }
+            // When a task was finished, for Done. Kept out of FocusTask and written by setDone, so editing a
+            // finished task's notes doesn't move it to another day.
+            try db.alter(table: "task") { t in t.add(column: "doneAt", .datetime) }
+            try db.execute(sql: "UPDATE task SET doneAt = updatedAt WHERE status = 'done'")
         }
         return m
     }

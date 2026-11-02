@@ -286,23 +286,30 @@ struct QuickAddField: View {
         QuickAdd.parse(text, categories: model.liveCategories.map(\.name), today: model.snapshot.day)
     }
 
+    /// What it understood sits on its own line under the field, so a narrow pane never squeezes what you type.
     var body: some View {
-        HStack(spacing: Space.md) {
-            Image(systemName: "plus")
-                .font(Typo.body)
-                .foregroundStyle(.secondary)
-                .frame(width: 18)
-            TextField(placeholder, text: $text)
-                .textFieldStyle(.plain)
-                .focused($focused)
-                .onSubmit {
-                    if model.capture(text, defaultDay: defaultDay) { text = "" }
-                }
-            if !text.isEmpty { preview }
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: Space.md) {
+                Image(systemName: "plus")
+                    .font(Typo.body)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18)
+                TextField(placeholder, text: $text)
+                    .textFieldStyle(.plain)
+                    .focused($focused)
+                    .onSubmit {
+                        if model.capture(text, defaultDay: defaultDay) { text = "" }
+                    }
+            }
+            .frame(height: 36)
+            if !text.isEmpty {
+                preview
+                    .padding(.leading, 18 + Space.md)
+                    .padding(.bottom, Space.sm)
+            }
         }
         .font(Typo.body)
         .padding(.horizontal, Space.md)
-        .frame(height: 36)
         .glassEffect(.regular.tint(.white.opacity(focused ? 0.06 : 0)).interactive(), in: .rect(cornerRadius: Radius.card))
         .help("#category, @tag, a duration like 45m, and today, tomorrow, a weekday or inbox")
         .onChange(of: model.quickAddRequest) { claimQuickAdd() }
@@ -320,17 +327,19 @@ struct QuickAddField: View {
         let category = model.liveCategories.first { $0.name == parsed.category } ?? model.liveCategories.first
         let minutes = parsed.minutes ?? model.snapshot.preferences.defaultBlockMinutes
         return HStack(spacing: Space.sm) {
-            Text(parsed.title.isEmpty ? "No title yet" : parsed.title)
-                .lineLimit(1)
-                .foregroundStyle(parsed.title.isEmpty ? AnyShapeStyle(Theme.overrun) : AnyShapeStyle(.secondary))
+            if parsed.title.isEmpty {
+                Text("No title yet").foregroundStyle(Theme.overrun)
+            }
             HStack(spacing: Space.xs) {
                 Circle().fill(category?.color ?? Theme.idle).frame(width: 6, height: 6)
                 Text(category?.name ?? "")
             }
             ForEach(parsed.tags, id: \.self) { Text("@\($0)") }
+            Spacer(minLength: 0)
             Text("\(minutes)m")
             Text(whenLabel)
         }
+        .lineLimit(1)
         .font(Typo.meta)
         .foregroundStyle(.secondary)
         .monospacedDigit()

@@ -212,6 +212,7 @@ extension Store {
             if let notes { t.notes = notes }
             t.updatedAt = Date()
             try t.update(db)
+            if let status { try setDone(id, status == .done, at: t.updatedAt, db) }
             // A closed task can't keep a timer running: done ends its block as done, otherwise as stopped.
             if let status, !status.isOpen, var s = try runningSession(db), s.taskId == id {
                 if status == .done { s.outcome = .done }
@@ -399,8 +400,15 @@ extension Store {
                 t.status = markTaskDone ? .done : .partial
                 t.updatedAt = now
                 try t.update(db)
+                try setDone(taskId, markTaskDone, at: now, db)
             }
         }
+    }
+
+    /// Stamps when a task became done, keeping the first stamp if it was already done; clears it otherwise.
+    func setDone(_ id: String, _ done: Bool, at now: Date, _ db: Database) throws {
+        try db.execute(sql: "UPDATE task SET doneAt = CASE WHEN ? THEN COALESCE(doneAt, ?) ELSE NULL END WHERE id = ?",
+                       arguments: [done, now, id])
     }
 
     public func setTaskStatus(_ id: String, _ status: TaskStatus) throws {

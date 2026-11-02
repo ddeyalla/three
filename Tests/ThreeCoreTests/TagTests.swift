@@ -106,3 +106,16 @@ private func work(_ store: Store, _ taskId: String, minutes: Int, now: Date = Da
     #expect(log[0].tasks[0].tags.map(\.name) == ["x"])
     #expect(!log.flatMap(\.tasks).contains { $0.id == b.id })
 }
+
+@Test func doneTasksStayOnTheDayTheyWereFinished() throws {
+    let store = try Store(url: freshURL())
+    let t = try store.addTask(task("Finished on Friday"), source: .cli)
+    try store.setTaskStatus(t.id, .done)
+    let friday = DayKey.today.adding(days: -3)
+    try store.db.write { try $0.execute(sql: "UPDATE task SET doneAt = ? WHERE id = ?", arguments: [friday.startDate.addingTimeInterval(3600), t.id]) }
+    try store.updateTask(t.id, notes: "Shipped behind a flag")
+    try store.setTaskStatus(t.id, .done)
+    #expect(try store.logbook().map(\.day) == [friday])
+    try store.setTaskStatus(t.id, .todo)
+    #expect(try store.logbook().isEmpty)
+}

@@ -111,10 +111,12 @@ extension Store {
     public func logbook(days: Int = 30, today: DayKey = .today) throws -> [LoggedDay] {
         try db.read { db in
             let since = today.adding(days: -(days - 1)).startDate
-            let tasks = try FocusTask.filter(Column("status") == TaskStatus.done && Column("deletedAt") == nil && Column("updatedAt") >= since)
-                .order(Column("updatedAt").desc).fetchAll(db)
-            let rows = try rows(for: tasks, db)
-            return Dictionary(grouping: rows, by: { DayKey($0.task.updatedAt) })
+            let found = try Row.fetchAll(db, sql: """
+                SELECT * FROM task WHERE status = 'done' AND deletedAt IS NULL AND doneAt >= ? ORDER BY doneAt DESC
+                """, arguments: [since])
+            let doneAt = Dictionary(uniqueKeysWithValues: found.map { ($0["id"] as String, $0["doneAt"] as Date) })
+            let rows = try rows(for: try found.map { try FocusTask(row: $0) }, db)
+            return Dictionary(grouping: rows, by: { DayKey(doneAt[$0.id]!) })
                 .map { LoggedDay(day: $0.key, tasks: $0.value) }
                 .sorted { $0.day > $1.day }
         }
