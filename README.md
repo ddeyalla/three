@@ -1,44 +1,54 @@
 # Three
 
-A focus app for an ADHD brain: three things today, each in a time box, driven by your AI harness.
-The product spec is [PRODUCT.md](PRODUCT.md).
+A focus planner for the ADHD brain, built for macOS 26 with Liquid Glass.
 
-## Build and run
+You plan three things for today, give each one a time block, and work through them one at a time on a dial timer. Five a day is the most it allows. Anything else waits in the inbox until you give it a day. Every focus block ends with a short check-in and a break.
 
-Needs macOS 26+ and the Xcode Command Line Tools. Xcode itself is not required.
+![Today: the timer, today's three tasks and the day's timeline](docs/today.png)
+
+## Why
+
+The hard part of ADHD is usually not the work itself. It is picking what to do, starting it, staying with it, and stopping when the time is up. Most tools either do too much (another system to manage) or too little (a bare timer that doesn't know what today is for). Three answers one question at a glance: **what am I doing right now, for how long, and is it part of today's plan?**
+
+The full product spec, with principles, data model and roadmap, is in [PRODUCT.md](PRODUCT.md).
+
+## What it does
+
+- **Today.** The current task, a dial timer and the time left sit above today's tasks. The day's timeline runs alongside, showing what you planned and what you actually did.
+- **Three by default, five at most.** A fourth or fifth task brings a gentle warning, and a sixth is refused.
+- **Focus blocks.** Each task has a block, for example 90 minutes, that you work through in sessions of about 45 minutes. You can pause, add five minutes or finish early.
+- **Reflection, then a break.** When a block ends, a small panel asks how it went, then starts a short or long break based on how long you've been focusing.
+- **Inbox and Upcoming.** Capture anything without a day, and see the next seven days. A hover sends a task to today or tomorrow.
+- **Quick add**, Todoist style: `Renew passport #admin 30m fri`. Press ⌘N anywhere, or use the field in the menu bar.
+- **Steps.** Break a task into small checkboxes. The running task shows its steps and notes in place, so the next step stays in view.
+- **Categories** with colours, which carry through the timer, cards and timeline.
+- **Menu bar.** The timer, the next task and a capture field are always one click away.
+- **A CLI for you and your AI.** `three` reads and writes the same database as the app, so Claude Code, Codex or a script can plan your day. Changes show up in the app straight away.
+
+![Inbox: tasks waiting for a day](docs/inbox.png)
+
+## Install
+
+You need macOS 26 or later and the Xcode Command Line Tools (`xcode-select --install`). Full Xcode isn't required.
 
 ```bash
-make run       # debug build of build/Three.app, then launch it
-make test      # core tests
-make install   # release build to ~/Applications/Three.app, CLI linked at ~/.local/bin/three
+git clone https://github.com/ddeyalla/three.git
+cd three
+make install
 ```
 
-`scripts/bundle.sh` assembles the `.app` from the SwiftPM products and ad-hoc signs it. Always launch through the bundle (`open`), not `swift run`; notifications need a bundle identifier.
+This builds a release copy to `~/Applications/Three.app`, links the CLI at `~/.local/bin/three` and opens the app. Make sure `~/.local/bin` is on your `PATH`.
 
-`scripts/swift.sh` wraps `swift` for this machine's toolchain:
+Your data lives in `~/Library/Application Support/Three/three.sqlite`.
 
-- The Command Line Tools here carry stale 2024 `*.private.swiftinterface` files that shadow the current `PackageDescription`. The wrapper points SwiftPM at a cleaned copy. To fix it for good: `sudo rm /Library/Developer/CommandLineTools/usr/lib/swift/pm/*/*.swiftmodule/*.private.swiftinterface`
-- Without Xcode, it builds against the macOS 26.5 SDK. The 27 SDK's SwiftUI `@State` is a macro whose plugin ships only with Xcode. 26.5 still has Liquid Glass.
-
-### Looking at the real app
-
-```bash
-scripts/demo.sh                                   # seeds a realistic day in $TMPDIR/three-demo.sqlite
-open -n --env THREE_DB=$TMPDIR/three-demo.sqlite --env THREE_OPEN=inbox build/Three.app
-scripts/shot.sh <pid> build/today.png             # screenshot that instance's window (needs Screen Recording)
-```
-
-`THREE_OPEN` takes `inbox`, `upcoming` or `settings`. Keep demo databases outside `~/Documents`, or macOS asks the freshly signed build for folder access and the app waits on the prompt.
-
-## CLI
+## Use it from the terminal or an AI agent
 
 ```bash
 three today [--date tomorrow] [--json]
 three plan "Ship onboarding:Coding:90" "Write PRD:Writing:60" "Inbox:Admin:30m" [--commit]
-three add "Fix login bug" --cat Coding --block 45m [--linear ENG-123] [--strict]
-three capture "Renew passport #admin 30m"        # quick add; no day → inbox; or today/tomorrow/fri
+three capture "Renew passport #admin 30m"        # no day goes to the inbox; or today/tomorrow/fri
 three inbox | three upcoming
-three schedule i1 tomorrow                        # i-numbers are inbox items; "inbox" un-plans
+three schedule i1 tomorrow                        # i1 is the first inbox item; "inbox" unplans it
 three step add 2 "Outline the problem" | three step done 2 1
 three start [task#] [--min 25]
 three pause | resume | extend [5] | stop
@@ -49,14 +59,58 @@ three categories [add Health --color "#4FBF8B" | rename A B | color A "#hex" | a
 three settings [--session 50 --short-break 5 --long-break 15 --block 60]
 ```
 
-The CLI and the app share `~/Library/Application Support/Three/three.sqlite` (override with `THREE_DB`). Every write posts a Darwin notification, so the running app updates immediately.
+To let an agent run your day, open **Settings → Connect** and copy the instructions into your `CLAUDE.md` or `AGENTS.md`. An MCP server is planned for v0.4.
+
+## Develop
+
+```bash
+make build     # debug build of build/Three.app
+make run       # build, then launch
+make test      # core tests (Swift Testing)
+make install   # release build to ~/Applications, CLI linked at ~/.local/bin/three
+```
+
+The app is a SwiftPM package with no Xcode project:
+
+| Target | What it is |
+|---|---|
+| `ThreeCore` | Models, the GRDB/SQLite store, migrations, planning rules, quick-add parsing |
+| `ThreeApp` | The SwiftUI app: window, menu bar, settings, reflection panel |
+| `ThreeCLI` | The `three` command, bundled inside the app at `Contents/Helpers/three` |
+
+`scripts/bundle.sh` assembles the `.app` from the SwiftPM products and ad-hoc signs it. Launch through the bundle with `open`, not `swift run`, because notifications need a bundle identifier.
+
+`scripts/swift.sh` wraps `swift` for building with the Command Line Tools alone:
+
+- It builds against the macOS 26.5 SDK. In the 27 SDK, SwiftUI's `@State` is a macro whose plugin ships only with Xcode. The 26.5 SDK still has Liquid Glass.
+- Some Command Line Tools installs carry stale `*.private.swiftinterface` files that shadow the current `PackageDescription`. The wrapper points SwiftPM at a cleaned copy.
+
+### Running a demo copy
+
+```bash
+scripts/demo.sh                                   # seeds a realistic day in $TMPDIR/three-demo.sqlite
+open -n --env THREE_DB=$TMPDIR/three-demo.sqlite --env THREE_OPEN=inbox build/Three.app
+scripts/shot.sh <pid> build/today.png             # screenshot that window (needs Screen Recording)
+```
+
+`THREE_DB` points the app and CLI at another database. `THREE_OPEN` takes `today`, `inbox`, `upcoming` or `settings`. Keep demo databases outside `~/Documents`, or macOS asks the freshly signed build for folder access and the app waits on the prompt.
+
+## Roadmap
+
+| Version | Milestone | Status |
+|---|---|---|
+| v0.1 | Core loop: plan, dial timer, reflection, breaks, timeline, CLI | Done |
+| v0.2 | Plan and capture: inbox, upcoming, quick add, steps, categories, settings | Done |
+| v0.3 | Site and app blocker during focus | Next |
+| v0.4 | MCP server and AI planning | |
+| v0.5 | Calendar sync | |
+| v0.6 | Session record and trends | |
+| v1.0 | Polish | |
 
 ## Versioning
 
-- **Semantic versions, one per milestone.** `VERSION` holds the marketing version (`CFBundleShortVersionString`). The release plan in PRODUCT.md §12 maps milestones to versions: v0.1 core loop, v0.2 plan and capture, v0.3 blocker, v0.4 AI/MCP, v0.5 calendar, v0.6 record, v1.0 polish. Fixes inside a milestone bump the patch (0.1.1).
-- **Build number** is `git rev-list --count HEAD`, stamped by `bundle.sh` (`CFBundleVersion`).
-- **Tags** mark releases: `git tag v0.1.0` on the commit that ships it.
-- **Changelog** in [CHANGELOG.md](CHANGELOG.md), one section per version, written when the version is tagged.
-- **Commits** are small and each one builds and passes `make test`.
+- One semantic version per milestone. Fixes within a milestone bump the patch, for example 0.2.2. `VERSION` holds the marketing version.
+- The build number is `git rev-list --count HEAD`, stamped by `bundle.sh`.
+- Each release is tagged `vX.Y.Z` and described in [CHANGELOG.md](CHANGELOG.md).
 
-To cut a release: update `VERSION` and `CHANGELOG.md`, commit, `git tag vX.Y.Z`, `make install`.
+To cut a release: update `VERSION` and `CHANGELOG.md`, commit, `git tag -a vX.Y.Z`, then `make install`.

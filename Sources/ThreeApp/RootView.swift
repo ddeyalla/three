@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import ThreeCore
 
@@ -6,28 +7,17 @@ struct RootView: View {
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
-        @Bindable var model = model
         NavigationSplitView {
             Sidebar()
                 .navigationSplitViewColumnWidth(min: 180, ideal: 210, max: 260)
+                .toolbar(removing: .sidebarToggle)
         } detail: {
             detail
                 .background(Backdrop())
-                .inspector(isPresented: $model.showInspector) {
-                    TaskInspector()
-                        .inspectorColumnWidth(min: 280, ideal: 320, max: 400)
-                }
-                .toolbar {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button { model.showInspector.toggle() } label: {
-                            Label("Details", systemImage: "sidebar.right")
-                        }
-                        .help("Show task details (⌘I)")
-                        .keyboardShortcut("i", modifiers: .command)
-                    }
-                }
+                .toolbar(removing: .sidebarToggle)
         }
         .toolbar(removing: .title)
+        .background(InitialFocusSink())
         .onAppear { if ProcessInfo.processInfo.environment["THREE_OPEN"] == "settings" { openSettings() } }
         .preferredColorScheme(.dark)
         .frame(minWidth: 1040, minHeight: 700)
@@ -84,4 +74,36 @@ private struct Sidebar: View {
             .padding(.bottom, 14)
         }
     }
+}
+
+/// AppKit and SwiftUI give the first text field the cursor when the window first becomes key.
+/// This takes that focus back once, so the window opens calm and a field only focuses when you
+/// click it or press ⌘N. Later activations keep whatever you were typing in.
+private struct InitialFocusSink: NSViewRepresentable {
+    final class SinkView: NSView {
+        private var observer: NSObjectProtocol?
+        override var acceptsFirstResponder: Bool { true }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let window, observer == nil else { return }
+            window.initialFirstResponder = self
+            observer = NotificationCenter.default.addObserver(
+                forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.reclaimOnce() }
+            }
+        }
+
+        private func reclaimOnce() {
+            if let observer { NotificationCenter.default.removeObserver(observer) }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let window, window.firstResponder is NSTextView else { return }
+                window.makeFirstResponder(self)
+            }
+        }
+    }
+
+    func makeNSView(context: Context) -> SinkView { SinkView() }
+    func updateNSView(_ nsView: SinkView, context: Context) {}
 }

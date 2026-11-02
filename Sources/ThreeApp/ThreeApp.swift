@@ -13,7 +13,7 @@ struct ThreeApp: App {
                 .environment(model)
         }
         .defaultSize(width: 1280, height: 820)
-        .windowToolbarStyle(.unified)
+        .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("Quick Add") {

@@ -7,7 +7,8 @@ struct TaskCard<Trailing: View>: View {
     let row: TaskRow
     var running = false
     var selected = false
-    var showSteps = false
+    /// Shows steps and notes in place.
+    var expanded = false
     @ViewBuilder var trailing: Trailing
 
     private var isClosed: Bool { !row.task.status.isOpen }
@@ -29,9 +30,12 @@ struct TaskCard<Trailing: View>: View {
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
             }
-            if showSteps {
-                StepList(row: row)
-                    .padding(.leading, 28)
+            if expanded {
+                VStack(alignment: .leading, spacing: 10) {
+                    StepList(row: row)
+                    NotesField(row: row)
+                }
+                .padding(.leading, 28)
             }
         }
         .padding(.horizontal, 12)
@@ -97,6 +101,8 @@ struct StepList: View {
     @Environment(AppModel.self) private var model
     let row: TaskRow
     @State private var draft = ""
+    @State private var adding = false
+    @FocusState private var focused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -119,20 +125,36 @@ struct StepList: View {
                     Button("Delete step", role: .destructive) { model.perform { try model.store.removeStep(step.id) } }
                 }
             }
-            HStack(spacing: 8) {
-                Image(systemName: "plus").foregroundStyle(.secondary).frame(width: 14)
-                TextField(row.steps.isEmpty ? "Break it down: add a first step" : "Add a step", text: $draft)
-                    .textFieldStyle(.plain)
-                    .onSubmit(add)
+            // A button first, so opening a card never drops a cursor into it.
+            if adding {
+                HStack(spacing: 8) {
+                    Image(systemName: "plus").foregroundStyle(.secondary).frame(width: 14)
+                    TextField("Next small step", text: $draft)
+                        .textFieldStyle(.plain)
+                        .focused($focused)
+                        .onSubmit(add)
+                        .onExitCommand { adding = false; draft = "" }
+                }
+            } else {
+                Button {
+                    adding = true
+                    focused = true
+                } label: {
+                    Label(row.steps.isEmpty ? "Break it down" : "Add a step", systemImage: "plus")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
             }
         }
         .font(.callout)
+        .onChange(of: focused) { if !focused && draft.isEmpty { adding = false } }
     }
 
     private func add() {
         let title = draft
+        guard !title.trimmingCharacters(in: .whitespaces).isEmpty else { adding = false; return }
         model.perform { try model.store.addStep(to: row.id, title: title) }
-        if model.error == nil { draft = "" }
+        if model.error == nil { draft = ""; focused = true }
     }
 }
 
@@ -219,7 +241,6 @@ struct TaskMenuItems: View {
     let row: TaskRow
 
     var body: some View {
-        Button("Show details") { model.inspect(row) }
         if row.task.status.isOpen, model.day(of: row.id) == model.snapshot.day {
             Button("Start now") { model.start(row) }.disabled(model.running?.kind == .focus)
         }
@@ -239,107 +260,30 @@ struct TaskMenuItems: View {
     }
 }
 
-/// The inspector: everything about one task.
-struct TaskInspector: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        if let row = model.task(model.inspectedTaskId) {
-            TaskDetail(row: row).id(row.id)
-        } else {
-            ContentUnavailableView("No task selected", systemImage: "checklist",
-                                   description: Text("Select a task to see its steps and notes."))
-        }
-    }
-}
-
-private struct TaskDetail: View {
+/// Notes in place, saved shortly after you stop typing.
+struct NotesField: View {
     @Environment(AppModel.self) private var model
     let row: TaskRow
-    @State private var title = ""
-    @State private var notes = ""
-    @State private var saveNotes: Task<Void, Never>?
+    @State private var text = ""
+    @State private var save: Task<Void, Never>?
 
     var body: some View {
-        Form {
-            Section {
-                TextField("Title", text: $title, axis: .vertical)
-                    .font(.title3.weight(.semibold))
-                    .textFieldStyle(.plain)
-                    .onSubmit { save(title: title) }
-            }
-            Section {
-                Picker("Category", selection: Binding(
-                    get: { row.category.id },
-                    set: { id in model.perform { try model.store.updateTask(row.id, category: id) } })) {
-                    ForEach(model.liveCategories) { c in
-                        Label { Text(c.name) } icon: { Image(systemName: "circle.fill").foregroundStyle(c.color) }.tag(c.id)
-                    }
-                }
-                Picker("Block", selection: Binding(
-                    get: { row.task.blockMinutes },
-                    set: { m in model.perform { try model.store.updateTask(row.id, blockMinutes: m) } })) {
-                    ForEach(Array(Set([15, 25, 30, 45, 60, 90, 120, 180, row.task.blockMinutes])).sorted(), id: \.self) {
-                        Text("\($0) min").tag($0)
-                    }
-                }
-                LabeledContent("When") {
-                    Menu(whenLabel) { ScheduleMenuItems(row: row) }
-                        .fixedSize()
-                }
-                if row.focusedSeconds >= 60 {
-                    LabeledContent("Focused", value: Format.duration(row.focusedSeconds))
+        TextField("Notes", text: $text, axis: .vertical)
+            .textFieldStyle(.plain)
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .lineLimit(1...8)
+            .onAppear { text = row.task.notes }
+            .onChange(of: row.id) { text = row.task.notes }
+            .onChange(of: text) {
+                save?.cancel()
+                let value = text, id = row.id
+                guard value != row.task.notes else { return }
+                save = Task {
+                    try? await Task.sleep(for: .milliseconds(600))
+                    guard !Task.isCancelled else { return }
+                    model.perform { try model.store.updateTask(id, notes: value) }
                 }
             }
-            Section("Steps") {
-                StepList(row: row)
-            }
-            Section("Notes") {
-                TextField("Links, context, what done looks like", text: $notes, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .lineLimit(4...14)
-                    .onChange(of: notes) { scheduleNotesSave() }
-            }
-            Section {
-                if row.task.status.isOpen, model.day(of: row.id) == model.snapshot.day {
-                    Button("Start focus") { model.start(row) }
-                        .disabled(model.running?.kind == .focus)
-                }
-                Button("Delete task", role: .destructive) {
-                    model.perform { try model.store.removeTask(row.id) }
-                    model.inspectedTaskId = nil
-                }
-            }
-        }
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
-        .onAppear {
-            title = row.task.title
-            notes = row.task.notes
-        }
-        .onDisappear {
-            saveNotes?.cancel()
-            if notes != row.task.notes { save(notes: notes) }
-            if title != row.task.title { save(title: title) }
-        }
-    }
-
-    private var whenLabel: String {
-        model.day(of: row.id).map { Format.dayName($0, today: model.snapshot.day) } ?? "Inbox"
-    }
-
-    private func scheduleNotesSave() {
-        saveNotes?.cancel()
-        let text = notes
-        saveNotes = Task {
-            try? await Task.sleep(for: .milliseconds(600))
-            guard !Task.isCancelled, text != row.task.notes else { return }
-            save(notes: text)
-        }
-    }
-
-    private func save(title: String? = nil, notes: String? = nil) {
-        if let title, title.trimmingCharacters(in: .whitespaces).isEmpty { return }
-        model.perform { try model.store.updateTask(row.id, title: title, notes: notes) }
     }
 }

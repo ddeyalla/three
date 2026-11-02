@@ -19,9 +19,8 @@ final class AppModel {
     private(set) var inbox: [TaskRow] = []
     private(set) var upcoming: [DaySnapshot] = []
     var destination: Destination = .today
-    /// The task shown in the inspector.
-    var inspectedTaskId: String?
-    var showInspector = false
+    /// The card opened in place in Inbox, Upcoming or a category.
+    var expandedTaskId: String?
     /// Bumped by ⌘N; quick-add fields focus themselves when it changes.
     var quickAddRequest = 0
 
@@ -178,13 +177,11 @@ final class AppModel {
 
     func select(_ row: TaskRow) {
         selectedTaskId = row.id
-        inspectedTaskId = row.id
         dialOverride = nil
     }
 
-    func inspect(_ row: TaskRow) {
-        inspectedTaskId = row.id
-        showInspector = true
+    func toggleExpanded(_ row: TaskRow) {
+        expandedTaskId = expandedTaskId == row.id ? nil : row.id
     }
 
     /// Every task the app knows about: today, the inbox and the week ahead.

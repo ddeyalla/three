@@ -216,11 +216,11 @@ private struct TodayTaskCard: View {
     private var isSelected: Bool { model.running == nil && model.selectedTask?.id == row.id }
 
     var body: some View {
-        TaskCard(row: row, running: isRunning, selected: isSelected, showSteps: isRunning || isSelected) {
+        TaskCard(row: row, running: isRunning, selected: isSelected, expanded: isRunning || isSelected) {
             trailing
         }
         .onTapGesture(count: 2) { if row.task.status.isOpen && model.running == nil { model.start(row) } }
-        .onTapGesture { if row.task.status.isOpen && model.running == nil { model.select(row) } else { model.inspectedTaskId = row.id } }
+        .onTapGesture { if row.task.status.isOpen && model.running == nil { model.select(row) } }
         .contextMenu {
             TaskMenuItems(row: row)
             Divider()
