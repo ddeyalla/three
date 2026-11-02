@@ -36,11 +36,36 @@ private func startFocus(_ store: Store, strict: Bool = false, at now: Date = mon
     let store = try Store(url: freshURL())
     let reddit = try store.addBlockPreset(.reddit, now: monday)
     #expect(try store.addBlockPreset(.reddit, now: monday).map(\.id) == reddit.map(\.id))
-    #expect(try store.addBlockRule(.domain(BlockDomain(parsing: "https://old.reddit.com/r/adhd")), now: monday).id == reddit[0].id)
+    #expect(try store.addBlockRule(.domain(BlockDomain(parsing: "https://old.reddit.com/")), now: monday).id == reddit[0].id)
     try store.addBlockRule(.app(AppBundleID(parsing: "com.tinyspeck.slackmacgap")), now: monday)
     try store.addBlockRule(.app(AppBundleID(parsing: "com.TinySpeck.SlackMacGap")), now: monday)
     let values = try store.blockStatus(now: monday, calendar: utc).rules.map(\.target.value)
     #expect(values == ["reddit.com", "redd.it", "com.tinyspeck.slackmacgap"])
+}
+
+@Test func unsupportedRuleCountsRollBackAddsAndReenabling() throws {
+    let store = try Store(url: freshURL())
+    let disabled = try store.addBlockRule(.domain(BlockDomain(parsing: "disabled.example.com")))
+    try store.setBlockRule(disabled.id, enabled: false)
+    try store.db.write { db in
+        for i in 0..<(BlockRule.maxDomains - 1) {
+            try db.execute(sql: "INSERT INTO blockRule (id, kind, value, enabled, createdAt, updatedAt) VALUES (?, 'domain', ?, 1, ?, ?)",
+                           arguments: [UUID().uuidString, "site\(i).example.com", monday, monday])
+        }
+    }
+    #expect(throws: BlockError.tooManyDomains) { try store.addBlockPreset(.x) }
+    #expect(try store.blockStatus().rules.filter(\.enabled).count == BlockRule.maxDomains - 1)
+    #expect(try !store.blockStatus().rules.contains { BlockPreset.x.domains.map(\.rawValue).contains($0.target.value) })
+
+    let final = try store.addBlockRule(.domain(BlockDomain(parsing: "last.example.com")))
+    #expect(try store.addBlockRule(final.target).id == final.id)
+    #expect(throws: BlockError.tooManyDomains) { try store.addBlockRule(disabled.target) }
+    #expect(throws: BlockError.tooManyDomains) { try store.setBlockRule(disabled.id, enabled: true) }
+    #expect(try store.blockStatus().rules.first { $0.id == disabled.id }?.enabled == false)
+    try store.addBlockRule(.app(AppBundleID(parsing: "com.example.allowed")))
+    try store.removeBlockRule(final.id)
+    try store.setBlockRule(disabled.id, enabled: true)
+    #expect(try store.blockStatus().rules.filter { $0.enabled && $0.target.kind == "domain" }.count == BlockRule.maxDomains)
 }
 
 @Test func looseningRulesWaitsForBlockingToEnd() throws {

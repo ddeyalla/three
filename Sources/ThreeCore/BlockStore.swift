@@ -114,7 +114,7 @@ extension Store {
     @discardableResult
     public func addBlockRules(_ targets: [BlockTarget], now: Date = Date()) throws -> [BlockRule] {
         try write { db in
-            try targets.map { target in
+            let rules = try targets.map { target in
                 if let row = try Row.fetchOne(db, sql: """
                     SELECT * FROM blockRule WHERE deletedAt IS NULL AND kind = ? AND value = ? COLLATE NOCASE
                     """, arguments: [target.kind, target.value]) {
@@ -135,7 +135,14 @@ extension Store {
                     """, arguments: [rule.id, target.kind, target.value, now, now])
                 return rule
             }
+            try requireSupportedRuleCount(db)
+            return rules
         }
+    }
+
+    private func requireSupportedRuleCount(_ db: Database) throws {
+        let count = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM blockRule WHERE kind = 'domain' AND enabled = 1 AND deletedAt IS NULL") ?? 0
+        guard count <= BlockRule.maxDomains else { throw BlockError.tooManyDomains }
     }
 
     /// Adds one window per day in `hours`, in one transaction. Windows that already exist are reused.
@@ -168,6 +175,7 @@ extension Store {
             guard try ruleExists(id, db) else { throw BlockError.noSuchRule(id) }
             if !enabled { try requireBlockingOff(now: now, calendar: calendar, db) }
             try db.execute(sql: "UPDATE blockRule SET enabled = ?, updatedAt = ? WHERE id = ?", arguments: [enabled, now, id])
+            if enabled { try requireSupportedRuleCount(db) }
         }
     }
 

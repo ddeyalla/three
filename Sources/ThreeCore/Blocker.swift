@@ -14,6 +14,7 @@ public enum BlockError: LocalizedError, Equatable {
     case noSuchRule(String)
     case noSuchWindow(String)
     case missingReason
+    case tooManyDomains
 
     public var errorDescription: String? {
         switch self {
@@ -27,6 +28,7 @@ public enum BlockError: LocalizedError, Equatable {
         case .noSuchRule(let id): "No block rule matches \"\(id)\"."
         case .noSuchWindow(let id): "No focus hours match \"\(id)\"."
         case .missingReason: "Say in a few words why you need it."
+        case .tooManyDomains: "Three supports up to \(BlockRule.maxDomains) enabled website rules. No rules were changed."
         }
     }
 }
@@ -80,9 +82,13 @@ public struct BlockDomain: Hashable, Comparable, Sendable, CustomStringConvertib
 
         let labels = host.split(separator: ".", omittingEmptySubsequences: false)
         guard host.count <= 253, labels.allSatisfy(BlockDomain.isValidLabel) else { throw BlockError.invalidDomain(.malformed) }
-        // A top-level domain is never all digits, so this catches IPv4 and its shorthand forms.
-        guard !labels.last!.allSatisfy(\.isNumber) else { throw BlockError.invalidDomain(.ipAddress) }
+        let last = labels.last!
+        let hexadecimal = last.hasPrefix("0x") && last.dropFirst(2).allSatisfy(\.isHexDigit)
+        guard !last.allSatisfy(\.isNumber), !hexadecimal else { throw BlockError.invalidDomain(.ipAddress) }
         guard labels.count >= 2, labels.last != "localhost" else { throw BlockError.invalidDomain(.incomplete) }
+        guard (parts.percentEncodedPath.isEmpty || parts.percentEncodedPath == "/"), parts.query == nil, parts.fragment == nil else {
+            throw BlockError.invalidDomain(.pathRule(suggestion: try? BlockDomain(parsing: host)))
+        }
         rawValue = host
     }
 
@@ -161,6 +167,9 @@ public enum BlockTarget: Hashable, Sendable {
 }
 
 public struct BlockRule: Identifiable, Hashable, Sendable {
+    // Even maximum-length domains and labels must fit Chrome's 1 MiB native-message limit.
+    public static let maxDomains = 1000
+
     public let id: String
     public let target: BlockTarget
     public let enabled: Bool

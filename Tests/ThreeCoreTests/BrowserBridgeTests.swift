@@ -86,6 +86,25 @@ private func json(_ text: String) -> Data { Data(text.utf8) }
 
 // MARK: Chrome setup
 
+@Test func largestSupportedBrowserStateFitsTheWireLimit() throws {
+    let now = Date()
+    let label = String(repeating: "a", count: 63)
+    let domain = try BlockDomain(parsing: [label, label, label, String(repeating: "a", count: 61)].joined(separator: "."))
+    let rules = (0..<BlockRule.maxDomains).map { _ in
+        BlockRule(id: UUID().uuidString, target: .domain(domain), enabled: true, createdAt: now)
+    }
+    let session = Session(id: "s", taskId: "t", kind: .focus, plannedSeconds: 1500, startedAt: now, pausedAt: nil, pausedSeconds: 0,
+                          endedAt: nil, endReason: nil, outcome: nil, focusRating: nil, note: nil, updatedAt: now)
+    for title in ["😀" + String(repeating: "a", count: 199), "a" + String(repeating: "\u{301}", count: 10_000)] {
+        let focus = RunningFocus(session: session, taskTitle: title, categoryColor: "#6E9BF2", strict: false)
+        let policy = BlockPolicy.evaluate(at: now, calendar: .current, rules: rules, windows: [], running: focus, exceptions: [])
+        let state = BrowserState(policy)
+        #expect(state.taskTitle == String(String.UnicodeScalarView(title.unicodeScalars.prefix(200))))
+        #expect(try state.frame(validUntil: now + 120).count <= NativeMessaging.maxOutboundBytes + 4)
+        #expect(state.rules.count == BlockRule.maxDomains)
+    }
+}
+
 @Test func extensionIdIsDerivedFromTheManifestKey() throws {
     let manifest = try #require(try JSONSerialization.jsonObject(
         with: Data(contentsOf: repo.appendingPathComponent("Extensions/Chrome/manifest.json"))) as? [String: Any])

@@ -4,8 +4,8 @@ export const HOST = 'com.deyalla.three';
 export const PROTOCOL = 1;
 /** Rules never outlive this without a fresh state, whatever lease the host claims. */
 export const MAX_LEASE_MS = 3 * 60_000;
-/** Below Chrome's 5000 session-rule limit. */
-export const MAX_RULES = 4000;
+/** Matches BlockRule.maxDomains, including room for maximum-length domains in a native message. */
+export const MAX_RULES = 1000;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DOMAIN = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
@@ -28,13 +28,13 @@ export function parseState(msg, now) {
   if (msg.until !== null && !Number.isFinite(msg.until)) return null;
   let task = null;
   if (msg.task !== null) {
-    if (!msg.task || typeof msg.task.title !== 'string' || msg.task.title.length > 200) return null;
-    task = { title: msg.task.title, color: typeof msg.task.color === 'string' && COLOR.test(msg.task.color) ? msg.task.color : null };
+    if (!msg.task || typeof msg.task.title !== 'string') return null;
+    task = { title: Array.from(msg.task.title).slice(0, 200).join(''), color: typeof msg.task.color === 'string' && COLOR.test(msg.task.color) ? msg.task.color : null };
   }
   return { active: msg.active, reason: msg.reason, task, until: msg.until, strict: msg.strict, rules: msg.active ? rules : [], validUntil };
 }
 
-/** The rules to enforce at `now`. None once the lease lapses, so a dead host or a quit app fails open. */
+/** The rules to enforce at `now`. None once the host's lease lapses. */
 export function rulesInForce(state, now) {
   return state && state.active && state.validUntil > now ? state.rules : [];
 }

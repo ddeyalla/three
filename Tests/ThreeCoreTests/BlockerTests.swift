@@ -37,7 +37,7 @@ private func evaluate(_ now: Date, zone: String = "UTC", rules: [BlockRule] = [r
 
 @Test func domainsNormaliseToOneCanonicalHost() throws {
     let cases: [(String, String)] = [
-        ("https://WWW.Reddit.com:443/r/x?q=1#top", "reddit.com"),
+        ("https://WWW.Reddit.com:443/", "reddit.com"),
         ("  Reddit.com \n", "reddit.com"),
         ("http://old.reddit.com/", "old.reddit.com"),
         ("*.reddit.com", "reddit.com"),
@@ -46,7 +46,7 @@ private func evaluate(_ now: Date, zone: String = "UTC", rules: [BlockRule] = [r
         ("youtube.com/", "youtube.com"),
         ("www.youtube.com", "youtube.com"),
         ("bücher.de", "xn--bcher-kva.de"),
-        ("https://例え.テスト/path", "xn--r8jz45g.xn--zckzah"),
+        ("https://例え.テスト/", "xn--r8jz45g.xn--zckzah"),
     ]
     for (input, expected) in cases {
         #expect(try BlockDomain(parsing: input).rawValue == expected, "\(input)")
@@ -57,6 +57,11 @@ private func evaluate(_ now: Date, zone: String = "UTC", rules: [BlockRule] = [r
     let cases: [(String, DomainProblem)] = [
         ("", .empty),
         ("youtube.com/shorts", .pathRule(suggestion: domain("youtube.com"))),
+        ("https://youtube.com/shorts", .pathRule(suggestion: domain("youtube.com"))),
+        ("http://reddit.com/r/adhd?sort=new#top", .pathRule(suggestion: domain("reddit.com"))),
+        ("https://reddit.com/?x=1", .pathRule(suggestion: domain("reddit.com"))),
+        ("https://reddit.com/#top", .pathRule(suggestion: domain("reddit.com"))),
+        ("https://例え.テスト/path", .pathRule(suggestion: domain("xn--r8jz45g.xn--zckzah"))),
         ("reddit.com?x=1", .pathRule(suggestion: domain("reddit.com"))),
         ("localhost", .incomplete),
         ("com", .incomplete),
@@ -64,6 +69,9 @@ private func evaluate(_ now: Date, zone: String = "UTC", rules: [BlockRule] = [r
         ("[::1]", .ipAddress),
         ("https://[::1]/", .ipAddress),
         ("127.0.0.1", .ipAddress),
+        ("https://127.0.0.0x1/", .ipAddress),
+        ("0x7f000001", .ipAddress),
+        ("127.0x", .ipAddress),
         ("http://192.168.1.4/admin", .ipAddress),
         ("ftp://reddit.com", .notWeb),
         ("https://user:pw@reddit.com", .credentials),

@@ -11,7 +11,7 @@ public enum NativeMessaging {
     /// Chrome's limit for one message from the host.
     public static let maxOutboundBytes = 1024 * 1024
     /// How long the extension may apply a state without hearing again. Past it, the extension drops its rules,
-    /// so a dead host or a quit app can't leave sites blocked.
+    /// so a dead host can't leave sites blocked. Chrome runs the host independently of the GUI.
     public static let lease: TimeInterval = 120
     /// How often the host renews the lease while nothing changes.
     public static let heartbeat: TimeInterval = 45
@@ -120,7 +120,7 @@ public struct BrowserState: Equatable, Sendable {
             case .paused: .paused
             }
         } ?? (policy.focusHours != nil ? .focusHours : nil)
-        taskTitle = policy.focus?.taskTitle.map { String($0.prefix(200)) }
+        taskTitle = policy.focus?.taskTitle.map { String(String.UnicodeScalarView($0.unicodeScalars.prefix(200))) }
         taskColor = policy.focus?.categoryColor
         until = policy.until
         strict = policy.strict

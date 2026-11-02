@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  MAX_LEASE_MS, blockPageView, hostMatches, parseState, rulesInForce, sameRules, sessionRules, tabsToBlock,
+  MAX_LEASE_MS, MAX_RULES, blockPageView, hostMatches, parseState, rulesInForce, sameRules, sessionRules, tabsToBlock,
 } from '../Chrome/state.js';
 
 const now = 1_800_000_000_000;
@@ -28,10 +28,18 @@ test('rejects any state it cannot trust', () => {
     host({ rules: [{ id: REDDIT, domain: 'reddit.com/r/adhd', label: 'Reddit' }] }),
     host({ rules: [{ id: REDDIT, domain: '*.reddit.com', label: 'Reddit' }] }),
     host({ rules: [{ id: REDDIT, domain: 'Reddit.com', label: 'Reddit' }] }),
-    host({ rules: Array.from({ length: 4001 }, () => ({ id: REDDIT, domain: 'reddit.com', label: 'Reddit' })) }),
+    host({ rules: Array.from({ length: MAX_RULES + 1 }, () => ({ id: REDDIT, domain: 'reddit.com', label: 'Reddit' })) }),
     host({ task: { title: 7 } }), host({ until: 'soon' }), null, 'state',
   ];
   for (const msg of bad) assert.equal(parseState(msg, now), null, JSON.stringify(msg)?.slice(0, 80));
+});
+
+test('Unicode display titles cannot invalidate blocking rules', () => {
+  for (const title of ['😀' + 'a'.repeat(199), 'a' + '\u0301'.repeat(10_000)]) {
+    const parsed = parseState(host({ task: { title, color: '#6E9BF2' } }), now);
+    assert.equal(parsed.rules.length, 2);
+    assert.equal(parsed.task.title, Array.from(title).slice(0, 200).join(''));
+  }
 });
 
 test('an inactive state carries no rules, and a lapsed lease enforces none', () => {

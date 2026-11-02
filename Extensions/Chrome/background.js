@@ -43,6 +43,18 @@ async function clientId() {
   return fresh;
 }
 
+async function reportPermissions(p) {
+  const [hostAccess, id] = await Promise.all([
+    chrome.permissions.contains({ origins: ['<all_urls>'] }), clientId(),
+  ]);
+  if (port !== p) return;
+  try {
+    p.postMessage({ type: 'hello', protocol: PROTOCOL, clientId: id, version: chrome.runtime.getManifest().version, hostAccess });
+  } catch {
+    // onDisconnect schedules the retry if the port closes during the permission check.
+  }
+}
+
 function connect() {
   if (port) return;
   let p;
@@ -68,20 +80,24 @@ function connect() {
     // The current rules stay until their lease; reconnecting before then keeps blocking seamless.
     chrome.alarms.create('reconnect-soon', { delayInMinutes: 0.5 });
   });
+  serial(() => reportPermissions(p));
+}
+
+function permissionsChanged() {
   serial(async () => {
-    const hostAccess = await chrome.permissions.contains({ origins: ['<all_urls>'] });
-    try {
-      p.postMessage({ type: 'hello', protocol: PROTOCOL, clientId: await clientId(), version: chrome.runtime.getManifest().version, hostAccess });
-    } catch {
-      // The port closed first; onDisconnect schedules the retry.
-    }
+    if (port) await reportPermissions(port);
+    await sweep(rulesInForce(await stored(), Date.now()));
   });
 }
+
+chrome.permissions.onAdded.addListener(permissionsChanged);
+chrome.permissions.onRemoved.addListener(permissionsChanged);
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'lease') serial(async () => enforce(await stored()));
   if (alarm.name === 'reconnect' || alarm.name === 'reconnect-soon') {
-    connect();
+    if (port) serial(() => reportPermissions(port));
+    else connect();
     serial(async () => enforce(await stored()));
   }
 });

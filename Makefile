@@ -6,7 +6,7 @@ build:
 test:
 	./scripts/lint-design.sh
 	./scripts/swift.sh test
-	@if command -v node >/dev/null; then node --test 'Extensions/tests/*.test.mjs'; else echo "skipped Chrome extension tests: node isn't installed"; fi
+	node --test 'Extensions/tests/*.test.mjs'
 
 run: build
 	-pkill -x ThreeApp

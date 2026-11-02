@@ -8,11 +8,15 @@ const settle = () => new Promise((r) => setTimeout(r, 20));
 let loads = 0;
 
 function fakeChrome({ tabs = [], session = {} } = {}) {
-  const listeners = { alarm: [], message: [] };
+  const listeners = { alarm: [], message: [], permissionAdded: [], permissionRemoved: [] };
   const fake = {
-    ports: [], dnr: [], ruleUpdates: 0, tabUpdates: [], alarms: new Map(), session: { ...session }, local: {},
+    ports: [], dnr: [], ruleUpdates: 0, tabUpdates: [], alarms: new Map(), session: { ...session }, local: {}, hostAccess: true,
     fireAlarm: (name) => listeners.alarm.forEach((f) => f({ name })),
     pageMessage: (msg, sender) => listeners.message.forEach((f) => f(msg, sender)),
+    changePermission: (allowed) => {
+      fake.hostAccess = allowed;
+      listeners[allowed ? 'permissionAdded' : 'permissionRemoved'].forEach((f) => f({ origins: ['<all_urls>'] }));
+    },
   };
   const area = (store) => ({
     get: async (keys) => {
@@ -57,7 +61,11 @@ function fakeChrome({ tabs = [], session = {} } = {}) {
       onAlarm: { addListener: (f) => listeners.alarm.push(f) },
     },
     tabs: { query: async () => tabs, update: async (tabId, { url }) => { fake.tabUpdates.push({ tabId, url }); } },
-    permissions: { contains: async () => true },
+    permissions: {
+      contains: async () => fake.hostAccess,
+      onAdded: { addListener: (f) => listeners.permissionAdded.push(f) },
+      onRemoved: { addListener: (f) => listeners.permissionRemoved.push(f) },
+    },
   };
   return fake;
 }
@@ -74,6 +82,25 @@ const state = (over = {}) => ({
   until: Date.now() + 60_000, task: null,
   rules: [{ id: REDDIT, domain: 'reddit.com', label: 'Reddit' }, { id: X, domain: 'x.com', label: 'X' }],
   ...over,
+});
+
+test('coverage follows permission changes without reconnecting the native port', async () => {
+  const fake = await boot({ tabs: [{ id: 9, url: 'https://reddit.com/' }] });
+  const [port] = fake.ports;
+  port.fromHost(state());
+  await settle();
+  fake.changePermission(false);
+  await settle();
+  assert.equal(port.posted.at(-1).hostAccess, false);
+  fake.changePermission(true);
+  await settle();
+  assert.equal(port.posted.at(-1).hostAccess, true);
+  assert.equal(fake.tabUpdates.at(-1).tabId, 9);
+  fake.hostAccess = false;
+  fake.fireAlarm('reconnect');
+  await settle();
+  assert.equal(port.posted.at(-1).hostAccess, false);
+  assert.equal(fake.ports.length, 1);
 });
 
 test('connects, says hello without any address, and enforces the first state', async () => {

@@ -9,6 +9,7 @@ import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import assert from 'node:assert/strict';
+import { parseState } from '../Extensions/Chrome/state.js';
 
 const args = process.argv.slice(2);
 const three = args.find((a) => !a.startsWith('--')) ?? 'build/Three.app/Contents/Helpers/three';
@@ -74,7 +75,8 @@ const results = [];
 const check = (name) => results.push(name) && console.log(`ok  ${name}`);
 
 cli('block', 'add', 'reddit');
-cli('add', 'Write PRD', '--block', '60m');
+const title = '😀' + 'a'.repeat(199);
+cli('add', title, '--block', '60m');
 const reddit = status().rules.find((r) => r.value === 'reddit.com');
 
 const host = new Host();
@@ -93,7 +95,8 @@ check('hello registers one connected profile');
 cli('start', '--min', '25');
 f = await host.next('focus push', (m) => m.active && m.reason === 'focus');
 assert.deepEqual(f.rules.map((r) => r.domain).sort(), ['redd.it', 'reddit.com']);
-assert.equal(f.task.title, 'Write PRD');
+assert.equal(f.task.title, title);
+assert.equal(parseState(f, Date.now()).rules.length, 2, 'the extension accepts the real host state with a Unicode title');
 assert.match(f.task.color, /^#[0-9A-F]{6}$/i);
 assert.ok(Math.abs(f.until - (Date.now() + 25 * 60_000)) < 10_000, 'until is the planned end');
 check('three start pushes the rules with task and until');
