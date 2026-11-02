@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.2.2 — 2026-11-02
+
+A cleanup after a full review of the app. The window loses its chrome, and a long list of rough edges is fixed.
+
+**What looks or works differently**
+
+- **No top bar.** The title bar, toolbar band and the two side-by-side sidebar toggles are gone. The window opens without a cursor blinking in a text field.
+- **No inspector.** The right-hand column and ⌘I are gone. The running or selected task shows its steps and notes in place. In Inbox, Upcoming and categories, click a task's title row to open it.
+- **Double-click no longer starts a task.** Click to select, then press Start (⌘↩), or use Start now in the task's menu. Clicks select straight away, with no double-click delay.
+- **Unfinished tasks from earlier days wait in the Inbox**, oldest first, instead of disappearing from the app.
+- **Quick add reads the day and length only at the end.** "Email Tom about invoice" stays as typed. `tom`, `sun`, `sat` and `later` no longer count as days; use `tomorrow`, `sunday`, `saturday` or `someday`. The preview shows the title it will save.
+- **Errors show wherever you are**, as a banner at the bottom of the window, in the menu bar and in the reflection panel.
+
+**Fixes**
+
+- Starting a task other than the selected one runs for its own length, not the length on the dial.
+- Deleting the running task stops its block. Before, the timer kept going and the task came back when it ended.
+- The reflection panel has Cancel, and Escape closes it. It also closes itself if you add time from the window, the menu bar or the CLI.
+- Quick add never clears text it couldn't use, and asks for a title when there isn't one.
+- Move up and Move down work when a dropped task sits between others.
+- Pushing a task to tomorrow keeps its steps. A task already moved to tomorrow can't be scheduled a second time, and a done task stays done when moved.
+- Clicking a step or the notes no longer collapses the card you're working in.
+- A length you dragged on the dial resets when the selected task changes.
+- The running task's progress (`22 / 60m`) counts up live.
+- ⌘N focuses the quick-add field even when it switches views. "Break it down" puts the cursor in the new step's field.
+- The timeline draws planned blocks only for open tasks on that day.
+- A "Time's up" notification left over from before a relaunch is cleared.
+
 ## 0.2.1 — 2026-11-02
 
 - Marking a running task done now ends its block, recorded as done; other ways of closing a task end it as stopped. Before, the task could close while its timer kept running. Existing blocks stuck that way are closed at the moment they were paused.

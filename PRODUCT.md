@@ -315,7 +315,7 @@ Background sounds, Slack status, window tracking, AppleScript, social or leaderb
 Categories, Day Plan with up to 5 tasks, dial timer, menu bar, reflection → break, Today screen with timeline (plan and actual only), local SQLite, `three` CLI.
 
 **v0.2 — Plan and capture**
-Sidebar (Today, Inbox, Upcoming, categories), inbox for unplanned tasks, Todoist-style quick add (`#category 45m tomorrow`), steps under each task, notes and a task inspector, Settings (timer defaults shared with the CLI through the database, category editing, CLI install and agent instructions), quick capture from the menu bar.
+Sidebar (Today, Inbox, Upcoming, categories), inbox for unplanned tasks, Todoist-style quick add (`#category 45m tomorrow`), steps and notes shown in place on each task, Settings (timer defaults shared with the CLI through the database, category editing, CLI install and agent instructions), quick capture from the menu bar.
 
 **v0.3 — Blocker**
 Blocklist, focus hours, Safari and Chromium extensions with the block page, app blocking overlay, unblock friction, strict mode, block logging.
