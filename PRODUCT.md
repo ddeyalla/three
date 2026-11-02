@@ -105,8 +105,8 @@ Split view, as in Session's first screenshot, with less on it.
 
 ### 5.2 Menu bar
 
-- Title: a category-colour dot and `Write spec · 23:41`. When idle: `Next: Write spec (90m)`. With no plan: `Plan today`.
-- Popover (glass): the current task, time left, Start/Pause, `+5`, the list of today's tasks with ticks, and "Open Three". While blocking is on, a row says until when and why, with Unblock for 5 Minutes and Blocking Settings in its menu (§7).
+- Title: a symbol and the time left, such as `23:41`, `Paused 23:41` or `Break 4:12`; the symbol alone when nothing runs. The symbol is a dot while a saved reflection waits, a raised hand while something is blocked, else a timer. The task and what's next are in the popover and in the item's VoiceOver label.
+- Popover (glass): the current task, time left, Start/Pause, `+5`, the list of today's tasks with ticks, and "Open Three". While blocking is on, a row says until when and why, with Unblock for 5 Minutes and Blocking Settings in its menu (§7). Unblock for 5 Minutes is also in the Focus menu, because macOS can hide the menu-bar item.
 - Global hotkey (default ⌥⌘Space) opens the popover from anywhere.
 
 ### 5.3 Reflection panel (end of every focus session)
@@ -196,7 +196,7 @@ Changed from the original plan: no "Reddit blocked today: 7" counter, and no cat
 
 ### 7.4 Getting past it
 
-- **Only in Three.** The app overlay's **Unblock for 5 minutes…**, or Unblock for 5 Minutes in the menu-bar popover. The Chrome page tells you where to go; it has no link into Three.
+- **Only in Three.** The app overlay's **Unblock for 5 minutes…**, or Unblock for 5 Minutes in the Focus menu or the menu-bar popover. The Chrome page tells you where to go; it has no link into Three.
 - Write a reason of at least three words, start a 20-second wait, then click **Unblock for 5 minutes**. That last button has no keyboard shortcut, so holding Return can't open anything. The rule is open for five minutes; then blocking resumes and an open app is hidden again. The reason is saved with the session.
 - A site that a broader rule also covers can't be opened on its own (opening old.reddit.com wouldn't help while reddit.com is blocked). Three says so before the wait.
 - **Strict tasks** turn unblocking off for that task's sessions. Create one with `three add --strict`. Finish and Stop work as usual, focus hours are unaffected, and there's no Give up timer, no protection against quitting and no relaunch agent. The app can't yet mark an existing task strict: that needs a Store mutation that doesn't exist.
