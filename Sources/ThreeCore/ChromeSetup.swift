@@ -125,9 +125,7 @@ public struct ChromeSetup: Sendable {
         return key
     }
 
-    /// Removes Three's manifest so Chrome can no longer start the host. The app should refuse this while
-    /// blocking is on; the extension folder stays until the user removes the extension in Chrome.
-    public func removeConnection() throws {
+    func removeConnection() throws {
         switch manifestStatus() {
         case .missing: return
         case .foreign: throw ChromeSetupError.foreignManifest(manifestURL.path)

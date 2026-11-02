@@ -348,12 +348,9 @@ struct BlockingSettings: View {
         }
     }
 
-    /// ChromeSetup has no blocking check of its own, so ask the Store at the moment of removal.
     private func removeConnection(_ setup: ChromeSetup) {
         do {
-            let policy = try model.store.blockPolicy()
-            guard !policy.isActive else { throw BlockError.protectionActive(until: policy.until) }
-            try setup.removeConnection()
+            try model.store.removeChromeConnection(setup)
             chromeNote = nil
         } catch {
             chromeNote = error.localizedDescription

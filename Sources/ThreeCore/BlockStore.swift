@@ -178,6 +178,14 @@ extension Store {
 
     // MARK: Loosening: refused while blocking is on
 
+    public func removeChromeConnection(_ setup: ChromeSetup, now: Date? = nil, calendar: Calendar = .current) throws {
+        // The writer lock also excludes CLI focus starts until the filesystem removal completes.
+        try db.write { db in
+            try requireBlockingOff(now: now ?? Date(), calendar: calendar, db)
+            try setup.removeConnection()
+        }
+    }
+
     /// Disabling is loosening, so it waits for blocking to end. Enabling is always allowed.
     public func setBlockRule(_ id: String, enabled: Bool, now: Date = Date(), calendar: Calendar = .current) throws {
         try write { db in

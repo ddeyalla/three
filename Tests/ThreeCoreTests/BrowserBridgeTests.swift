@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import GRDB
 import Testing
 @testable import ThreeCore
 
@@ -165,6 +166,52 @@ private struct Sandbox {
     #expect(throws: ChromeSetupError.foreignManifest(box.setup.manifestURL.path)) { try box.setup.install() }
     #expect(throws: ChromeSetupError.foreignManifest(box.setup.manifestURL.path)) { try box.setup.removeConnection() }
     #expect(try Data(contentsOf: box.setup.manifestURL) == theirs)
+}
+
+@Test func connectionRemovalChecksCurrentProtectionInTheStore() throws {
+    let box = try Sandbox()
+    let url = box.root.appendingPathComponent("guard.sqlite")
+    let appStore = try Store(url: url), cliStore = try Store(url: url)
+    try box.setup.install()
+    try appStore.addBlockRule(.domain(BlockDomain(parsing: "example.com")))
+    let now = Date()
+    let task = try cliStore.addTask(NewTask(title: "Keep focus", category: "Coding", blockMinutes: 25), source: .app)
+    #expect(try !appStore.blockPolicy().isActive)
+    try cliStore.startFocus(taskId: task.id, now: now)
+
+    #expect(throws: BlockError.self) { try appStore.removeChromeConnection(box.setup, now: now) }
+    #expect(box.setup.manifestStatus() == .installed(path: box.setup.launcher.path))
+
+    try cliStore.stop(now: now.addingTimeInterval(1))
+    try appStore.removeChromeConnection(box.setup, now: now.addingTimeInterval(1))
+    #expect(box.setup.manifestStatus() == .missing)
+}
+
+@Test func connectionRemovalHoldsTheWriterLockDuringItsPolicyCheck() throws {
+    let box = try Sandbox()
+    let url = box.root.appendingPathComponent("race.sqlite")
+    let appStore = try Store(url: url), cliStore = try Store(url: url)
+    try box.setup.install()
+    try appStore.addBlockRule(.domain(BlockDomain(parsing: "example.com")))
+    let task = try cliStore.addTask(NewTask(title: "Concurrent start", category: "Coding", blockMinutes: 25), source: .app)
+    try cliStore.db.writeWithoutTransaction { try $0.execute(sql: "PRAGMA busy_timeout = 0") }
+    var attempted = false
+    var failure: DatabaseError?
+    appStore.db.writeWithoutTransaction { db in
+        db.trace { event in
+            guard !attempted, event.description.hasPrefix("SELECT") else { return }
+            attempted = true
+            do { try cliStore.startFocus(taskId: task.id) }
+            catch { failure = error as? DatabaseError }
+        }
+    }
+    defer { appStore.db.writeWithoutTransaction { $0.trace(nil) } }
+
+    try appStore.removeChromeConnection(box.setup)
+    #expect(attempted && failure?.resultCode == .SQLITE_BUSY)
+    #expect(box.setup.manifestStatus() == .missing)
+    try cliStore.startFocus(taskId: task.id)
+    #expect(try cliStore.blockPolicy().isActive)
 }
 
 @Test func setupNeedsChromeAlreadyThere() throws {
