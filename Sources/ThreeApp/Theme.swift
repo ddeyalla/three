@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import ThreeCore
 
@@ -68,16 +69,28 @@ struct Backdrop: View {
 
 /// The one prominent button: system glass tinted with the accent. The glass renders category colours brighter than
 /// the palette, and white labels measured 2.1 to 2.8:1 on them, so a light tint gets a canvas-coloured label. Only while
-/// the tint shows, though: an inactive window or a disabled button draws grey glass, where the system's label reads.
+/// the tint shows, though: the glass is grey in any window that isn't key and on a disabled button, where the system's
+/// label reads.
 struct PrimaryButtonStyle: PrimitiveButtonStyle {
     let tint: Color
-    @Environment(\.controlActiveState) private var activeState
-    @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
+        PrimaryButton(configuration: configuration, tint: tint)
+    }
+}
+
+private struct PrimaryButton: View {
+    let configuration: PrimitiveButtonStyleConfiguration
+    let tint: Color
+    @Environment(\.isEnabled) private var isEnabled
+    /// The window's own key status, which the glass follows. controlActiveState isn't enough: it reports a floating
+    /// panel as key while the app is active, so an unfocused reflection panel got a dark label on grey glass (1.86:1).
+    @State private var windowIsKey = false
+
+    var body: some View {
         Button(role: configuration.role, action: configuration.trigger) {
             // .glassProminent overrides a foreground set on the button, so the colour goes on the label itself.
-            if isEnabled && activeState != .inactive && tint.isLight {
+            if isEnabled && windowIsKey && tint.isLight {
                 configuration.label.foregroundStyle(Theme.canvas)
             } else {
                 configuration.label
@@ -85,6 +98,50 @@ struct PrimaryButtonStyle: PrimitiveButtonStyle {
         }
         .buttonStyle(.glassProminent)
         .tint(tint)
+        .background(KeyWindowReader(isKey: $windowIsKey))
+    }
+}
+
+/// Reports whether the window holding it is key, and keeps reporting as that changes.
+private struct KeyWindowReader: NSViewRepresentable {
+    @Binding var isKey: Bool
+
+    func makeNSView(context: Context) -> ReaderView { ReaderView(isKey: $isKey) }
+    func updateNSView(_ view: ReaderView, context: Context) { view.isKey = $isKey }
+
+    final class ReaderView: NSView {
+        var isKey: Binding<Bool>
+        private var observers: [NSObjectProtocol] = []
+
+        init(isKey: Binding<Bool>) {
+            self.isKey = isKey
+            super.init(frame: .zero)
+        }
+
+        required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            // Leaving a window stops observing; a nil window would mean every window's notifications.
+            observers.forEach(NotificationCenter.default.removeObserver)
+            observers = []
+            sync()
+            guard let window else { return }
+            observers = [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification].map { name in
+                NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.sync() }
+                }
+            }
+        }
+
+        private func sync() {
+            // After the current view update, never during it.
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                let key = self.window?.isKeyWindow ?? false
+                if self.isKey.wrappedValue != key { self.isKey.wrappedValue = key }
+            }
+        }
     }
 }
 
