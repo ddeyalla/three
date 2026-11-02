@@ -96,6 +96,9 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
 });
 
 chrome.alarms.create('reconnect', { periodInMinutes: 1 });
-// A worker restarted after its lease lapsed drops the old rules at once instead of waiting for the alarm.
-serial(async () => enforce(await stored()));
+// A restarted worker has no port yet, and drops rules whose lease lapsed at once instead of waiting for the alarm.
+serial(async () => {
+  await chrome.storage.session.set({ connected: false });
+  await enforce(await stored());
+});
 connect();
