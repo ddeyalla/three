@@ -2,23 +2,13 @@ import AppKit
 import SwiftUI
 import ThreeCore
 
-/// Tasks on the left, the dial in the middle, the day's timeline on the right.
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openSettings) private var openSettings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        HStack(spacing: 0) {
-            TasksPane()
-                .frame(width: 320)
-            NowPane()
-                .frame(minWidth: 380, maxWidth: .infinity)
-            DayTimelineView()
-                .frame(width: 340)
-        }
-        .padding(.top, Space.lg)
-        .frame(maxWidth: 1240)
+        WorkspaceView()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay(alignment: .bottom) {
             if model.error != nil {
@@ -42,7 +32,7 @@ struct RootView: View {
 
 /// Capsules for today, the inbox, the week ahead, what's done and the tags,
 /// then the list for whichever is chosen. Settings sits at the foot.
-private struct TasksPane: View {
+struct TasksPane: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {

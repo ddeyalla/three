@@ -32,5 +32,9 @@ let package = Package(
             name: "ThreeCoreTests",
             dependencies: ["ThreeCore"]
         ),
+        .testTarget(
+            name: "ThreeAppTests",
+            dependencies: ["ThreeApp"]
+        ),
     ]
 )

@@ -79,7 +79,7 @@ The record is local-first. Every row carries `id` (UUID), `updatedAt` and `delet
 
 ## 5. Screens
 
-Two surfaces: a **menu-bar item** that is always there, and a **main window** for planning and history. Since 0.2.4 the main window has no sidebar. It has three panes: **tasks** on the left (Today, Inbox, Upcoming, Done, Tags), **the dial** in the middle and **the day's timeline** on the right. Settings is a separate window (⌘,) and holds category editing.
+Two surfaces: a **menu-bar item** that is always there, and a **main window** for planning and history. Since 0.2.4 the main window has no sidebar. Its three panes are **Tasks** (Today, Inbox, Upcoming, Done, Tags), **Now** (the dial) and **Timeline** (the day). They initially appear in that order. The workspace fills the window, including full screen, with rounded translucent pane bodies and glass headers. Drag a header onto another pane to move it to that position, or use the header menu or View → Arrange Panes. Order survives relaunch; Reset Pane Order restores the default. Native dividers adjust widths with minimums that keep controls usable. Reordering preserves draft input, selection, scroll positions and timers. Settings is a separate window (⌘,) and holds category editing.
 
 **Tags (0.2.4).** A tag (`@onboarding`) marks a thread of work that runs for days or weeks, such as a product, project or feature. A task can carry several. A tag's time is every focus block on every task that carried it, including copies carried to later days. The Tags view shows the total, the past week, days worked and each task's share. This is the first piece of §5.4 and §5.5; per-tag trends belong in v0.6.
 

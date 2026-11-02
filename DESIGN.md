@@ -72,8 +72,12 @@ components:
     rounded: "{rounded.block}"
     typography: "{typography.meta}"
   tasks-pane:
-    width: "320px"
+    minWidth: "320px"
     padding: "16px"
+  workspace-pane:
+    rounded: "{rounded.panel}"
+    headerHeight: "36px"
+    typography: "{typography.heading}"
   choice-capsule:
     rounded: "capsule"
     height: "28px"
@@ -147,31 +151,34 @@ Defined once in `Typo` (Sources/ThreeApp/Theme.swift). Views use these roles and
 
 ## Layout
 
-One window, three panes, no sidebar and no toolbar:
+One window, three movable panes, no sidebar and no window toolbar:
 
-- **Tasks** (left, 320pt): one row of choice capsules (Today, Inbox, Upcoming, then icons for Done and Tags), each sized to its label, then the list for that choice. Labels stay on one line. Counts belong in the list summary so navigation never shifts as tasks arrive. The control sits below the window's traffic lights.
-- **Now** (middle, fills the space, at least 380pt): the task the dial is about, the dial, the time left and the controls, centred vertically. Nothing else.
-- **Timeline** (right, 340pt): the day on an hour grid.
+- **Tasks** (initially left, at least 320pt): one row of choice capsules (Today, Inbox, Upcoming, then icons for Done and Tags), each sized to its label, then the list for that choice. Labels stay on one line. Counts belong in the list summary so navigation never shifts as tasks arrive.
+- **Now** (initially middle, at least 360pt): the task the dial is about, the dial, the time left and the controls, centred vertically. The instrument keeps its readable size as its pane grows.
+- **Timeline** (initially right, at least 300pt): the day on an hour grid, with blocks expanding to the available width.
 
-Panes sit straight on the canvas, separated by space, not lines. Categories are managed in Settings, not in the window.
+The workspace fills the available window width and height, including full screen. Each pane has a rounded translucent content background and a compact glass header. Small, consistent outer insets and gaps give the panes separation. Native split-view dividers let people adjust widths. Minimum widths keep the capsules, timer controls and timeline usable. Categories remain in Settings.
 
-The three panes form one centred workspace, at most 1240pt wide. Wider windows and full screen add equal space on either side instead of stretching the gap around the dial. Keep at least 16pt above the pane controls, including in full screen.
+There is no maximum workspace width and no growing side gutters. Respect the window's safe area and traffic lights. Use 12pt outer side and bottom insets, 8pt above the workspace, and native dividers with 4pt padding on either side. The divider's resize target spans this gap.
+
+Pane order is a local display preference. Drag a pane's named header onto another pane to move it to that position. Highlight only the receiving pane during the drag; cancellation changes nothing. The header menu and View → Arrange Panes provide the same moves without dragging. Order survives relaunch. Reset Pane Order restores Tasks, Now, Timeline. Moving a pane preserves its task selection, draft input, scroll position and running timer.
 
 Spacing uses one scale: 2 (a title and its subtitle), 4, 8, 12, 16, 24, 32. Inside a group the gap is 4 to 8; between groups 16 to 24; between page sections 24 to 32. Page margins are 24pt.
 
 ## Elevation & Depth
 
-Depth is Liquid Glass, never shadow. Cards, the quick-add field, controls, timeline blocks and the reflection panel are `glassEffect` surfaces over the canvas and its category-tinted wash. A running task's card tints its glass with the category colour at 30%; a selected card lightens by 8% white. The only drop shadow is the system's own, under the floating reflection panel.
+Liquid Glass remains on the pane headers, cards, quick-add field, controls, dial, timeline blocks and reflection panel. Workspace pane backgrounds use a standard translucent system material beneath these surfaces. Do not wrap existing glass controls inside another full-pane Liquid Glass effect. A running task's card tints its glass with the category colour at 30%; a selected card lightens by 8% white. The only drop shadow is the system's own, under the floating reflection panel.
 
 ### Named rules
-**The One Material Rule.** Surfaces are glass or canvas. No borders on cards, no custom shadows, no solid fills standing in for glass.
+**The Material Hierarchy Rule.** Liquid Glass carries controls. Standard translucent material separates workspace content underneath. Canvas is the base. No custom shadows or solid fills standing in for glass. Retain the existing glass cards and dial; do not stack a new glass container behind them. See [Apple research and layout decisions](docs/workspace-design.md).
 
 ## Shapes
 
-Three radii: 8pt for timeline blocks, 12pt for cards and the quick-add field, 20pt for the reflection panel. Small controls, choice capsules and the time-span label are capsules. Corners are continuous (squircle), as the system draws them.
+Three radii: 8pt for timeline blocks, 12pt for cards, pane headers and the quick-add field, 20pt for workspace panes and the reflection panel. Small controls, choice capsules and the time-span label are capsules. Corners are continuous (squircle), as the system draws them.
 
 ## Components
 
+- **Workspace pane**: full-height rounded translucent content surface. A 36pt glass header uses Heading for its name, a neutral grip, and a native menu with Move Left, Move Right and Reset Pane Order. The title/grip is the drag source; controls and content keep their own interactions. The same commands live in the View menu. Use stable pane identities and save only order, never task data. Moves are immediate, with no authored motion. The native divider provides width adjustment.
 - **Task card**: completion circle (category colour), title in Body, a Meta line with the category dot and name, its tags, the step count, then steps and notes when open. Padding 8 by 12. The completion button has a 24pt target. The title is a native plain button, separate from completion and scheduling controls. It selects an open task on Today and opens details elsewhere. A closed task on Today can also open its details. Full titles are available in a tooltip and to VoiceOver.
 - **Tag**: `@name` in Meta, secondary. Tags carry no colour (the Meaning Rule): the category already colours the task. A tag groups work that spans days or weeks, such as a product or a feature, and its time is the sum of every focus block on its tasks.
 - **Dial**: one turn is an hour. The wedge is the time left in the current hour; each further hour is a 2pt ring in the accent around the face. Drag to set, winding past 12 o'clock to add an hour, from 5 to 240 minutes. A drag starts from the current length without jumping to the pointer. At either limit, reversing responds immediately. When idle, Tab can focus the dial and arrow keys adjust by five minutes. Its tooltip explains dragging and keys.

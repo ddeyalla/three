@@ -3,7 +3,7 @@
 ## Unreleased
 
 - After two minutes without an answer or edit, the reflection panel saves Made progress and Okay, keeps any note, ends the block, and hides. A pulsing menu-bar dot reminds you to review or dismiss it. Saved reflections survive relaunch, and editing one leaves newer timers alone. Reduce Motion keeps the dot still.
-- Full screen keeps the three panes together in a centred workspace, with space above the controls. Wider windows no longer push the task list and timeline to opposite edges.
+- The workspace fills the window, including full screen, with three rounded translucent panes and Liquid Glass headers. Drag a header onto another pane to reorder, or use the header menu or View → Arrange Panes. Order is remembered, Reset Pane Order restores the default, and native dividers adjust widths. Draft input and scroll state stay with each pane when it moves.
 - Invalid or overflowing durations no longer crash the app or CLI. Extensions and breaks reject invalid lengths before changing a timer.
 - A running task must finish before it can move to tomorrow. Closed or already-carried tasks cannot create more copies or restart silently.
 - Saving a reflection and starting the next task or break now happen together. If the next task cannot start, the original session stays intact. Choosing Finish makes the panel ready for Escape and Return without focusing its note. Choosing Finish again preserves the draft.

@@ -33,6 +33,12 @@ cat > "$APP/Contents/Info.plist" <<EOF
     <key>LSMinimumSystemVersion</key><string>26.0</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSPrincipalClass</key><string>NSApplication</string>
+    <key>UTExportedTypeDeclarations</key>
+    <array><dict>
+        <key>UTTypeIdentifier</key><string>com.deyalla.three.workspace-pane</string>
+        <key>UTTypeConformsTo</key><array><string>public.data</string></array>
+        <key>UTTypeDescription</key><string>Three Workspace Pane</string>
+    </dict></array>
 </dict>
 </plist>
 EOF

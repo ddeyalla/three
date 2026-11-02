@@ -7,12 +7,14 @@ import UserNotifications
 struct ThreeApp: App {
     @NSApplicationDelegateAdaptor private var delegate: AppDelegate
     @State private var model = AppModel()
+    @State private var workspace = WorkspaceLayout()
     @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {
         Window("Three", id: "main") {
             RootView()
                 .environment(model)
+                .environment(workspace)
         }
         .defaultSize(width: 1240, height: 800)
         .windowStyle(.hiddenTitleBar)
@@ -43,6 +45,19 @@ struct ThreeApp: App {
                 Button("Finish Block") { model.finishEarly() }
                     .keyboardShortcut(.return, modifiers: [.command, .shift])
                     .disabled(model.running?.kind != .focus)
+            }
+            CommandGroup(before: .toolbar) {
+                Menu("Arrange Panes") {
+                    ForEach(WorkspacePane.allCases) { pane in
+                        Menu(pane.title) {
+                            PaneMoveCommands(layout: workspace, pane: pane)
+                        }
+                    }
+                    Divider()
+                    Button("Reset Pane Order") { workspace.reset() }
+                        .disabled(workspace.panes == WorkspacePane.allCases)
+                }
+                Divider()
             }
             CommandMenu("Go") {
                 Button("Today") { model.destination = .today }.keyboardShortcut("1")
