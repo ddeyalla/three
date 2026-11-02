@@ -1,31 +1,55 @@
 import SwiftUI
 import ThreeCore
 
-/// Title, subtitle, then content in a centred reading column, Todoist-width.
-struct ListPage<Content: View>: View {
-    let title: String
+/// A list in the tasks pane: a one-line summary with an optional control, then the content, scrolling.
+struct PaneList<Accessory: View, Content: View>: View {
     let subtitle: String
+    @ViewBuilder var accessory: Accessory
     @ViewBuilder var content: Content
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: Space.xl) {
-                VStack(alignment: .leading, spacing: Space.hairline) {
-                    Text(title).font(Typo.title)
-                    Text(subtitle).font(Typo.body).foregroundStyle(.secondary).monospacedDigit()
+            VStack(alignment: .leading, spacing: Space.md) {
+                HStack(alignment: .center, spacing: Space.sm) {
+                    Text(subtitle)
+                        .font(Typo.body)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                        .lineLimit(2)
+                    Spacer(minLength: 0)
+                    accessory
                 }
+                .frame(minHeight: 22)
                 content
             }
-            .frame(maxWidth: 640, alignment: .leading)
-            .padding(.horizontal, Space.xxl)
-            .padding(.vertical, Space.xl)
-            .frame(maxWidth: .infinity)
+            .padding(.horizontal, Space.lg)
+            .padding(.bottom, Space.xl)
         }
         .scrollIndicators(.never)
     }
 }
 
-/// A card in Inbox, Upcoming or a category list: click for details, hover for quick scheduling.
+extension PaneList where Accessory == EmptyView {
+    init(subtitle: String, @ViewBuilder content: () -> Content) {
+        self.init(subtitle: subtitle, accessory: { EmptyView() }, content: content)
+    }
+}
+
+/// Quiet guidance where a list is empty.
+private struct EmptyNote: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+
+    var body: some View {
+        Text(text)
+            .font(Typo.body)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, Space.xs)
+    }
+}
+
+/// A card in Inbox, Upcoming or Done: click for details, hover for quick scheduling.
 struct ListTaskCard: View {
     @Environment(AppModel.self) private var model
     let row: TaskRow
@@ -46,7 +70,7 @@ struct ListTaskCard: View {
                             .help("Tomorrow")
                     }
                 }
-                Text("\(row.task.blockMinutes)m")
+                Text(row.task.status == .done ? Format.duration(row.focusedSeconds) : "\(row.task.blockMinutes)m")
             }
             .buttonStyle(.plain)
         }
@@ -55,21 +79,26 @@ struct ListTaskCard: View {
     }
 }
 
-struct InboxView: View {
+private struct Cards: View {
+    let rows: [TaskRow]
+
+    var body: some View {
+        GlassEffectContainer(spacing: Space.sm) {
+            VStack(spacing: Space.sm) { ForEach(rows) { ListTaskCard(row: $0) } }
+        }
+    }
+}
+
+struct InboxList: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        ListPage(title: "Inbox", subtitle: subtitle) {
-            GlassEffectContainer(spacing: Space.sm) {
-                VStack(spacing: Space.sm) {
-                    QuickAddField(defaultDay: nil, placeholder: "Capture anything. Plan it later.")
-                    ForEach(model.inbox) { ListTaskCard(row: $0) }
-                }
-            }
+        PaneList(subtitle: subtitle) {
+            QuickAddField(defaultDay: nil, placeholder: "Capture anything")
             if model.inbox.isEmpty {
-                Text("Nothing waiting. Ideas, errands and someday tasks land here until you give them a day.")
-                    .font(Typo.body)
-                    .foregroundStyle(.secondary)
+                EmptyNote("Nothing waiting. Ideas, errands and someday tasks land here until you give them a day.")
+            } else {
+                Cards(rows: model.inbox)
             }
         }
     }
@@ -79,14 +108,15 @@ struct InboxView: View {
     }
 }
 
-struct UpcomingView: View {
+struct UpcomingList: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        ListPage(title: "Upcoming", subtitle: "The next seven days") {
-            QuickAddField(defaultDay: model.snapshot.day.adding(days: 1), placeholder: "Plan ahead: \"Review PR #coding 30m wed\"")
+        PaneList(subtitle: "The next seven days") {
+            QuickAddField(defaultDay: model.snapshot.day.adding(days: 1), placeholder: "Plan ahead: \"Review PR wed\"")
             ForEach(model.upcoming, id: \.day) { day in
                 DaySection(snapshot: day)
+                    .padding(.top, Space.sm)
             }
         }
     }
@@ -118,11 +148,54 @@ private struct DaySection: View {
             if rows.isEmpty {
                 Text("Nothing planned")
                     .font(Typo.body)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.tertiary)
+            } else {
+                Cards(rows: rows)
+            }
+        }
+    }
+}
+
+/// Finished tasks from the last 30 days, by the day you finished them.
+struct DoneList: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let count = model.logbook.reduce(0) { $0 + $1.tasks.count }
+        PaneList(subtitle: count == 0 ? "The last 30 days" : "\(count) done in the last 30 days") {
+            if model.logbook.isEmpty {
+                EmptyNote("Tick a task's circle when it's done and it lands here, with the time it took.")
+            }
+            ForEach(model.logbook, id: \.day) { day in
+                VStack(alignment: .leading, spacing: Space.sm) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(Format.dayName(day.day, today: model.snapshot.day)).font(Typo.heading)
+                        Spacer()
+                        Text(Format.duration(day.tasks.reduce(0) { $0 + $1.focusedSeconds }))
+                            .font(Typo.body)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                    Cards(rows: day.tasks)
+                }
+                .padding(.top, Space.sm)
+            }
+        }
+    }
+}
+
+/// Every tag with the focus time it has collected, most recently worked first.
+struct TagsList: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        PaneList(subtitle: model.tagSummaries.isEmpty ? "Time spent on each thread of work" : "Time spent, all time") {
+            if model.tagSummaries.isEmpty {
+                EmptyNote("Tag a product, project or feature with @name in quick add, like \"Fix signup @onboarding\". Each tag adds up its focus time across days and weeks.")
             } else {
                 GlassEffectContainer(spacing: Space.sm) {
                     VStack(spacing: Space.sm) {
-                        ForEach(rows) { ListTaskCard(row: $0) }
+                        ForEach(model.tagSummaries) { TagCard(summary: $0) }
                     }
                 }
             }
@@ -130,36 +203,65 @@ private struct DaySection: View {
     }
 }
 
-/// Everything open in one category: today, the week ahead, and the inbox.
-struct CategoryView: View {
+private struct TagCard: View {
     @Environment(AppModel.self) private var model
-    let categoryId: String
+    let summary: TagSummary
+
+    private var expanded: Bool { model.expandedTaskId == summary.id }
 
     var body: some View {
-        let category = model.snapshot.categories.first { $0.id == categoryId }
-        let today = model.snapshot.tasks.filter { $0.category.id == categoryId && $0.task.status != .dropped }
-        let ahead = model.upcoming.flatMap(\.tasks).filter { $0.category.id == categoryId && $0.task.status.isOpen }
-        let inbox = model.inbox.filter { $0.category.id == categoryId }
-        ListPage(title: category?.name ?? "Category", subtitle: (today.count + ahead.count + inbox.count) == 1 ? "1 task" : "\(today.count + ahead.count + inbox.count) tasks") {
-            group("Today", today)
-            group("Upcoming", ahead)
-            group("Inbox", inbox)
-            if today.isEmpty && ahead.isEmpty && inbox.isEmpty {
-                Text("No tasks in this category yet. Add one with #\(category?.name.lowercased().replacingOccurrences(of: " ", with: "") ?? "").")
+        VStack(alignment: .leading, spacing: Space.sm) {
+            HStack(spacing: Space.md) {
+                VStack(alignment: .leading, spacing: Space.hairline) {
+                    Text("@\(summary.tag.name)")
+                        .font(Typo.body)
+                        .lineLimit(1)
+                    Text(detail)
+                        .font(Typo.meta)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: Space.sm)
+                Text(Format.duration(summary.seconds))
                     .font(Typo.body)
                     .foregroundStyle(.secondary)
             }
-        }
-    }
-
-    @ViewBuilder private func group(_ title: String, _ rows: [TaskRow]) -> some View {
-        if !rows.isEmpty {
-            VStack(alignment: .leading, spacing: Space.sm) {
-                Text(title).font(Typo.heading)
-                GlassEffectContainer(spacing: Space.sm) {
-                    VStack(spacing: Space.sm) { ForEach(rows) { ListTaskCard(row: $0) } }
+            .contentShape(.rect)
+            .onTapGesture { model.expandedTaskId = expanded ? nil : summary.id }
+            if expanded {
+                VStack(alignment: .leading, spacing: Space.xs + Space.hairline) {
+                    ForEach(summary.work) { w in
+                        HStack(spacing: Space.sm) {
+                            Image(systemName: w.done ? "checkmark.circle.fill" : "circle")
+                                .foregroundStyle(.tertiary)
+                                .imageScale(.small)
+                            Text(w.title)
+                                .foregroundStyle(w.done ? .secondary : .primary)
+                                .lineLimit(1)
+                            Spacer(minLength: Space.sm)
+                            Text(Format.duration(w.seconds))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
+                .font(Typo.body)
+                .padding(.bottom, Space.xs)
             }
         }
+        .monospacedDigit()
+        .padding(.horizontal, Space.md)
+        .padding(.vertical, Space.sm)
+        .contentShape(.rect(cornerRadius: Radius.card))
+        .glassEffect(expanded ? .regular.tint(.white.opacity(0.08)).interactive() : .regular.interactive(), in: .rect(cornerRadius: Radius.card))
+        .contextMenu {
+            Button("Archive") { model.perform { try model.store.updateTag(summary.tag.id, archived: true) } }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private var detail: String {
+        var parts = [summary.daysWorked == 1 ? "1 day" : "\(summary.daysWorked) days"]
+        if summary.recentSeconds >= 60 { parts.append("\(Format.duration(summary.recentSeconds)) past week") }
+        return parts.joined(separator: " · ")
     }
 }

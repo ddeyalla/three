@@ -24,7 +24,7 @@ struct TaskCard<Trailing: View>: View {
                         .font(Typo.body)
                         .foregroundStyle(isClosed ? .secondary : .primary)
                         .lineLimit(1)
-                    detail
+                    TaskDetailLine(row: row)
                 }
                 Spacer(minLength: Space.sm)
                 trailing
@@ -37,6 +37,7 @@ struct TaskCard<Trailing: View>: View {
             if expanded {
                 VStack(alignment: .leading, spacing: Space.sm) {
                     StepList(row: row)
+                    TagAdder(row: row)
                     NotesField(row: row)
                 }
                 .padding(.leading, 30)
@@ -57,23 +58,91 @@ struct TaskCard<Trailing: View>: View {
         if selected { return .regular.tint(.white.opacity(0.08)).interactive() }
         return .regular.interactive()
     }
+}
 
-    private var detail: some View {
-        HStack(spacing: Space.xs) {
-            Circle().fill(row.category.color).frame(width: 6, height: 6)
-            Text(row.category.name)
-            if !row.steps.isEmpty {
-                Text("·")
-                Label("\(row.steps.filter(\.done).count)/\(row.steps.count)", systemImage: "checklist")
-                    .labelStyle(.titleAndIcon)
-            }
-            if !row.task.notes.isEmpty {
-                Image(systemName: "text.alignleft").accessibilityLabel("Has notes")
-            }
+/// The quiet line under a task: category, tags, step count, and whether it has notes.
+struct TaskDetailLine: View {
+    let row: TaskRow
+
+    /// In a narrow card the step count and notes mark give way first, then the tags.
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            line(tags: true, extras: true)
+            line(tags: true, extras: false)
+            line(tags: false, extras: false)
         }
         .font(Typo.meta)
         .foregroundStyle(.secondary)
         .monospacedDigit()
+        .lineLimit(1)
+    }
+
+    private func line(tags: Bool, extras: Bool) -> some View {
+        HStack(spacing: Space.xs) {
+            Circle().fill(row.category.color).frame(width: 6, height: 6)
+            Text(row.category.name)
+            if tags { ForEach(row.tags) { Text("@\($0.name)") } }
+            if extras, !row.steps.isEmpty {
+                Text("·")
+                Label("\(row.steps.filter(\.done).count)/\(row.steps.count)", systemImage: "checklist")
+                    .labelStyle(.titleAndIcon)
+            }
+            if extras, !row.task.notes.isEmpty {
+                Image(systemName: "text.alignleft").accessibilityLabel("Has notes")
+            }
+        }
+        .fixedSize()
+    }
+}
+
+/// Pick one, as a row of glass capsules each sized to its label. The chosen one lightens and its text turns primary;
+/// none of them is a prominent button. Used for the reflection panel's answers and for switching the tasks pane.
+struct ChoiceCapsules<Value: Hashable>: View {
+    struct Option: Identifiable {
+        var value: Value
+        var title: String
+        /// Shown instead of the title, which stays as the accessibility label.
+        var symbol: String?
+        var id: Value { value }
+
+        init(_ value: Value, _ title: String, symbol: String? = nil) {
+            self.value = value
+            self.title = title
+            self.symbol = symbol
+        }
+    }
+
+    @Binding var selection: Value
+    let options: [Option]
+
+    var body: some View {
+        GlassEffectContainer(spacing: Space.xs) {
+            HStack(spacing: Space.xs) {
+                ForEach(options) { option in
+                    let chosen = selection == option.value
+                    Button { selection = option.value } label: {
+                        Group {
+                            if let symbol = option.symbol {
+                                Image(systemName: symbol).accessibilityLabel(option.title)
+                            } else {
+                                Text(option.title)
+                            }
+                        }
+                        .font(Typo.body)
+                        .monospacedDigit()
+                        .foregroundStyle(chosen ? .primary : .secondary)
+                        .padding(.horizontal, option.symbol == nil ? Space.md : 0)
+                        .frame(minWidth: 28, minHeight: 28)
+                        .contentShape(.capsule)
+                    }
+                    .buttonStyle(.plain)
+                    .glassEffect(chosen ? .regular.tint(.white.opacity(0.15)).interactive() : .regular.interactive(), in: .capsule)
+                    .help(option.symbol == nil ? "" : option.title)
+                    .accessibilityAddTraits(chosen ? .isSelected : [])
+                }
+            }
+        }
+        .animation(.easeOut(duration: 0.15), value: selection)
     }
 }
 
@@ -164,6 +233,47 @@ struct StepList: View {
     }
 }
 
+/// "Add a tag" until clicked, then a field: type one or more names, with or without "@".
+struct TagAdder: View {
+    @Environment(AppModel.self) private var model
+    let row: TaskRow
+    @State private var draft = ""
+    @State private var adding = false
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        Group {
+            if adding {
+                HStack(spacing: Space.sm) {
+                    Image(systemName: "number").foregroundStyle(.secondary).frame(width: 14)
+                    TextField("onboarding, launch", text: $draft)
+                        .textFieldStyle(.plain)
+                        .focused($focused)
+                        .onAppear { focused = true }
+                        .onSubmit(add)
+                        .onExitCommand { adding = false; draft = "" }
+                }
+            } else {
+                Button { adding = true } label: {
+                    Label(row.tags.isEmpty ? "Add a tag" : "Add another tag", systemImage: "number")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Tags group work across days, like a product or a feature, and add up its time")
+            }
+        }
+        .font(Typo.body)
+        .onChange(of: focused) { if !focused && draft.isEmpty { adding = false } }
+    }
+
+    private func add() {
+        let names = draft.split(whereSeparator: { $0 == "," || $0 == " " }).map(String.init)
+        guard !names.isEmpty else { adding = false; return }
+        model.perform { for name in names { try model.store.addTag(name, to: row.id) } }
+        if model.error == nil { draft = ""; adding = false }
+    }
+}
+
 /// Todoist-style quick add: "Call the bank #admin 15m tomorrow". Shows what it understood as you type.
 struct QuickAddField: View {
     @Environment(AppModel.self) private var model
@@ -194,7 +304,7 @@ struct QuickAddField: View {
         .padding(.horizontal, Space.md)
         .frame(height: 36)
         .glassEffect(.regular.tint(.white.opacity(focused ? 0.06 : 0)).interactive(), in: .rect(cornerRadius: Radius.card))
-        .help("#category, a duration like 45m, and today, tomorrow, a weekday or inbox")
+        .help("#category, @tag, a duration like 45m, and today, tomorrow, a weekday or inbox")
         .onChange(of: model.quickAddRequest) { claimQuickAdd() }
         .onAppear { claimQuickAdd() }
     }
@@ -217,6 +327,7 @@ struct QuickAddField: View {
                 Circle().fill(category?.color ?? Theme.idle).frame(width: 6, height: 6)
                 Text(category?.name ?? "")
             }
+            ForEach(parsed.tags, id: \.self) { Text("@\($0)") }
             Text("\(minutes)m")
             Text(whenLabel)
         }
@@ -272,6 +383,16 @@ struct TaskMenuItems: View {
         Menu("Category") {
             ForEach(model.liveCategories) { c in
                 Button(c.name) { model.perform { try model.store.updateTask(row.id, category: c.id) } }
+            }
+        }
+        if !model.liveTags.isEmpty || !row.tags.isEmpty {
+            Menu("Tags") {
+                ForEach(Array(Set(model.liveTags + row.tags)).sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }) { tag in
+                    let on = row.tags.contains { $0.id == tag.id }
+                    Toggle("@\(tag.name)", isOn: Binding(get: { on }, set: { add in
+                        model.perform { add ? try model.store.addTag(tag.name, to: row.id) : try model.store.removeTag(tag.id, from: row.id) }
+                    }))
+                }
             }
         }
         Divider()

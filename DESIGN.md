@@ -149,7 +149,7 @@ Defined once in `Typo` (Sources/ThreeApp/Theme.swift). Views use these roles and
 
 One window, three panes, no sidebar and no toolbar:
 
-- **Tasks** (left, 320pt): a header with a segmented control (Today, Inbox, Upcoming) and two icon buttons (Done, Tags), then the list for that choice. The window's traffic lights sit above the header, so the pane starts 40pt down.
+- **Tasks** (left, 320pt): one row of choice capsules (Today, Inbox, Upcoming, then icons for Done and Tags), each sized to its label, then the list for that choice. The control sits below the window's traffic lights.
 - **Now** (middle, fills the space, at least 380pt): the task the dial is about, the dial, the time left and the controls, centred vertically. Nothing else.
 - **Timeline** (right, 340pt): the day on an hour grid.
 
@@ -176,14 +176,14 @@ Three radii: 8pt for timeline blocks, 12pt for cards and the quick-add field, 20
 - **Quick-add field**: a 36pt glass field in Body. The parsed preview sits on the right in Meta.
 - **Controls**: system glass buttons at regular size. One prominent button at a time, tinted with the accent.
 - **Timeline block**: glass tinted with the category, label and duration in Meta. A planned block is a dashed outline in the category colour.
-- **Choice capsules**: a row of glass capsules for picking one answer. The chosen one lightens by 15% white and its text turns primary; the rest stay secondary. They are not prominent buttons, so the panel keeps one primary action.
-- **Reflection panel**: 420pt floating glass panel. A header with the task (Focus) and time focused (Body, secondary) and a close button. Each question is a left-aligned Body label over its choice capsules. The next task is a glass row. The note is a plain field on glass, like quick add, and never takes focus by itself. The footer has a quiet "Keep going" on the left and Skip break (glass) and Start break (the one prominent button) on the right. Esc closes it.
+- **Choice capsules**: a row of glass capsules for picking one answer. The chosen one lightens by 15% white and its text turns primary; the rest stay secondary. They are not prominent buttons, so a view keeps one primary action. They switch the tasks pane and answer the reflection panel's questions.
+- **Reflection panel**: 420pt floating glass panel. A header with the task (Focus) and time focused (Body, secondary) and a close button. Each question is a left-aligned Body label over its choice capsules. The next task is a glass row. The note is a plain field on glass, like quick add, and never takes focus by itself. The footer has a quiet "15 more minutes" on the left and Skip break (glass) and Start break (the one prominent button) on the right. Esc closes it.
 
 ## Do's and Don'ts
 
 - **Do** pick a role from `Typo` for every piece of text.
 - **Do** let the dial and the time left be the largest things on Today.
-- **Do** use system controls, menus and SF Symbols. Use a segmented control for switching views; use choice capsules for answers inside a panel.
+- **Do** use system controls, menus and SF Symbols. Where a system segmented control would be too wide (it sizes every segment to the longest), use choice capsules.
 - **Don't** write `.font(.system(size:))` or a text style outside `Theme.swift`. `scripts/lint-design.sh` fails the build on it.
 - **Don't** change font weight to show state.
 - **Don't** add a colour that isn't a category, now or overrun.

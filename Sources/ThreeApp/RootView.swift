@@ -2,89 +2,81 @@ import AppKit
 import SwiftUI
 import ThreeCore
 
+/// Tasks on the left, the dial in the middle, the day's timeline on the right.
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
-        NavigationSplitView {
-            Sidebar()
-                .navigationSplitViewColumnWidth(min: 180, ideal: 210, max: 260)
-                .toolbar(removing: .sidebarToggle)
-        } detail: {
-            detail
-                .overlay(alignment: .bottom) {
-                    if model.error != nil {
-                        ErrorNote()
-                            .padding(.horizontal, Space.lg)
-                            .padding(.vertical, Space.sm + Space.hairline)
-                            .frame(maxWidth: 560)
-                            .glassEffect(.regular, in: .capsule)
-                            .padding(.bottom, Space.xl)
-                            .transition(.opacity.combined(with: .offset(y: 8)))
-                    }
-                }
-                .animation(.easeOut(duration: 0.2), value: model.error)
-                .background(Backdrop())
-                .toolbar(removing: .sidebarToggle)
+        HStack(spacing: 0) {
+            TasksPane()
+                .frame(width: 320)
+            NowPane()
+                .frame(minWidth: 380, maxWidth: .infinity)
+            DayTimelineView()
+                .frame(width: 340)
         }
-        .toolbar(removing: .title)
+        .overlay(alignment: .bottom) {
+            if model.error != nil {
+                ErrorNote()
+                    .padding(.horizontal, Space.lg)
+                    .padding(.vertical, Space.sm + Space.hairline)
+                    .frame(maxWidth: 560)
+                    .glassEffect(.regular, in: .capsule)
+                    .padding(.bottom, Space.xl)
+                    .transition(.opacity.combined(with: .offset(y: 8)))
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: model.error)
+        .background(Backdrop())
         .background(InitialFocusSink())
         .onAppear { if ProcessInfo.processInfo.environment["THREE_OPEN"] == "settings" { openSettings() } }
         .preferredColorScheme(.dark)
-        .frame(minWidth: 1040, minHeight: 700)
-    }
-
-    @ViewBuilder private var detail: some View {
-        switch model.destination {
-        case .today: TodayView()
-        case .inbox: InboxView()
-        case .upcoming: UpcomingView()
-        case .category(let id): CategoryView(categoryId: id)
-        }
+        .frame(minWidth: 1060, minHeight: 640)
     }
 }
 
-private struct Sidebar: View {
+/// Capsules for today, the inbox, the week ahead, what's done and the tags,
+/// then the list for whichever is chosen. Settings sits at the foot.
+private struct TasksPane: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        List(selection: Binding<Destination?>(get: { model.destination }, set: { if let d = $0 { model.destination = d } })) {
-            Section {
-                Label("Today", systemImage: "sun.max")
-                    .badge(model.snapshot.tasks.filter { $0.task.status.isOpen }.count)
-                    .tag(Destination.today)
-                Label("Inbox", systemImage: "tray")
-                    .badge(model.inbox.count)
-                    .tag(Destination.inbox)
-                Label("Upcoming", systemImage: "calendar")
-                    .tag(Destination.upcoming)
-            }
-            Section("Categories") {
-                ForEach(model.liveCategories) { c in
-                    Label {
-                        Text(c.name)
-                    } icon: {
-                        Image(systemName: "circle.fill")
-                            .foregroundStyle(c.color)
-                            .imageScale(.small)
-                    }
-                    .tag(Destination.category(c.id))
+        VStack(alignment: .leading, spacing: 0) {
+            header
+                .padding(.horizontal, Space.lg)
+                .padding(.bottom, Space.lg)
+            Group {
+                switch model.destination {
+                case .today: TodayList()
+                case .inbox: InboxList()
+                case .upcoming: UpcomingList()
+                case .done: DoneList()
+                case .tags: TagsList()
                 }
             }
-        }
-        .safeAreaInset(edge: .bottom) {
-            HStack {
-                SettingsLink {
-                    Label("Settings", systemImage: "gearshape")
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                Spacer()
+            .frame(maxHeight: .infinity, alignment: .top)
+            SettingsLink {
+                Label("Settings", systemImage: "gearshape")
             }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .font(Typo.body)
             .padding(.horizontal, Space.lg)
-            .padding(.bottom, Space.md)
+            .padding(.vertical, Space.md)
         }
+    }
+
+    /// One control for every view: words for the three lists, icons for what's done and the tags.
+    private var header: some View {
+        ChoiceCapsules(selection: Binding(get: { model.destination }, set: { model.destination = $0 }), options: [
+            .init(.today, "Today"),
+            .init(.inbox, model.inbox.isEmpty ? "Inbox" : "Inbox \(model.inbox.count)"),
+            .init(.upcoming, "Upcoming"),
+            .init(.done, "Done", symbol: "checkmark.circle"),
+            .init(.tags, "Tags", symbol: "number"),
+        ])
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

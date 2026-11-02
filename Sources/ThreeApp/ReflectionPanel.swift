@@ -100,10 +100,10 @@ struct ReflectionView: View {
             header
             VStack(alignment: .leading, spacing: Space.lg) {
                 question("How did it go?") {
-                    Choices(selection: $outcome, options: [(.done, "Done"), (.progress, "Made progress"), (.stuck, "Stuck")])
+                    ChoiceCapsules(selection: $outcome, options: [.init(.done, "Done"), .init(.progress, "Made progress"), .init(.stuck, "Stuck")])
                 }
                 question("How was your focus?") {
-                    Choices(selection: $rating, options: [(.focused, "Focused"), (.okay, "Okay"), (.scattered, "Scattered")])
+                    ChoiceCapsules(selection: $rating, options: [.init(.focused, "Focused"), .init(.okay, "Okay"), .init(.scattered, "Scattered")])
                 }
                 question("Up next") { nextRow }
                 noteField
@@ -240,32 +240,5 @@ struct ReflectionView: View {
             }
         }
         dismiss()
-    }
-}
-
-/// Pick-one answers as glass capsules. The chosen one lightens; none of them is a prominent button.
-private struct Choices<Value: Hashable>: View {
-    @Binding var selection: Value
-    let options: [(Value, String)]
-
-    var body: some View {
-        GlassEffectContainer(spacing: Space.sm) {
-            HStack(spacing: Space.sm) {
-                ForEach(options, id: \.0) { value, title in
-                    let chosen = selection == value
-                    Button { selection = value } label: {
-                        Text(title)
-                            .foregroundStyle(chosen ? .primary : .secondary)
-                            .padding(.horizontal, Space.md)
-                            .frame(height: 28)
-                            .contentShape(.capsule)
-                    }
-                    .buttonStyle(.plain)
-                    .glassEffect(chosen ? .regular.tint(.white.opacity(0.15)).interactive() : .regular.interactive(), in: .capsule)
-                    .accessibilityAddTraits(chosen ? .isSelected : [])
-                }
-            }
-        }
-        .animation(.easeOut(duration: 0.15), value: selection)
     }
 }

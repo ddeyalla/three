@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.2.4 — 2026-11-02
+
+Three panes instead of a sidebar, tags that add up time across weeks, and a calmer end-of-block panel.
+
+**What looks or works differently**
+
+- **Three panes.** Tasks on the left, the dial in the middle, the day's timeline on the right. The sidebar is gone. A row of glass capsules at the top of the left pane switches between Today, Inbox, Upcoming, Done (✓) and Tags (#). ⌘1 to ⌘5 do the same.
+- **Categories live in Settings → Categories.** They no longer take up the window. Their colours still mark every task.
+- **The dial goes past an hour.** It used to stop at 60 minutes because one turn is an hour. Keep dragging past 12 o'clock to add an hour, up to 4 hours. Each extra hour shows as a ring around the face, and the wedge shows the current hour. The Block menu now offers 3h and 4h.
+- **Tags.** Type `@name` in quick add (`Fix signup bug @onboarding 30m`) or use "Add a tag" on an open card. A tag is a thread of work that runs for days or weeks, such as a product, project or feature. Tags is the place to see how much time each one has taken: the total, the past week, how many days, and each task's share. A task carried to tomorrow keeps its tags, so its time keeps counting. Right-click a tag to archive it when the work is finished.
+- **Done.** Everything you finished in the last 30 days, by day, with the time each task took.
+- **The reflection panel is rebuilt.** Each question sits above its answers as glass capsules instead of beside a cramped segmented control. The note field no longer lights up with a focus ring. There is one prominent action, which names the break length ("Start 5m break"). "15 more minutes" keeps the block going, and Esc or the × closes the panel.
+- The task the dial is about now shows its category, tags and steps under its title.
+
+**For the command line**
+
+- `three tags` lists every tag with its time (`--json`, `--all`). `three tags add 2 onboarding`, `three tags remove 2 onboarding`, `three tags rename`, `three tags archive`.
+- `three capture` reads `@tags`, and `three add` takes `--tag`.
+- `three logbook [--days 30]` lists finished tasks.
+- Task JSON now includes `tags`.
+
 ## 0.2.3 — 2026-11-02
 
 A design guideline, and a type and spacing pass to match it.

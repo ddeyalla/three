@@ -12,12 +12,12 @@ struct ThreeApp: App {
             RootView()
                 .environment(model)
         }
-        .defaultSize(width: 1280, height: 820)
+        .defaultSize(width: 1240, height: 800)
         .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("Quick Add") {
-                    if model.destination != .today && model.destination != .upcoming { model.destination = .inbox }
+                    if ![.today, .inbox, .upcoming].contains(model.destination) { model.destination = .inbox }
                     model.quickAddPending = true
                     model.quickAddRequest += 1
                 }
@@ -27,6 +27,9 @@ struct ThreeApp: App {
                 Button("Today") { model.destination = .today }.keyboardShortcut("1")
                 Button("Inbox") { model.destination = .inbox }.keyboardShortcut("2")
                 Button("Upcoming") { model.destination = .upcoming }.keyboardShortcut("3")
+                Divider()
+                Button("Done") { model.destination = .done }.keyboardShortcut("4")
+                Button("Tags") { model.destination = .tags }.keyboardShortcut("5")
             }
         }
 

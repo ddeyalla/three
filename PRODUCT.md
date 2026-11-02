@@ -79,7 +79,9 @@ The record is local-first. Every row carries `id` (UUID), `updatedAt` and `delet
 
 ## 5. Screens
 
-Two surfaces: a **menu-bar item** that is always there, and a **main window** for planning and history. The main window has a slim icon sidebar with only three destinations: **Today**, **Timeline** and **Trends**. Settings is a separate window (⌘,).
+Two surfaces: a **menu-bar item** that is always there, and a **main window** for planning and history. Since 0.2.4 the main window has no sidebar. It has three panes: **tasks** on the left (Today, Inbox, Upcoming, Done, Tags), **the dial** in the middle and **the day's timeline** on the right. Settings is a separate window (⌘,) and holds category editing.
+
+**Tags (0.2.4).** A tag (`@onboarding`) marks a thread of work that runs for days or weeks, such as a product, project or feature. A task can carry several. A tag's time is every focus block on every task that carried it, including copies carried to later days. The Tags view shows the total, the past week, days worked and each task's share. This is the first piece of §5.4 and §5.5; per-tag trends belong in v0.6.
 
 ### 5.1 Today (main window, default)
 
@@ -315,7 +317,7 @@ Background sounds, Slack status, window tracking, AppleScript, social or leaderb
 Categories, Day Plan with up to 5 tasks, dial timer, menu bar, reflection → break, Today screen with timeline (plan and actual only), local SQLite, `three` CLI.
 
 **v0.2 — Plan and capture**
-Sidebar (Today, Inbox, Upcoming, categories), inbox for unplanned tasks, Todoist-style quick add (`#category 45m tomorrow`), steps and notes shown in place on each task, Settings (timer defaults shared with the CLI through the database, category editing, CLI install and agent instructions), quick capture from the menu bar.
+Three panes (tasks, dial, timeline; 0.2.4 replaced the sidebar), inbox for unplanned tasks, tags with time per tag, a 30-day Done list, Todoist-style quick add (`#category 45m tomorrow`), steps and notes shown in place on each task, Settings (timer defaults shared with the CLI through the database, category editing, CLI install and agent instructions), quick capture from the menu bar.
 
 **v0.3 — Blocker**
 Blocklist, focus hours, Safari and Chromium extensions with the block page, app blocking overlay, unblock friction, strict mode, block logging.

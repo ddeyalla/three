@@ -534,7 +534,7 @@ struct Tags: ParsableCommand {
             if summaries.isEmpty { return print("No tags yet. Add one in quick add: three capture \"Fix login @onboarding\"") }
             for t in summaries {
                 let days = t.daysWorked == 1 ? "1 day" : "\(t.daysWorked) days"
-                print("@\(t.tag.name)  \(clockMinutes(t.seconds)) over \(days) · \(clockMinutes(t.recentSeconds)) this week\(t.tag.archived ? "  (archived)" : "")")
+                print("@\(t.tag.name)  \(clockMinutes(t.seconds)) over \(days) · \(clockMinutes(t.recentSeconds)) past week\(t.tag.archived ? "  (archived)" : "")")
                 for w in t.work { print("    \(w.done ? "✓" : " ") \(w.title)  \(clockMinutes(w.seconds))") }
             }
         }

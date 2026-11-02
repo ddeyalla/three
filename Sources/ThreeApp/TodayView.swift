@@ -1,70 +1,17 @@
 import SwiftUI
 import ThreeCore
 
-struct TodayView: View {
-    var body: some View {
-        HStack(spacing: 0) {
-            NowPane()
-                .frame(width: 440)
-            DayTimelineView()
-        }
-    }
-}
-
-/// Header on top; the timer and the day's tasks centred in the space below, scrolling only when they don't fit.
-private struct NowPane: View {
-    @Environment(AppModel.self) private var model
-
+/// The middle pane: what the dial is about, the dial, the time left and the controls, centred.
+struct NowPane: View {
     var body: some View {
         GeometryReader { geo in
             ScrollView {
-                VStack(spacing: 0) {
-                    Header()
-                    Spacer(minLength: Space.xl)
-                    TimerSection()
-                    TaskList()
-                        .padding(.top, Space.xl)
-                    Spacer(minLength: Space.xl)
-                }
-                .padding(.horizontal, Space.xl)
-                .padding(.vertical, Space.xl)
-                .frame(minHeight: geo.size.height)
+                TimerSection()
+                    .padding(Space.xl)
+                    .frame(maxWidth: .infinity, minHeight: geo.size.height)
             }
             .scrollIndicators(.never)
         }
-    }
-}
-
-private struct Header: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        let snap = model.snapshot
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: Space.hairline) {
-                Text("Today")
-                    .font(Typo.title)
-                Text(summary)
-                    .font(Typo.body)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
-            Spacer()
-            if snap.plan?.status == .draft, !snap.tasks.isEmpty {
-                Button("Commit plan") { model.perform { try model.store.commit(day: snap.day) } }
-                    .buttonStyle(.glass)
-                    .help("Lock in today's plan")
-            }
-        }
-    }
-
-    private var summary: String {
-        let snap = model.snapshot
-        var parts = [snap.day.startDate.formatted(.dateTime.weekday(.wide).month(.wide).day())]
-        if snap.activeTaskCount > 0 { parts.append("\(snap.doneCount) of \(snap.activeTaskCount) done") }
-        let focus = snap.focusSeconds(at: model.now)
-        if focus >= 60 { parts.append("\(Format.duration(focus)) focused") }
-        return parts.joined(separator: " · ")
     }
 }
 
@@ -75,10 +22,15 @@ private struct TimerSection: View {
 
     var body: some View {
         VStack(spacing: Space.md) {
-            Text(heading)
-                .font(Typo.focus)
-                .lineLimit(1)
-            DialView(size: 200)
+            VStack(spacing: Space.xs) {
+                Text(heading)
+                    .font(Typo.focus)
+                    .lineLimit(1)
+                if let row = model.running?.kind == .break ? nil : (model.runningTask ?? model.selectedTask) {
+                    TaskDetailLine(row: row)
+                }
+            }
+            DialView(size: 240)
             VStack(spacing: Space.sm) {
                 Text(readout)
                     .font(Typo.display)
@@ -168,12 +120,36 @@ private struct Controls: View {
 
 // MARK: Tasks
 
-private struct TaskList: View {
+/// Today in the tasks pane: the day's summary, its tasks and a field to add one.
+struct TodayList: View {
     @Environment(AppModel.self) private var model
 
     private var rows: [TaskRow] { model.snapshot.tasks.filter { $0.task.status != .dropped } }
 
     var body: some View {
+        PaneList(subtitle: summary) {
+            let snap = model.snapshot
+            if snap.plan?.status == .draft, !snap.tasks.isEmpty {
+                Button("Commit") { model.perform { try model.store.commit(day: snap.day) } }
+                    .buttonStyle(.glass)
+                    .controlSize(.small)
+                    .help("Lock in today's plan")
+            }
+        } content: {
+            list
+        }
+    }
+
+    private var summary: String {
+        let snap = model.snapshot
+        var parts = [snap.day.startDate.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))]
+        if snap.activeTaskCount > 0 { parts.append("\(snap.doneCount) of \(snap.activeTaskCount) done") }
+        let focus = snap.focusSeconds(at: model.now)
+        if focus >= 60 { parts.append("\(Format.duration(focus)) focused") }
+        return parts.joined(separator: " · ")
+    }
+
+    private var list: some View {
         GlassEffectContainer(spacing: Space.sm) {
             VStack(alignment: .leading, spacing: Space.sm) {
                 ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in

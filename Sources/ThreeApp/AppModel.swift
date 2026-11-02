@@ -18,8 +18,10 @@ final class AppModel {
     var selectedTaskId: String?
     private(set) var inbox: [TaskRow] = []
     private(set) var upcoming: [DaySnapshot] = []
+    private(set) var logbook: [LoggedDay] = []
+    private(set) var tagSummaries: [TagSummary] = []
     var destination: Destination = .today
-    /// The card opened in place in Inbox, Upcoming or a category.
+    /// The card opened in place in Inbox, Upcoming or Done, or the tag opened in Tags.
     var expandedTaskId: String?
     /// Bumped by ⌘N. The next quick-add field on screen claims it and takes focus.
     var quickAddRequest = 0
@@ -41,15 +43,13 @@ final class AppModel {
             snapshot = try store.snapshot()
             inbox = try store.inbox()
             upcoming = try store.upcoming()
+            logbook = try store.logbook()
+            tagSummaries = try store.tagSummaries()
         } catch {
             fatalError("Three can't open its database: \(error)")
         }
-        // THREE_OPEN=inbox|upcoming opens on that view, for screenshots and scripts.
-        switch ProcessInfo.processInfo.environment["THREE_OPEN"] {
-        case "inbox": destination = .inbox
-        case "upcoming": destination = .upcoming
-        default: break
-        }
+        // THREE_OPEN=inbox|upcoming|done|tags opens on that view, for screenshots and scripts.
+        if let open = ProcessInfo.processInfo.environment["THREE_OPEN"], let d = Destination(rawValue: open) { destination = d }
         signalToken = ChangeSignal.observe { [weak self] in self?.reload() }
         let ticker = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
@@ -113,6 +113,8 @@ final class AppModel {
             snapshot = try store.snapshot(for: DayKey(Date()))
             inbox = try store.inbox()
             upcoming = try store.upcoming()
+            logbook = try store.logbook()
+            tagSummaries = try store.tagSummaries()
             if let id = selectedTaskId, !snapshot.tasks.contains(where: { $0.id == id && $0.task.status.isOpen }) {
                 selectedTaskId = nil
             }
@@ -216,6 +218,8 @@ final class AppModel {
 
     var liveCategories: [ThreeCore.Category] { snapshot.categories.filter { !$0.archived } }
 
+    var liveTags: [Tag] { tagSummaries.map(\.tag).sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending } }
+
     /// Quick add: `#category`, a duration and a day word override the defaults. Returns whether a task was added.
     @discardableResult
     func capture(_ text: String, defaultDay: DayKey?) -> Bool {
@@ -240,7 +244,9 @@ final class AppModel {
     }
 }
 
-enum Destination: Hashable {
-    case today, inbox, upcoming
-    case category(String)
+/// What the tasks pane shows.
+enum Destination: String, Hashable, CaseIterable {
+    case today, inbox, upcoming, done, tags
+
+    var title: String { rawValue.capitalized }
 }
