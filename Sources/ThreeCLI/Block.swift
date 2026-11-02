@@ -103,7 +103,11 @@ struct ConnectChrome: ParsableCommand {
         .appendingPathComponent("Library/Application Support/Google/Chrome").path
 
     func run() throws {
-        let helpers = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath().deletingLastPathComponent()
+        // The real executable, not argv[0]: run through PATH, argv[0] is just "three".
+        guard let executable = Bundle.main.executableURL?.resolvingSymlinksInPath() else {
+            throw ValidationError("Can't tell where this three lives.")
+        }
+        let helpers = executable.deletingLastPathComponent()
         let contents = helpers.deletingLastPathComponent()
         let app = contents.deletingLastPathComponent()
         guard helpers.lastPathComponent == "Helpers", contents.lastPathComponent == "Contents", app.pathExtension == "app" else {

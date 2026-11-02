@@ -117,7 +117,7 @@ private func evaluate(_ now: Date, zone: String = "UTC", rules: [BlockRule] = [r
     #expect(night.start.minutes == 22 * 60 && night.end.minutes == 120)
     #expect(try FocusHours(days: "mon", time: "00:00-24:00").end.minutes == 1440)
     for (days, time) in [("mon", "10:00-10:00"), ("mon", "24:00-02:00"), ("mon", "10:60-11:00"), ("funday", "9-17"),
-                         ("mon", "10:00"), ("mon", "9:5-10")] {
+                         ("mon", "10:00"), ("mon", "9:5-10"), ("mon", "+9-10")] {
         #expect(throws: (any Error).self, "\(days) \(time)") { try FocusHours(days: days, time: time) }
     }
 }

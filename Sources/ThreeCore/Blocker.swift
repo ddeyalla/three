@@ -216,7 +216,7 @@ public struct ClockTime: Hashable, Comparable, Sendable, CustomStringConvertible
     /// "9", "09", "9:30" or "21:05".
     public init?(parsing text: String) {
         let parts = text.split(separator: ":", omittingEmptySubsequences: false)
-        guard (1...2).contains(parts.count), parts.allSatisfy({ (1...2).contains($0.count) && $0.allSatisfy(\.isASCII) }),
+        guard (1...2).contains(parts.count), parts.allSatisfy({ (1...2).contains($0.count) && $0.allSatisfy { ("0"..."9").contains($0) } }),
               let hour = Int(parts[0]), let minute = parts.count == 2 ? Int(parts[1]) : 0,
               parts.count == 1 || parts[1].count == 2, (0...24).contains(hour), (0...59).contains(minute),
               hour < 24 || minute == 0 else { return nil }

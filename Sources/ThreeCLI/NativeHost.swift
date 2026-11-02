@@ -63,7 +63,9 @@ final class HostLoop {
                 write(try state.frame(validUntil: now.addingTimeInterval(NativeMessaging.lease)))
                 sent = state
                 sentAt = now
-                if let clientId { try store.recordBrowserHeartbeat(clientId: clientId, now: now) }
+                if let clientId {
+                    do { try store.recordBrowserHeartbeat(clientId: clientId, now: now) } catch { hostLog("couldn't record a heartbeat: \(error)") }
+                }
             }
             schedule(at: min(policy.nextChange ?? .distantFuture, sentAt.addingTimeInterval(NativeMessaging.heartbeat)), now: now)
         } catch {
