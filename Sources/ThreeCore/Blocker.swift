@@ -136,7 +136,7 @@ public enum BlockTarget: Hashable, Sendable {
     case domain(BlockDomain)
     case app(AppBundleID)
 
-    var kind: String {
+    public var kind: String {
         switch self {
         case .domain: "domain"
         case .app: "app"

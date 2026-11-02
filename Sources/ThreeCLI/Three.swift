@@ -10,7 +10,8 @@ struct Three: ParsableCommand {
         abstract: "Plan three focused tasks a day and run them on a timer.",
         subcommands: [Today.self, Status.self, Add.self, Plan.self, Commit.self, Start.self, Pause.self,
                       Resume.self, Extend.self, Stop.self, Done.self, Drop.self, Tomorrow.self, Capture.self, Inbox.self,
-                      Schedule.self, Upcoming.self, Logbook.self, Steps.self, Tags.self, Categories.self, Settings.self]
+                      Schedule.self, Upcoming.self, Logbook.self, Steps.self, Tags.self, Categories.self, Settings.self,
+                      Block.self, NativeHost.self]
     )
 }
 
