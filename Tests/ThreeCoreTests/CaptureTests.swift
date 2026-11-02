@@ -97,3 +97,35 @@ private func task(_ title: String, _ minutes: Int = 60, _ category: String = "Co
     #expect(QuickAdd.parse("Fix #bug mon", categories: cats, today: today).title == "Fix #bug")
     #expect(QuickAdd.parse("x mon", categories: cats, today: today).when == .day(DayKey("2026-11-09")!))
 }
+
+@Test func markingRunningTaskDoneEndsItsBlock() throws {
+    let store = try Store(url: freshURL())
+    let t = try store.addTask(task("Ship it"), source: .cli)
+    try store.startFocus(taskId: t.id)
+    try store.setTaskStatus(t.id, .done)
+    let snap = try store.snapshot()
+    #expect(snap.running == nil)
+    #expect(snap.sessions.last?.outcome == .done)
+    #expect(snap.tasks[0].task.status == .done)
+}
+
+@Test func repairClosesBlocksOfDoneTasksWherePaused() throws {
+    let url = freshURL()
+    let pausedAt = Date(timeIntervalSince1970: Date().timeIntervalSince1970.rounded(.down) - 600)
+    do {
+        let old = try Store(url: url, upTo: "v3-inbox-steps-prefs")
+        let t = try old.addTask(task("woek"), source: .cli)
+        try old.db.write { db in
+            try db.execute(sql: """
+                INSERT INTO session(id, taskId, kind, plannedSeconds, startedAt, pausedAt, pausedSeconds, updatedAt)
+                VALUES('s1', ?, 'focus', 2700, ?, ?, 0, ?)
+                """, arguments: [t.id, pausedAt.addingTimeInterval(-60), pausedAt, Date()])
+            try db.execute(sql: "UPDATE task SET status = 'done'")
+        }
+    }
+    let store = try Store(url: url)
+    let snap = try store.snapshot()
+    #expect(snap.running == nil)
+    #expect(snap.sessions.first?.endedAt == pausedAt)
+    #expect(snap.sessions.first.map { Int($0.elapsed(at: Date())) } == 60)
+}

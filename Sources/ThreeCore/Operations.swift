@@ -210,6 +210,11 @@ extension Store {
             if let notes { t.notes = notes }
             t.updatedAt = Date()
             try t.update(db)
+            // A closed task can't keep a timer running: done ends its block as done, otherwise as stopped.
+            if let status, !status.isOpen, var s = try runningSession(db), s.taskId == id {
+                if status == .done { s.outcome = .done }
+                try end(&s, reason: status == .done ? .completed : .stopped, at: Date(), db)
+            }
         }
     }
 

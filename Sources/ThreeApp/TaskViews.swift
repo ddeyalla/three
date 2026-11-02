@@ -86,8 +86,8 @@ struct CompletionButton: View {
                 .frame(width: 18, height: 18)
         }
         .buttonStyle(.plain)
-        .disabled(row.task.status == .carried || model.running?.taskId == row.id)
-        .help(isDone ? "Mark not done" : "Mark done")
+        .disabled(row.task.status == .carried)
+        .help(isDone ? "Mark not done" : model.running?.taskId == row.id ? "Mark done and end this block" : "Mark done")
         .accessibilityLabel(isDone ? "Done" : "Not done")
     }
 }

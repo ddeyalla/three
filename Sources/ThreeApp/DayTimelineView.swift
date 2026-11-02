@@ -106,7 +106,7 @@ struct DayTimelineGrid: View {
             }
             ForEach(model.snapshot.sessions) { s in
                 let row = s.taskId.flatMap { byTask[$0] }
-                let end = s.endedAt ?? model.now
+                let end = s.endedAt ?? s.pausedAt ?? model.now
                 SessionBlock(session: s, row: row, now: model.now,
                              height: max(3, CGFloat(end.timeIntervalSince(s.startedAt) / 3600) * hourHeight - 1))
                     .padding(.leading, gutter + 2)

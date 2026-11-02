@@ -162,6 +162,15 @@ public final class Store: @unchecked Sendable {
                 t.column("value", .text).notNull()
             }
         }
+        // Before 0.2.1 a task could be marked done while its block kept running. Close those blocks where they paused.
+        m.registerMigration("v4-close-orphaned-sessions") { db in
+            try db.execute(sql: """
+                UPDATE session
+                SET endedAt = COALESCE(pausedAt, CURRENT_TIMESTAMP),
+                    pausedAt = NULL, endReason = 'completed', outcome = 'done', updatedAt = CURRENT_TIMESTAMP
+                WHERE endedAt IS NULL AND taskId IN (SELECT id FROM task WHERE status = 'done')
+                """)
+        }
         return m
     }
 }

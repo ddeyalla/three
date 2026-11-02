@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1 — 2026-11-02
+
+- Marking a running task done now ends its block, recorded as done; other ways of closing a task end it as stopped. Before, the task could close while its timer kept running. Existing blocks stuck that way are closed at the moment they were paused.
+- The timeline draws a paused block only up to where it paused, instead of stretching it to now.
+
 ## 0.2.0 — 2026-11-02
 
 Plan and capture. Three becomes a place for everything you mean to do, while each day stays at three.
