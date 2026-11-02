@@ -2,26 +2,16 @@ import SwiftUI
 import ThreeCore
 
 struct TodayView: View {
-    @Environment(AppModel.self) private var model
-
     var body: some View {
         HStack(spacing: 0) {
             NowPane()
-                .frame(width: 500)
-            Rectangle().fill(Theme.hairline).frame(width: 1)
+                .frame(width: 440)
+            Divider()
             DayTimelineView()
         }
-        .background {
-            ZStack {
-                Theme.canvas
-                RadialGradient(colors: [model.accent.opacity(0.16), model.accent.opacity(0.05), .clear],
-                               center: .topLeading, startRadius: 0, endRadius: 900)
-                    .animation(.easeOut(duration: 0.4), value: model.accent)
-            }
-            .ignoresSafeArea()
-        }
+        .background(Theme.canvas.ignoresSafeArea())
         .preferredColorScheme(.dark)
-        .frame(minWidth: 960, minHeight: 720)
+        .frame(minWidth: 900, minHeight: 680)
     }
 }
 
@@ -29,25 +19,23 @@ private struct NowPane: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 0) {
             Header()
-            if let plan = model.snapshot.plan, plan.status == .draft, !model.snapshot.tasks.isEmpty {
-                DraftBanner()
-            }
-            TaskList()
-            Spacer(minLength: 8)
             TimerSection()
                 .frame(maxWidth: .infinity)
+                .padding(.vertical, 28)
+            TaskList()
             if let error = model.error {
                 Text(error)
                     .font(.callout)
                     .foregroundStyle(Theme.now)
-                    .frame(maxWidth: .infinity)
+                    .padding(.top, 12)
             }
+            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 28)
-        .padding(.top, 40)
-        .padding(.bottom, 24)
+        .padding(.horizontal, 24)
+        .padding(.top, 36)
+        .padding(.bottom, 20)
     }
 }
 
@@ -56,38 +44,128 @@ private struct Header: View {
 
     var body: some View {
         let snap = model.snapshot
-        VStack(alignment: .leading, spacing: 6) {
-            Text(snap.day.startDate.formatted(.dateTime.weekday(.wide).month(.wide).day()))
-                .font(.system(size: 26, weight: .semibold))
-                .foregroundStyle(Theme.primary)
-            Text("\(snap.doneCount)/\(snap.activeTaskCount) DONE  ·  \(Format.duration(snap.focusSeconds(at: model.now)).uppercased()) FOCUS  ·  \(Format.duration(TimeInterval(snap.plannedMinutes * 60)).uppercased()) PLANNED")
-                .font(Theme.stat())
-                .foregroundStyle(Theme.secondary)
-                .monospacedDigit()
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(snap.day.startDate.formatted(.dateTime.weekday(.wide).month(.wide).day()))
+                    .font(.title2.weight(.semibold))
+                Text(summary)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            Spacer()
+            if snap.plan?.status == .draft, !snap.tasks.isEmpty {
+                Button("Commit plan") { model.perform { try model.store.commit(day: snap.day) } }
+                    .controlSize(.small)
+                    .help("Lock in today's plan")
+            }
         }
+    }
+
+    private var summary: String {
+        let snap = model.snapshot
+        guard snap.activeTaskCount > 0 else { return "Nothing planned yet" }
+        var parts = ["\(snap.doneCount) of \(snap.activeTaskCount) done"]
+        let focus = snap.focusSeconds(at: model.now)
+        if focus >= 60 { parts.append("\(Format.duration(focus)) focused") }
+        if snap.plan?.status == .draft { parts.append("draft") }
+        return parts.joined(separator: " · ")
     }
 }
 
-private struct DraftBanner: View {
+// MARK: Timer
+
+private struct TimerSection: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        let snap = model.snapshot
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Draft plan")
-                    .font(.headline)
-                Text("\(snap.activeTaskCount) tasks · \(Format.duration(TimeInterval(snap.plannedMinutes * 60)))")
-                    .font(Theme.stat())
-                    .foregroundStyle(Theme.secondary)
+        VStack(spacing: 14) {
+            Text(heading)
+                .font(.title3.weight(.medium))
+                .lineLimit(1)
+            DialView(size: 220)
+            VStack(spacing: 2) {
+                Text(readout)
+                    .font(.system(size: 40, weight: .light))
+                    .monospacedDigit()
+                    .foregroundStyle((model.remaining ?? 1) <= 0 ? Theme.overrun : .primary)
+                    .contentTransition(.numericText(countsDown: true))
+                Text(span)
+                    .font(.callout)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
             }
-            Spacer()
-            Button("Commit") { model.perform { try model.store.commit(day: snap.day) } }
-                .buttonStyle(.glassProminent)
-                .tint(model.accent)
+            Controls()
+                .padding(.top, 4)
         }
-        .padding(14)
-        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+    }
+
+    private var heading: String {
+        if let running = model.running {
+            if running.kind == .break { return "Break" }
+            return model.runningTask?.task.title ?? "Focus"
+        }
+        return model.selectedTask?.task.title ?? (model.snapshot.tasks.isEmpty ? "What are your three today?" : "All done for today")
+    }
+
+    private var readout: String {
+        Format.clock(model.remaining ?? TimeInterval(model.dialMinutes * 60))
+    }
+
+    private var span: String {
+        if let running = model.running {
+            if running.isPaused { return "Paused" }
+            if running.remaining(at: model.now) <= 0 { return "Over by \(Format.duration(-running.remaining(at: model.now)))" }
+            return Format.span(running.startedAt, running.plannedEnd)
+        }
+        return Format.span(model.now, model.now.addingTimeInterval(TimeInterval(model.dialMinutes * 60)))
+    }
+}
+
+private struct Controls: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        GlassEffectContainer(spacing: 8) {
+            HStack(spacing: 8) {
+                if let running = model.running {
+                    if running.kind == .focus {
+                        Button("+5") { model.extend(5) }
+                            .buttonStyle(.glass)
+                            .help("Add 5 minutes")
+                        Button { model.togglePause() } label: {
+                            Label(running.isPaused ? "Resume" : "Pause",
+                                  systemImage: running.isPaused ? "play.fill" : "pause.fill")
+                                .frame(minWidth: 96)
+                        }
+                        .buttonStyle(.glassProminent)
+                        .tint(model.accent)
+                        Button("Finish") { model.finishEarly() }
+                            .buttonStyle(.glass)
+                    } else {
+                        Button("End break") { model.stop() }
+                            .buttonStyle(.glass)
+                        if let next = model.snapshot.nextTask {
+                            Button { model.start(next) } label: {
+                                Label("Start next", systemImage: "play.fill")
+                            }
+                            .buttonStyle(.glassProminent)
+                            .tint(next.category.color)
+                            .help("Start \(next.task.title)")
+                        }
+                    }
+                } else {
+                    Button { model.start() } label: {
+                        Label("Start", systemImage: "play.fill").frame(minWidth: 112)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .tint(model.accent)
+                    .disabled(model.selectedTask == nil)
+                    .keyboardShortcut(.return, modifiers: .command)
+                }
+            }
+            .controlSize(.large)
+        }
     }
 }
 
@@ -95,112 +173,91 @@ private struct DraftBanner: View {
 
 private struct TaskList: View {
     @Environment(AppModel.self) private var model
-    @State private var appeared = false
 
     private var rows: [TaskRow] { model.snapshot.tasks.filter { $0.task.status != .dropped } }
 
     var body: some View {
-        GlassEffectContainer(spacing: 8) {
-            VStack(spacing: 8) {
-                ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                    TaskCard(row: row, index: index, count: rows.count)
-                        .opacity(appeared ? 1 : 0)
-                        .offset(y: appeared ? 0 : 8)
-                        .animation(.easeOut(duration: 0.3).delay(Double(index) * 0.04), value: appeared)
-                }
-                if model.snapshot.activeTaskCount < Rules.maxTasks {
-                    TaskComposer()
-                }
-                if model.snapshot.activeTaskCount > Rules.idealTasks {
-                    Text(model.snapshot.activeTaskCount == Rules.maxTasks
-                         ? "Five is the limit. Drop one to add another."
-                         : "Three is the sweet spot. Are all of these today?")
-                        .font(.caption)
-                        .foregroundStyle(Color.orange.opacity(0.85))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.leading, 4)
-                }
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                TaskRowView(row: row, index: index, count: rows.count)
+            }
+            if model.snapshot.activeTaskCount < Rules.maxTasks {
+                TaskComposer()
+            }
+            if model.snapshot.activeTaskCount > Rules.idealTasks {
+                Text(model.snapshot.activeTaskCount == Rules.maxTasks
+                     ? "Five is the limit. Drop one to add another."
+                     : "Three is the sweet spot. Are all of these today?")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.top, 6)
             }
         }
-        .onAppear { appeared = true }
+        .padding(.horizontal, -10)
     }
 }
 
-private struct TaskCard: View {
+private struct TaskRowView: View {
     @Environment(AppModel.self) private var model
     let row: TaskRow
     let index: Int
     let count: Int
+    @State private var hovering = false
 
     private var isRunning: Bool { model.running?.taskId == row.id }
     private var isSelected: Bool { model.running == nil && model.selectedTask?.id == row.id }
     private var isClosed: Bool { !row.task.status.isOpen }
 
     var body: some View {
-        Button {
-            if !isClosed && model.running == nil { model.select(row) }
-        } label: {
-            HStack(spacing: 12) {
-                Capsule()
-                    .fill(row.category.color)
-                    .frame(width: 4, height: 28)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(row.task.title)
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(isClosed ? Theme.tertiary : Theme.primary)
-                        .strikethrough(row.task.status == .done, color: Theme.tertiary)
-                        .lineLimit(1)
-                    Text(subtitle)
-                        .font(Theme.stat(10))
-                        .foregroundStyle(Theme.secondary)
-                        .monospacedDigit()
-                }
-                Spacer(minLength: 8)
-                if isRunning {
-                    Text("NOW")
-                        .font(Theme.stat(10))
-                        .foregroundStyle(row.category.color)
-                }
-                trailing
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
-            .glassEffect(isRunning || isSelected ? .regular.tint(row.category.color.opacity(0.22)).interactive()
-                                                  : .regular.interactive(),
-                         in: .rect(cornerRadius: 14))
-            .opacity(isClosed ? 0.6 : 1)
+        HStack(spacing: 10) {
+            CompletionButton(row: row)
+            Text(row.task.title)
+                .font(.body.weight(isRunning || isSelected ? .medium : .regular))
+                .foregroundStyle(isClosed ? .secondary : .primary)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            trailing
+                .font(.callout)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
         }
-        .buttonStyle(PressableStyle())
-        .simultaneousGesture(TapGesture(count: 2).onEnded {
-            if !isClosed && model.running == nil { model.start(row) }
-        })
+        .padding(.horizontal, 10)
+        .frame(height: 36)
+        .background(fill, in: .rect(cornerRadius: 8))
+        .contentShape(.rect(cornerRadius: 8))
+        .onHover { hovering = $0 }
+        .onTapGesture(count: 2) { if !isClosed && model.running == nil { model.start(row) } }
+        .onTapGesture { if !isClosed && model.running == nil { model.select(row) } }
         .contextMenu { menu }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(isSelected || isRunning ? .isSelected : [])
     }
 
-    private var subtitle: String {
-        var parts = [row.category.name.uppercased(), "\(row.task.blockMinutes)M"]
-        if row.focusedSeconds >= 60 { parts.append("\(Format.duration(row.focusedSeconds).uppercased()) DONE") }
-        if row.task.status == .carried { parts.append("TOMORROW") }
-        return parts.joined(separator: " · ")
+    private var fill: Color {
+        if isRunning { return row.category.color.opacity(0.16) }
+        if isSelected { return Theme.rowFill }
+        return hovering && !isClosed ? Theme.rowHover : .clear
     }
 
     @ViewBuilder private var trailing: some View {
         switch row.task.status {
-        case .done:
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(row.category.color)
         case .carried:
-            Image(systemName: "arrow.uturn.forward")
-                .foregroundStyle(Theme.tertiary)
+            Label("Tomorrow", systemImage: "arrow.turn.up.right").labelStyle(.titleAndIcon)
+        case .done:
+            Text(Format.duration(row.focusedSeconds))
         default:
-            ProgressRing(progress: row.progress, color: row.category.color)
+            if row.focusedSeconds >= 60 {
+                Text("\(Int(row.focusedSeconds / 60)) / \(row.task.blockMinutes)m")
+            } else {
+                Text("\(row.task.blockMinutes)m")
+            }
         }
     }
 
     @ViewBuilder private var menu: some View {
         if row.task.status.isOpen {
             Button("Start now") { model.start(row) }.disabled(model.running?.kind == .focus)
-            Button("Mark done") { model.perform { try model.store.setTaskStatus(row.id, .done) } }
             Button("Push to tomorrow") { model.perform { try model.store.pushToTomorrow(row.id) } }
             Menu("Block") {
                 ForEach([15, 30, 45, 60, 90, 120], id: \.self) { m in
@@ -212,8 +269,6 @@ private struct TaskCard: View {
                     Button(c.name) { model.perform { try model.store.updateTask(row.id, category: c.id) } }
                 }
             }
-        } else {
-            Button("Reopen") { model.perform { try model.store.setTaskStatus(row.id, .todo) } }
         }
         Divider()
         Button("Move up") { model.perform { try model.store.moveTask(row.id, to: index - 1) } }.disabled(index == 0)
@@ -223,19 +278,27 @@ private struct TaskCard: View {
     }
 }
 
-private struct ProgressRing: View {
-    let progress: Double
-    let color: Color
+/// The one way to mark a task done, or undo it.
+private struct CompletionButton: View {
+    @Environment(AppModel.self) private var model
+    let row: TaskRow
+
+    private var isDone: Bool { row.task.status == .done }
 
     var body: some View {
-        ZStack {
-            Circle().stroke(Color.white.opacity(0.1), lineWidth: 3)
-            Circle()
-                .trim(from: 0, to: progress)
-                .stroke(color, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                .rotationEffect(.degrees(-90))
+        Button {
+            model.perform { try model.store.setTaskStatus(row.id, isDone ? .todo : .done) }
+        } label: {
+            Image(systemName: isDone ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 15))
+                .foregroundStyle(row.task.status == .carried ? AnyShapeStyle(.tertiary) : AnyShapeStyle(row.category.color))
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: 18, height: 18)
         }
-        .frame(width: 20, height: 20)
+        .buttonStyle(.plain)
+        .disabled(row.task.status == .carried || model.running?.taskId == row.id)
+        .help(isDone ? "Mark not done" : "Mark done")
+        .accessibilityLabel(isDone ? "Done" : "Not done")
     }
 }
 
@@ -253,43 +316,43 @@ private struct TaskComposer: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "plus")
-                .foregroundStyle(Theme.tertiary)
-                .frame(width: 4)
-                .padding(.trailing, 4)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 18)
             TextField("Add a task", text: $title)
                 .textFieldStyle(.plain)
-                .font(.system(size: 14))
                 .focused($focused)
                 .onSubmit(add)
-            Menu {
-                ForEach(model.snapshot.categories) { c in
-                    Button(c.name) { categoryId = c.id }
+            if focused || !title.isEmpty {
+                Menu {
+                    ForEach(model.snapshot.categories) { c in
+                        Button(c.name) { categoryId = c.id }
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Circle().fill(category?.color ?? Theme.idle).frame(width: 7, height: 7)
+                        Text(category?.name ?? "")
+                    }
                 }
-            } label: {
-                HStack(spacing: 5) {
-                    Circle().fill(category?.color ?? Theme.idle).frame(width: 7, height: 7)
-                    Text(category?.name ?? "")
+                .menuIndicator(.hidden)
+                .fixedSize()
+                Menu {
+                    ForEach([15, 30, 45, 60, 90, 120], id: \.self) { m in
+                        Button("\(m) min") { minutes = m }
+                    }
+                } label: {
+                    Text("\(minutes)m").monospacedDigit()
                 }
-                .font(.system(size: 12))
+                .menuIndicator(.hidden)
+                .fixedSize()
             }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .fixedSize()
-            Menu {
-                ForEach([15, 30, 45, 60, 90, 120], id: \.self) { m in
-                    Button("\(m) min") { minutes = m }
-                }
-            } label: {
-                Text("\(minutes)m").font(Theme.stat(11)).monospacedDigit()
-            }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .fixedSize()
         }
-        .foregroundStyle(Theme.secondary)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
-        .glassEffect(.regular.tint(.white.opacity(focused ? 0.04 : 0)), in: .rect(cornerRadius: 14))
+        .buttonStyle(.plain)
+        .font(.body)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 10)
+        .frame(height: 36)
+        .background(focused ? Theme.rowFill : .clear, in: .rect(cornerRadius: 8))
     }
 
     private func add() {
@@ -299,103 +362,5 @@ private struct TaskComposer: View {
                                     day: model.snapshot.day, source: .app)
         }
         if model.error == nil { title = "" }
-    }
-}
-
-// MARK: Timer
-
-private struct TimerSection: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        VStack(spacing: 12) {
-            Text(heading)
-                .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(Theme.primary)
-                .lineLimit(1)
-            DialView(size: 210)
-            VStack(spacing: 6) {
-                Text(readout)
-                    .font(.system(size: 38, weight: .light, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle((model.remaining ?? 1) <= 0 ? Color.orange : Theme.primary)
-                Text(span)
-                    .font(Theme.stat(11))
-                    .monospacedDigit()
-                    .foregroundStyle(Theme.secondary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .glassEffect(.regular, in: .capsule)
-            }
-            Controls()
-        }
-    }
-
-    private var heading: String {
-        if let running = model.running {
-            if running.kind == .break { return "Break" }
-            return model.runningTask?.task.title ?? "Focus"
-        }
-        return model.selectedTask?.task.title ?? (model.snapshot.tasks.isEmpty ? "What are your three today?" : "All done for today")
-    }
-
-    private var readout: String {
-        if let remaining = model.remaining { return Format.clock(remaining) }
-        return Format.clock(TimeInterval(model.dialMinutes * 60))
-    }
-
-    private var span: String {
-        if let running = model.running {
-            if running.isPaused { return "PAUSED" }
-            return "\(Format.time(running.startedAt)) → \(Format.time(running.plannedEnd))"
-        }
-        return "\(Format.time(model.now)) → \(Format.time(model.now.addingTimeInterval(TimeInterval(model.dialMinutes * 60))))"
-    }
-}
-
-private struct Controls: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        GlassEffectContainer(spacing: 10) {
-            HStack(spacing: 10) {
-                if let running = model.running {
-                    if running.kind == .focus {
-                        Button { model.extend(5) } label: { Text("+5").frame(width: 34) }
-                            .buttonStyle(.glass)
-                            .help("Add 5 minutes")
-                        Button { model.togglePause() } label: {
-                            Label(running.isPaused ? "Resume" : "Pause",
-                                  systemImage: running.isPaused ? "play.fill" : "pause.fill")
-                                .frame(width: 120)
-                        }
-                        .buttonStyle(.glassProminent)
-                        .tint(model.accent)
-                        Button { model.finishEarly() } label: { Text("Finish").frame(width: 54) }
-                            .buttonStyle(.glass)
-                    } else {
-                        Button { model.stop() } label: { Text("End break").frame(width: 90) }
-                            .buttonStyle(.glass)
-                        if let next = model.snapshot.nextTask {
-                            Button { model.start(next) } label: {
-                                Label("Start \(next.task.title)", systemImage: "play.fill")
-                                    .lineLimit(1)
-                                    .frame(maxWidth: 200)
-                            }
-                            .buttonStyle(.glassProminent)
-                            .tint(next.category.color)
-                        }
-                    }
-                } else {
-                    Button { model.start() } label: {
-                        Label("Start", systemImage: "play.fill").frame(width: 140)
-                    }
-                    .buttonStyle(.glassProminent)
-                    .tint(model.accent)
-                    .disabled(model.selectedTask == nil)
-                }
-            }
-            .controlSize(.large)
-        }
     }
 }

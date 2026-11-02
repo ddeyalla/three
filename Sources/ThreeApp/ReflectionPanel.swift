@@ -24,7 +24,8 @@ final class ReflectionPanelController {
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         panel.setFrameOrigin(NSPoint(x: target.x, y: target.y + (reduceMotion ? 0 : 12)))
         panel.alphaValue = 0
-        panel.makeKeyAndOrderFront(nil)
+        // Front, not key: never take keystrokes from whatever the user is typing in. A click makes it key.
+        panel.orderFrontRegardless()
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.24
             ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.23, 1, 0.32, 1)
@@ -78,84 +79,106 @@ struct ReflectionView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(model.runningTask?.task.title ?? "Focus block")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Theme.primary)
-                Text("\(Format.duration(model.running?.elapsed(at: model.now) ?? 0).uppercased()) FOCUSED")
-                    .font(Theme.stat(10))
-                    .foregroundStyle(Theme.secondary)
+                    .font(.headline)
+                    .lineLimit(1)
+                Text("\(Format.duration(model.running?.elapsed(at: model.now) ?? 0)) focused")
+                    .font(.callout)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
             }
 
-            question("How did it go?") {
-                ForEach([(Outcome.done, "Done"), (.progress, "Made progress"), (.stuck, "Stuck")], id: \.0) { value, label in
-                    Chip(label: label, selected: outcome == value, color: model.accent) { outcome = value }
-                }
-            }
-
-            question("Focus?") {
-                ForEach([(FocusRating.focused, "🎯 Focused"), (.okay, "🙂 Okay"), (.scattered, "🌀 Scattered")], id: \.0) { value, label in
-                    Chip(label: label, selected: rating == value, color: model.accent) { rating = value }
-                }
-            }
-
-            question("What's next?") {
-                if let next {
-                    HStack(spacing: 8) {
-                        Circle().fill(next.category.color).frame(width: 8, height: 8)
-                        Text("\(next.task.title) · \(next.task.blockMinutes)m")
-                            .font(.system(size: 13, weight: .medium))
-                            .lineLimit(1)
-                        Spacer(minLength: 8)
-                        if candidates.count > 1 {
-                            Menu("Switch") {
-                                ForEach(candidates) { c in Button(c.task.title) { nextId = c.id } }
-                            }
-                            .menuStyle(.button)
-                            .fixedSize()
-                        }
-                        Button("−15m") {
-                            model.perform { try model.store.updateTask(next.id, blockMinutes: max(5, next.task.blockMinutes - 15)) }
-                        }
-                        .disabled(next.task.blockMinutes <= 5)
-                        if next.id != model.running?.taskId {
-                            Button("Tomorrow") { model.perform { try model.store.pushToTomorrow(next.id) } }
-                        }
+            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 16, verticalSpacing: 12) {
+                GridRow {
+                    label("How did it go?")
+                    Picker("How did it go?", selection: $outcome) {
+                        Text("Done").tag(Outcome.done)
+                        Text("Progress").tag(Outcome.progress)
+                        Text("Stuck").tag(Outcome.stuck)
                     }
-                    .buttonStyle(.glass)
-                    .controlSize(.small)
-                } else {
-                    Text("Nothing left on today's plan.")
-                        .font(.system(size: 13))
-                        .foregroundStyle(Theme.secondary)
+                }
+                GridRow {
+                    label("Focus")
+                    Picker("Focus", selection: $rating) {
+                        Text("Focused").tag(FocusRating.focused)
+                        Text("Okay").tag(FocusRating.okay)
+                        Text("Scattered").tag(FocusRating.scattered)
+                    }
+                }
+                GridRow {
+                    label("Next")
+                    nextRow
+                }
+                GridRow {
+                    label("Note")
+                    TextField("Optional", text: $note)
+                        .textFieldStyle(.roundedBorder)
                 }
             }
-
-            TextField("Note (optional)", text: $note)
-                .textFieldStyle(.plain)
-                .font(.system(size: 13))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .glassEffect(.regular, in: .rect(cornerRadius: 10))
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(maxWidth: .infinity)
 
             HStack(spacing: 8) {
-                Button { finish(then: .break) } label: { Text("Start break").frame(maxWidth: .infinity) }
-                    .buttonStyle(.glassProminent)
-                    .tint(model.accent)
-                Button { finish(then: .next) } label: { Text("Skip break").frame(maxWidth: .infinity) }
-                    .buttonStyle(.glass)
-                Button {
+                Button("+15 min") {
                     model.extend(15)
                     dismiss()
-                } label: { Text("+15 min").frame(maxWidth: .infinity) }
-                    .buttonStyle(.glass)
+                }
+                Spacer()
+                Button("Skip break") { finish(then: .next) }
+                Button("Start break") { finish(then: .break) }
+                    .buttonStyle(.borderedProminent)
+                    .tint(model.accent)
+                    .keyboardShortcut(.defaultAction)
             }
             .controlSize(.large)
         }
-        .padding(22)
+        .padding(20)
         .frame(width: 460)
-        .glassEffect(.regular, in: .rect(cornerRadius: 24))
+        .glassEffect(.regular, in: .rect(cornerRadius: 20))
         .preferredColorScheme(.dark)
+    }
+
+    @ViewBuilder private var nextRow: some View {
+        if let next {
+            HStack(spacing: 8) {
+                Circle().fill(next.category.color).frame(width: 8, height: 8)
+                if candidates.count > 1 {
+                    Menu {
+                        ForEach(candidates) { c in Button(c.task.title) { nextId = c.id } }
+                    } label: {
+                        Text(next.task.title).lineLimit(1)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text(next.task.title).lineLimit(1)
+                }
+                Spacer(minLength: 4)
+                Text("\(next.task.blockMinutes)m")
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                Menu {
+                    Button("Shorten by 15 min") {
+                        model.perform { try model.store.updateTask(next.id, blockMinutes: max(5, next.task.blockMinutes - 15)) }
+                    }
+                    .disabled(next.task.blockMinutes <= 5)
+                    if next.id != model.running?.taskId {
+                        Button("Push to tomorrow") { model.perform { try model.store.pushToTomorrow(next.id) } }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("Adjust the next task")
+            }
+        } else {
+            Text("Nothing left on today's plan.")
+                .foregroundStyle(.secondary)
+        }
     }
 
     private enum Then { case `break`, next }
@@ -172,31 +195,9 @@ struct ReflectionView: View {
         dismiss()
     }
 
-    private func question<Content: View>(_ title: String, @ViewBuilder _ content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title.uppercased())
-                .font(Theme.stat(10))
-                .foregroundStyle(Theme.tertiary)
-            HStack(spacing: 8) { content() }
-        }
-    }
-}
-
-private struct Chip: View {
-    let label: String
-    let selected: Bool
-    let color: Color
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Text(label)
-                .font(.system(size: 13, weight: selected ? .semibold : .regular))
-                .foregroundStyle(selected ? Theme.primary : Theme.secondary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .glassEffect(selected ? .regular.tint(color.opacity(0.35)) : .regular, in: .capsule)
-        }
-        .buttonStyle(PressableStyle())
+    private func label(_ text: String) -> some View {
+        Text(text)
+            .foregroundStyle(.secondary)
+            .gridColumnAlignment(.trailing)
     }
 }

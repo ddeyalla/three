@@ -1,12 +1,13 @@
-// Prints the CGWindowID of Three's largest on-screen window, for `screencapture -l`.
+// Prints the CGWindowID of the largest on-screen window of a process: swift shot.swift <pid>
 import CoreGraphics
+let pid = Int32(CommandLine.arguments[1])!
 let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
-let target = CommandLine.arguments.dropFirst().first ?? "Three"
-let windows = list.filter { ($0[kCGWindowOwnerName as String] as? String) == target }
 func area(_ w: [String: Any]) -> Double {
     let b = w[kCGWindowBounds as String] as? [String: Double] ?? [:]
     return (b["Width"] ?? 0) * (b["Height"] ?? 0)
 }
-if let w = windows.filter({ ($0[kCGWindowBounds as String] as? [String: Double])?["Y"] ?? -1 >= 0 }).max(by: { area($0) < area($1) }) {
+let mine = list.filter { ($0[kCGWindowOwnerPID as String] as? Int32) == pid }
+let layer = CommandLine.arguments.count > 2 ? Int(CommandLine.arguments[2])! : 0
+if let w = mine.filter({ ($0[kCGWindowLayer as String] as? Int) == layer }).max(by: { area($0) < area($1) }) {
     print(w[kCGWindowNumber as String] as! Int)
 }

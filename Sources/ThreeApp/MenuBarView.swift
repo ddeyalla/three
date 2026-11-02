@@ -33,9 +33,9 @@ struct MenuBarView: View {
                         .font(.system(size: 14, weight: .semibold))
                         .lineLimit(1)
                     Text(Format.clock(running.remaining(at: model.now)))
-                        .font(.system(size: 34, weight: .light, design: .rounded))
+                        .font(.system(size: 34, weight: .light))
                         .monospacedDigit()
-                        .foregroundStyle(running.remaining(at: model.now) <= 0 ? .orange : Theme.primary)
+                        .foregroundStyle(running.remaining(at: model.now) <= 0 ? Theme.overrun : .primary)
                 }
                 HStack(spacing: 8) {
                     if running.kind == .focus {
@@ -58,18 +58,17 @@ struct MenuBarView: View {
 
             if !model.snapshot.tasks.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("TODAY").font(Theme.stat(10)).foregroundStyle(Theme.tertiary)
                     ForEach(model.snapshot.tasks.filter { $0.task.status != .dropped }) { row in
                         HStack(spacing: 8) {
                             Image(systemName: row.task.status == .done ? "checkmark.circle.fill" : "circle")
                                 .foregroundStyle(row.category.color)
                             Text(row.task.title)
                                 .lineLimit(1)
-                                .foregroundStyle(row.task.status.isOpen ? Theme.primary : Theme.tertiary)
+                                .foregroundStyle(row.task.status.isOpen ? .primary : .secondary)
                             Spacer()
                             Text("\(row.task.blockMinutes)m")
-                                .font(Theme.stat(10))
-                                .foregroundStyle(Theme.secondary)
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
                         }
                         .font(.system(size: 13))
                     }
@@ -87,7 +86,7 @@ struct MenuBarView: View {
             }
             .buttonStyle(.plain)
             .font(.system(size: 12))
-            .foregroundStyle(Theme.secondary)
+            .foregroundStyle(.secondary)
         }
         .padding(16)
         .frame(width: 300)

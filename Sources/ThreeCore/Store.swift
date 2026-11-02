@@ -118,6 +118,13 @@ public final class Store: @unchecked Sendable {
                              archived: false, updatedAt: Date(), deletedAt: nil).insert(db)
             }
         }
+        // Calmer seed colours at matched lightness. Only untouched seeds change.
+        m.registerMigration("v2-calm-colors") { db in
+            for (old, new) in [("#FF4F6D", "#F2766B"), ("#5B8CFF", "#6E9BF2"), ("#F5A524", "#E5A84B"),
+                               ("#2BC48A", "#4FBF8B"), ("#A971FF", "#A58AF0")] {
+                try db.execute(sql: "UPDATE category SET colorHex = ? WHERE colorHex = ?", arguments: [new, old])
+            }
+        }
         return m
     }
 }
