@@ -265,8 +265,8 @@ struct TaskMenuItems: View {
             Menu("Schedule") { ScheduleMenuItems(row: row) }
         }
         Menu("Block") {
-            ForEach([15, 25, 30, 45, 60, 90, 120], id: \.self) { m in
-                Button("\(m) min") { model.perform { try model.store.updateTask(row.id, blockMinutes: m) } }
+            ForEach([15, 25, 30, 45, 60, 90, 120, 180, 240], id: \.self) { m in
+                Button(Format.duration(TimeInterval(m * 60))) { model.perform { try model.store.updateTask(row.id, blockMinutes: m) } }
             }
         }
         Menu("Category") {
