@@ -58,12 +58,11 @@ struct TaskCard<Trailing: View>: View {
             }
         }
         // Inside the glass: a GlassEffectContainer ignores opacity applied to the card from outside.
-        .opacity(isTravelling ? 0.5 : 1)
+        .opacity(isTravelling ? 0.5 : isClosed ? 0.7 : 1)
         .padding(.horizontal, Space.md)
         .padding(.vertical, Space.sm)
         .contentShape(.rect(cornerRadius: Radius.card))
         .glassEffect(glass, in: .rect(cornerRadius: Radius.card))
-        .opacity(isClosed ? 0.7 : 1)
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(selected || running ? .isSelected : [])
     }
@@ -287,7 +286,8 @@ struct StepList: View {
                     TextField("Next small step", text: $draft)
                         .textFieldStyle(.plain)
                         .focused($focused)
-                        .onAppear { focused = true }
+                        // After the click that revealed it settles; claimed at once, the cursor lands in Notes.
+                        .onAppear { DispatchQueue.main.async { focused = true } }
                         .onSubmit(add)
                         .onExitCommand { adding = false; draft = "" }
                 }
@@ -329,7 +329,7 @@ struct TagAdder: View {
                     TextField("onboarding, launch", text: $draft)
                         .textFieldStyle(.plain)
                         .focused($focused)
-                        .onAppear { focused = true }
+                        .onAppear { DispatchQueue.main.async { focused = true } }
                         .onSubmit(add)
                         .onExitCommand { adding = false; draft = "" }
                 }
