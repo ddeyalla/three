@@ -92,7 +92,8 @@ public enum TaskStatus: String, Codable, Sendable, CaseIterable, DatabaseValueCo
 public struct FocusTask: Codable, Hashable, Identifiable, FetchableRecord, PersistableRecord, Sendable {
     public static let databaseTableName = "task"
     public var id: String
-    public var dayPlanId: String
+    /// nil while the task sits in the inbox, unplanned.
+    public var dayPlanId: String?
     public var position: Int
     public var title: String
     public var categoryId: String
@@ -158,4 +159,26 @@ public struct Session: Codable, Hashable, Identifiable, FetchableRecord, Persist
     public var plannedEnd: Date {
         startedAt.addingTimeInterval(TimeInterval(plannedSeconds + pausedSeconds))
     }
+}
+
+/// A checklist item under a task: the first small step, the next one.
+public struct Step: Codable, Hashable, Identifiable, FetchableRecord, PersistableRecord, Sendable {
+    public static let databaseTableName = "step"
+    public var id: String
+    public var taskId: String
+    public var position: Int
+    public var title: String
+    public var done: Bool
+    public var updatedAt: Date
+}
+
+/// Timer defaults, shared by the app and the CLI through the database.
+public struct Preferences: Codable, Hashable, Sendable {
+    public var sessionMinutes = 45
+    public var shortBreakMinutes = 5
+    public var longBreakMinutes = 15
+    public var longBreakAfterMinutes = 100
+    public var defaultBlockMinutes = 60
+
+    public init() {}
 }

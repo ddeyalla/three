@@ -64,9 +64,9 @@ final class AppModel {
     /// What Start would run for: the dragged value, else the task's block left, capped at a session.
     var dialMinutes: Int {
         if let dialOverride { return dialOverride }
-        guard let row = selectedTask else { return Rules.defaultSessionMinutes }
+        guard let row = selectedTask else { return snapshot.preferences.sessionMinutes }
         let left = Int((row.blockSeconds - row.focusedSeconds) / 60)
-        return left >= 5 ? min(left, Rules.defaultSessionMinutes) : Rules.defaultSessionMinutes
+        return left >= 5 ? min(left, snapshot.preferences.sessionMinutes) : snapshot.preferences.sessionMinutes
     }
 
     // MARK: Loop

@@ -26,10 +26,6 @@ public enum ThreeError: LocalizedError, Equatable {
 public enum Rules {
     public static let maxTasks = 5
     public static let idealTasks = 3
-    public static let defaultSessionMinutes = 45
-    public static let shortBreakMinutes = 5
-    public static let longBreakMinutes = 15
-    public static let longBreakAfterFocusMinutes = 100
 }
 
 /// The one database shared by the app and the `three` CLI.
@@ -45,12 +41,17 @@ public final class Store: @unchecked Sendable {
         return dir.appendingPathComponent("three.sqlite")
     }
 
-    public init(url: URL = Store.defaultURL) throws {
+    public convenience init(url: URL = Store.defaultURL) throws {
+        try self.init(url: url, upTo: nil)
+    }
+
+    /// `upTo` stops at a named migration, so tests can build an old database and migrate it.
+    init(url: URL, upTo migration: String?) throws {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         var config = Configuration()
         config.busyMode = .timeout(5)
         db = try DatabasePool(path: url.path, configuration: config)
-        try Store.migrator.migrate(db)
+        if let migration { try Store.migrator.migrate(db, upTo: migration) } else { try Store.migrator.migrate(db) }
     }
 
     private static var migrator: DatabaseMigrator {
@@ -123,6 +124,42 @@ public final class Store: @unchecked Sendable {
             for (old, new) in [("#FF4F6D", "#F2766B"), ("#5B8CFF", "#6E9BF2"), ("#F5A524", "#E5A84B"),
                                ("#2BC48A", "#4FBF8B"), ("#A971FF", "#A58AF0")] {
                 try db.execute(sql: "UPDATE category SET colorHex = ? WHERE colorHex = ?", arguments: [new, old])
+            }
+        }
+        // Inbox: a task may have no day yet. SQLite can't drop NOT NULL, so rebuild the table.
+        m.registerMigration("v3-inbox-steps-prefs") { db in
+            try db.create(table: "task_new") { t in
+                t.primaryKey("id", .text)
+                t.column("dayPlanId", .text).references("dayPlan")
+                t.column("position", .integer).notNull()
+                t.column("title", .text).notNull()
+                t.column("categoryId", .text).notNull().references("category")
+                t.column("blockMinutes", .integer).notNull().check { $0 > 0 }
+                t.column("scheduledStart", .datetime)
+                t.column("strict", .boolean).notNull().defaults(to: false)
+                t.column("status", .text).notNull()
+                t.column("linearRef", .text)
+                t.column("notes", .text).notNull().defaults(to: "")
+                t.column("createdBy", .text).notNull()
+                t.column("updatedAt", .datetime).notNull()
+                t.column("deletedAt", .datetime)
+            }
+            try db.execute(sql: "INSERT INTO task_new SELECT * FROM task")
+            try db.drop(table: "task")
+            try db.rename(table: "task_new", to: "task")
+            try db.create(index: "task_on_dayPlanId", on: "task", columns: ["dayPlanId"])
+
+            try db.create(table: "step") { t in
+                t.primaryKey("id", .text)
+                t.column("taskId", .text).notNull().references("task", onDelete: .cascade).indexed()
+                t.column("position", .integer).notNull()
+                t.column("title", .text).notNull()
+                t.column("done", .boolean).notNull().defaults(to: false)
+                t.column("updatedAt", .datetime).notNull()
+            }
+            try db.create(table: "preference") { t in
+                t.primaryKey("key", .text)
+                t.column("value", .text).notNull()
             }
         }
         return m

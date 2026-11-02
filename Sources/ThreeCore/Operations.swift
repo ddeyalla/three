@@ -21,6 +21,7 @@ public struct TaskRow: Hashable, Identifiable, Sendable {
     public var task: FocusTask
     public var category: Category
     public var focusedSeconds: TimeInterval
+    public var steps: [Step] = []
     public var id: String { task.id }
     public var blockSeconds: TimeInterval { TimeInterval(task.blockMinutes * 60) }
     public var progress: Double { min(1, focusedSeconds / max(1, blockSeconds)) }
@@ -35,6 +36,7 @@ public struct DaySnapshot: Sendable {
     public var running: Session?
     public var runningTask: TaskRow?
     public var categories: [Category]
+    public var preferences: Preferences
 
     public var plannedMinutes: Int { tasks.filter { $0.task.status != .dropped && $0.task.status != .carried }.reduce(0) { $0 + $1.task.blockMinutes } }
     public var doneCount: Int { tasks.filter { $0.task.status == .done }.count }
@@ -98,15 +100,16 @@ extension Store {
                     focused[s.taskId!, default: 0] += s.elapsed(at: now)
                 }
             }
+            let steps = try self.steps(for: tasks.map(\.id), db)
             let rows = tasks.compactMap { t in
-                byId[t.categoryId].map { TaskRow(task: t, category: $0, focusedSeconds: focused[t.id] ?? 0) }
+                byId[t.categoryId].map { TaskRow(task: t, category: $0, focusedSeconds: focused[t.id] ?? 0, steps: steps[t.id] ?? []) }
             }
             var runningTask = rows.first { $0.id == running?.taskId }
             if runningTask == nil, let taskId = running?.taskId, let t = try FocusTask.fetchOne(db, key: taskId), let c = byId[t.categoryId] {
                 runningTask = TaskRow(task: t, category: c, focusedSeconds: focused[t.id] ?? 0)
             }
             return DaySnapshot(day: day, plan: plan, tasks: rows, sessions: sessions, running: running,
-                               runningTask: runningTask, categories: categories)
+                               runningTask: runningTask, categories: categories, preferences: try preferences(db))
         }
     }
 
@@ -116,7 +119,7 @@ extension Store {
 
     // MARK: Planning
 
-    private func category(_ nameOrId: String, _ db: Database) throws -> Category {
+    func category(_ nameOrId: String, _ db: Database) throws -> Category {
         let all = try Category.filter(Column("deletedAt") == nil).fetchAll(db)
         if let c = all.first(where: { $0.id == nameOrId || $0.name.caseInsensitiveCompare(nameOrId) == .orderedSame }) {
             return c
@@ -124,7 +127,7 @@ extension Store {
         throw ThreeError.noSuchCategory(nameOrId)
     }
 
-    private func planRow(_ day: DayKey, source: Source, _ db: Database) throws -> DayPlan {
+    func planRow(_ day: DayKey, source: Source, _ db: Database) throws -> DayPlan {
         if let p = try DayPlan.filter(Column("day") == day && Column("deletedAt") == nil).fetchOne(db) { return p }
         let now = Date()
         let p = DayPlan(id: UUID().uuidString, day: day, status: .draft, source: source,
@@ -133,25 +136,30 @@ extension Store {
         return p
     }
 
-    private func liveTasks(_ planId: String, _ db: Database) throws -> [FocusTask] {
+    func liveTasks(_ planId: String?, _ db: Database) throws -> [FocusTask] {
         try FocusTask.filter(Column("dayPlanId") == planId && Column("deletedAt") == nil)
             .order(Column("position")).fetchAll(db)
     }
 
-    private func insertTask(_ new: NewTask, plan: DayPlan, source: Source, _ db: Database) throws -> FocusTask {
+    /// Inserts into `plan`, or into the inbox when `plan` is nil. Only a day counts toward the five-task cap.
+    func insertTask(_ new: NewTask, plan: DayPlan?, source: Source, _ db: Database) throws -> FocusTask {
         let title = new.title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { throw ThreeError.invalid("A task needs a title.") }
         guard (5...480).contains(new.blockMinutes) else { throw ThreeError.invalid("Blocks are 5 to 480 minutes.") }
-        let existing = try liveTasks(plan.id, db)
-        guard existing.filter({ $0.status != .dropped && $0.status != .carried }).count < Rules.maxTasks else {
-            throw ThreeError.tooManyTasks
-        }
-        let t = FocusTask(id: UUID().uuidString, dayPlanId: plan.id, position: (existing.map(\.position).max() ?? -1) + 1,
+        let existing = try liveTasks(plan?.id, db)
+        if plan != nil { try checkCap(existing) }
+        let t = FocusTask(id: UUID().uuidString, dayPlanId: plan?.id, position: (existing.map(\.position).max() ?? -1) + 1,
                           title: title, categoryId: try category(new.category, db).id, blockMinutes: new.blockMinutes,
                           scheduledStart: new.scheduledStart, strict: new.strict, status: .todo,
                           linearRef: new.linearRef, notes: new.notes, createdBy: source, updatedAt: Date(), deletedAt: nil)
         try t.insert(db)
         return t
+    }
+
+    func checkCap(_ dayTasks: [FocusTask]) throws {
+        guard dayTasks.filter({ $0.status != .dropped && $0.status != .carried }).count < Rules.maxTasks else {
+            throw ThreeError.tooManyTasks
+        }
     }
 
     @discardableResult
@@ -266,7 +274,8 @@ extension Store {
             let focused = try Session.filter(Column("taskId") == task.id && Column("kind") == SessionKind.focus)
                 .fetchAll(db).reduce(0) { $0 + $1.elapsed(at: now) }
             let left = Int((TimeInterval(task.blockMinutes * 60) - focused) / 60)
-            let planned = minutes ?? (left >= 5 ? min(left, Rules.defaultSessionMinutes) : Rules.defaultSessionMinutes)
+            let session = try preferences(db).sessionMinutes
+            let planned = minutes ?? (left >= 5 ? min(left, session) : session)
             guard (1...480).contains(planned) else { throw ThreeError.invalid("Sessions are 1 to 480 minutes.") }
             let s = Session(id: UUID().uuidString, taskId: task.id, kind: .focus, plannedSeconds: planned * 60,
                             startedAt: now, pausedAt: nil, pausedSeconds: 0, endedAt: nil, endReason: nil,
@@ -276,7 +285,8 @@ extension Store {
             task.updatedAt = now
             try task.update(db)
             // Starting work on a draft is the commitment.
-            if var plan = try DayPlan.fetchOne(db, key: task.dayPlanId), plan.status == .draft {
+            guard task.dayPlanId != nil else { throw ThreeError.invalid("Plan it for today before starting it.") }
+            if let planId = task.dayPlanId, var plan = try DayPlan.fetchOne(db, key: planId), plan.status == .draft {
                 plan.status = .committed
                 plan.committedAt = now
                 plan.updatedAt = now
@@ -291,7 +301,9 @@ extension Store {
     public func pushToTomorrow(_ id: String, now: Date = Date()) throws -> FocusTask {
         try write { db in
             guard var t = try FocusTask.fetchOne(db, key: id), t.deletedAt == nil else { throw ThreeError.noSuchTask(id) }
-            guard let plan = try DayPlan.fetchOne(db, key: t.dayPlanId) else { throw ThreeError.noSuchTask(id) }
+            guard let planId = t.dayPlanId, let plan = try DayPlan.fetchOne(db, key: planId) else {
+                throw ThreeError.invalid("That task isn't planned for a day.")
+            }
             let tomorrow = try planRow(plan.day.adding(days: 1), source: .app, db)
             let copy = try insertTask(NewTask(title: t.title, category: t.categoryId, blockMinutes: t.blockMinutes,
                                               strict: t.strict, linearRef: t.linearRef, notes: t.notes),
@@ -381,11 +393,12 @@ extension Store {
     /// 5 minutes normally; 15 once you've focused ~100 minutes since the last long break.
     public func suggestedBreakMinutes(now: Date = Date()) throws -> Int {
         try db.read { db in
+            let prefs = try preferences(db)
             let today = try Session.filter(Column("startedAt") >= DayKey(now).startDate).order(Column("startedAt")).fetchAll(db)
-            let lastLong = today.last { $0.kind == .break && $0.elapsed(at: now) >= TimeInterval(Rules.longBreakMinutes * 60 - 60) }
+            let lastLong = today.last { $0.kind == .break && $0.elapsed(at: now) >= TimeInterval(prefs.longBreakMinutes * 60 - 60) }
             let since = today.filter { $0.kind == .focus && $0.startedAt > (lastLong?.startedAt ?? .distantPast) }
             let focused = since.reduce(0) { $0 + $1.elapsed(at: now) }
-            return focused >= TimeInterval(Rules.longBreakAfterFocusMinutes * 60) ? Rules.longBreakMinutes : Rules.shortBreakMinutes
+            return focused >= TimeInterval(prefs.longBreakAfterMinutes * 60) ? prefs.longBreakMinutes : prefs.shortBreakMinutes
         }
     }
 

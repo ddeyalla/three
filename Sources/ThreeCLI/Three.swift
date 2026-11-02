@@ -9,7 +9,8 @@ struct Three: ParsableCommand {
         commandName: "three",
         abstract: "Plan three focused tasks a day and run them on a timer.",
         subcommands: [Today.self, Status.self, Add.self, Plan.self, Commit.self, Start.self, Pause.self,
-                      Resume.self, Extend.self, Stop.self, Done.self, Drop.self, Tomorrow.self, Categories.self]
+                      Resume.self, Extend.self, Stop.self, Done.self, Drop.self, Tomorrow.self, Capture.self, Inbox.self,
+                      Schedule.self, Upcoming.self, Steps.self, Categories.self, Settings.self]
     )
 }
 
@@ -36,30 +37,33 @@ struct DayOption: ParsableArguments {
 
 /// Blocks like "90", "90m", "1h", "1h30m".
 func parseMinutes(_ s: String) throws -> Int {
-    let lower = s.lowercased()
-    if let m = Int(lower) { return m }
-    var total = 0, digits = ""
-    for ch in lower {
-        if ch.isNumber { digits.append(ch); continue }
-        guard let n = Int(digits) else { throw ValidationError("Can't read \"\(s)\" as minutes.") }
-        switch ch {
-        case "h": total += n * 60
-        case "m": total += n
-        default: throw ValidationError("Can't read \"\(s)\" as minutes.")
-        }
-        digits = ""
-    }
-    guard digits.isEmpty, total > 0 else { throw ValidationError("Can't read \"\(s)\" as minutes.") }
-    return total
+    guard let m = QuickAdd.parseMinutes(s), m > 0 else { throw ValidationError("Can't read \"\(s)\" as minutes.") }
+    return m
 }
 
-/// A task by its 1-based position in the day's list, or by id prefix.
-func resolveTask(_ ref: String, in snap: DaySnapshot) throws -> TaskRow {
+/// A task by its 1-based position in today's list, "i2" for the inbox, or an id prefix.
+func resolveTask(_ ref: String, in snap: DaySnapshot, inbox: [TaskRow] = []) throws -> TaskRow {
     let visible = snap.tasks.filter { $0.task.status != .dropped }
-    if let n = Int(ref), (1...visible.count).contains(n) { return visible[n - 1] }
-    let matches = snap.tasks.filter { $0.id.lowercased().hasPrefix(ref.lowercased()) }
+    if let n = Int(ref), (1...max(1, visible.count)).contains(n), n <= visible.count { return visible[n - 1] }
+    if ref.lowercased().hasPrefix("i"), let n = Int(ref.dropFirst()), (1...max(1, inbox.count)).contains(n), n <= inbox.count {
+        return inbox[n - 1]
+    }
+    let matches = (snap.tasks + inbox).filter { $0.id.lowercased().hasPrefix(ref.lowercased()) }
     guard matches.count == 1 else { throw ThreeError.noSuchTask(ref) }
     return matches[0]
+}
+
+func parseDay(_ s: String) throws -> DayKey? {
+    switch s.lowercased() {
+    case "inbox", "someday", "none": return nil
+    case "yesterday": return DayKey.today.adding(days: -1)
+    default:
+        if let d = DayKey(s) { return d }
+        guard case .day(let d)? = QuickAdd.parse(s, categories: []).when else {
+            throw ValidationError("Use today, tomorrow, a weekday, yyyy-MM-dd or inbox.")
+        }
+        return d
+    }
 }
 
 func store() throws -> Store { try Store() }
@@ -137,6 +141,7 @@ func printDay(_ snap: DaySnapshot) {
         default: " "
         }
         print("  \(mark) \(i + 1). \(r.task.title)  [\(r.category.name) · \(Int(r.focusedSeconds / 60))/\(r.task.blockMinutes)m]")
+        for step in r.steps { print("       \(step.done ? "☑" : "☐") \(step.title)") }
     }
     if snap.running != nil { print(""); printStatus(snap) }
 }
@@ -289,15 +294,210 @@ struct Tomorrow: ParsableCommand {
     }
 }
 
-struct Categories: ParsableCommand {
+struct Capture: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Quick add, Todoist style. Goes to the inbox unless you name a day.",
+        discussion: "three capture \"Write the PRD #writing 45m tomorrow\"  ·  #category, a duration, and today/tomorrow/a weekday/inbox."
+    )
+    @Argument(parsing: .remaining) var words: [String]
+
+    func run() throws {
+        let s = try store()
+        let quick = QuickAdd.parse(words.joined(separator: " "), categories: try s.categories().filter { !$0.archived }.map(\.name))
+        let prefs = try s.preferences()
+        let fallback = try s.categories().first { !$0.archived }?.name ?? ""
+        let new = NewTask(title: quick.title, category: quick.category ?? fallback,
+                          blockMinutes: quick.minutes ?? prefs.defaultBlockMinutes)
+        switch quick.when {
+        case .day(let day)?:
+            try s.addTask(new, day: day, source: .cli)
+            printDay(try s.snapshot(for: day))
+        case .inbox?, nil:
+            try s.addToInbox(new, source: .cli)
+            printInbox(try s.inbox())
+        }
+    }
+}
+
+func printInbox(_ rows: [TaskRow]) {
+    if rows.isEmpty { return print("Inbox is empty.") }
+    for (i, r) in rows.enumerated() {
+        print("  i\(i + 1). \(r.task.title)  [\(r.category.name) · \(r.task.blockMinutes)m]")
+    }
+}
+
+struct Inbox: ParsableCommand {
+    static let configuration = CommandConfiguration(abstract: "List unplanned tasks. Refer to them as i1, i2, …")
     @OptionGroup var common: Common
     func run() throws {
-        let cats = try store().categories()
+        let rows = try store().inbox()
         if common.json {
-            struct C: Encodable { let name: String, color: String }
-            try emit(cats.map { C(name: $0.name, color: $0.colorHex) })
+            try emit(rows.enumerated().map { i, r in
+                TaskJSON(number: i + 1, id: r.id, title: r.task.title, category: r.category.name, blockMinutes: r.task.blockMinutes,
+                         focusedMinutes: 0, status: r.task.status.rawValue, strict: r.task.strict, linear: r.task.linearRef)
+            })
         } else {
-            for c in cats { print("\(c.colorHex)  \(c.name)") }
+            printInbox(rows)
         }
+    }
+}
+
+struct Schedule: ParsableCommand {
+    static let configuration = CommandConfiguration(abstract: "Move a task to a day, or back to the inbox.")
+    @Argument(help: "Task number, i-number for the inbox, or id.") var task: String
+    @Argument(help: "today, tomorrow, a weekday, yyyy-MM-dd, or inbox.") var when: String
+
+    func run() throws {
+        let s = try store()
+        let row = try resolveTask(task, in: s.snapshot(), inbox: s.inbox())
+        let day = try parseDay(when)
+        try s.schedule(row.id, on: day)
+        if let day { printDay(try s.snapshot(for: day)) } else { printInbox(try s.inbox()) }
+    }
+}
+
+struct Upcoming: ParsableCommand {
+    static let configuration = CommandConfiguration(abstract: "The next seven days.")
+    @OptionGroup var common: Common
+    func run() throws {
+        let days = try store().upcoming()
+        if common.json { return try emit(days.map(dayJSON)) }
+        for snap in days where !snap.tasks.isEmpty {
+            print(snap.day.startDate.formatted(.dateTime.weekday(.wide).month().day()))
+            for r in snap.tasks where r.task.status != .dropped { print("  · \(r.task.title)  [\(r.category.name) · \(r.task.blockMinutes)m]") }
+        }
+    }
+}
+
+struct Steps: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "step",
+        abstract: "Break a task into small steps.",
+        subcommands: [AddStep.self, CheckStep.self, RemoveStep.self]
+    )
+
+    struct Ref: ParsableArguments {
+        @Argument(help: "Task number, i-number, or id.") var task: String
+        func row(_ s: Store) throws -> TaskRow { try resolveTask(task, in: s.snapshot(), inbox: s.inbox()) }
+    }
+
+    struct AddStep: ParsableCommand {
+        static let configuration = CommandConfiguration(commandName: "add")
+        @OptionGroup var ref: Ref
+        @Argument var title: String
+        func run() throws {
+            let s = try store()
+            try s.addStep(to: ref.row(s).id, title: title)
+            printDay(try s.snapshot())
+        }
+    }
+
+    struct CheckStep: ParsableCommand {
+        static let configuration = CommandConfiguration(commandName: "done", abstract: "Toggle a step by its number.")
+        @OptionGroup var ref: Ref
+        @Argument var number: Int
+        func run() throws {
+            let s = try store()
+            let steps = try ref.row(s).steps
+            guard (1...max(1, steps.count)).contains(number), number <= steps.count else { throw ValidationError("No step \(number).") }
+            try s.setStep(steps[number - 1].id, done: !steps[number - 1].done)
+            printDay(try s.snapshot())
+        }
+    }
+
+    struct RemoveStep: ParsableCommand {
+        static let configuration = CommandConfiguration(commandName: "remove")
+        @OptionGroup var ref: Ref
+        @Argument var number: Int
+        func run() throws {
+            let s = try store()
+            let steps = try ref.row(s).steps
+            guard (1...max(1, steps.count)).contains(number), number <= steps.count else { throw ValidationError("No step \(number).") }
+            try s.removeStep(steps[number - 1].id)
+            printDay(try s.snapshot())
+        }
+    }
+}
+
+struct Categories: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "List and edit categories.",
+        subcommands: [List.self, AddCategory.self, Rename.self, Color.self, Archive.self],
+        defaultSubcommand: List.self
+    )
+
+    struct List: ParsableCommand {
+        @OptionGroup var common: Common
+        func run() throws { try printCategories(json: common.json) }
+    }
+
+    static func printCategories(json: Bool) throws {
+            let cats = try store().categories()
+            if json {
+                struct C: Encodable { let name: String, color: String, archived: Bool }
+                try emit(cats.map { C(name: $0.name, color: $0.colorHex, archived: $0.archived) })
+            } else {
+                for c in cats { print("\(c.colorHex)  \(c.name)\(c.archived ? "  (archived)" : "")") }
+            }
+    }
+
+    struct AddCategory: ParsableCommand {
+        static let configuration = CommandConfiguration(commandName: "add")
+        @Argument var name: String
+        @Option(help: "Hex colour, e.g. #6E9BF2.") var color = "#8E8E93"
+        func run() throws { try store().addCategory(name: name, colorHex: color); try Categories.printCategories(json: false) }
+    }
+
+    struct Rename: ParsableCommand {
+        @Argument var name: String
+        @Argument var newName: String
+        func run() throws { let s = try store(); try s.updateCategory(id(name, s), name: newName); try Categories.printCategories(json: false) }
+    }
+
+    struct Color: ParsableCommand {
+        @Argument var name: String
+        @Argument(help: "Hex colour, e.g. #6E9BF2.") var hex: String
+        func run() throws { let s = try store(); try s.updateCategory(id(name, s), colorHex: hex); try Categories.printCategories(json: false) }
+    }
+
+    struct Archive: ParsableCommand {
+        @Argument var name: String
+        @Flag(help: "Bring it back.") var undo = false
+        func run() throws { let s = try store(); try s.updateCategory(id(name, s), archived: !undo); try Categories.printCategories(json: false) }
+    }
+
+    static func id(_ name: String, _ s: Store) throws -> String {
+        guard let c = try s.categories().first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) else {
+            throw ThreeError.noSuchCategory(name)
+        }
+        return c.id
+    }
+}
+
+struct Settings: ParsableCommand {
+    static let configuration = CommandConfiguration(abstract: "Show or change timer defaults (shared with the app).")
+    @Option(help: "Default focus session.") var session: String?
+    @Option(help: "Short break.") var shortBreak: String?
+    @Option(help: "Long break.") var longBreak: String?
+    @Option(help: "Focus before a long break.") var longBreakAfter: String?
+    @Option(help: "Default block for new tasks.") var block: String?
+    @OptionGroup var common: Common
+
+    func run() throws {
+        let s = try store()
+        var p = try s.preferences()
+        if let session { p.sessionMinutes = try parseMinutes(session) }
+        if let shortBreak { p.shortBreakMinutes = try parseMinutes(shortBreak) }
+        if let longBreak { p.longBreakMinutes = try parseMinutes(longBreak) }
+        if let longBreakAfter { p.longBreakAfterMinutes = try parseMinutes(longBreakAfter) }
+        if let block { p.defaultBlockMinutes = try parseMinutes(block) }
+        if p != (try s.preferences()) { try s.setPreferences(p) }
+        if common.json { return try emit(p) }
+        print("""
+        session          \(p.sessionMinutes)m
+        short break      \(p.shortBreakMinutes)m
+        long break       \(p.longBreakMinutes)m after \(p.longBreakAfterMinutes)m of focus
+        new task block   \(p.defaultBlockMinutes)m
+        """)
     }
 }
