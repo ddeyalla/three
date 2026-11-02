@@ -147,6 +147,54 @@ private func startFocus(_ store: Store, strict: Bool = false, at now: Date = mon
     #expect(try store.blockStatus(now: monday.addingTimeInterval(90), calendar: utc).hitsToday == [x.id: 2])
 }
 
+@Test func coveredDomainsCannotRecordAnIneffectiveException() throws {
+    let store = try Store(url: freshURL())
+    let child = try store.addBlockRule(.domain(BlockDomain(parsing: "old.reddit.com")), now: monday)
+    let parent = try store.addBlockRule(.domain(BlockDomain(parsing: "reddit.com")), now: monday)
+    try startFocus(store)
+    let during = monday + 60
+    #expect(try store.blockPolicy(now: during).coveringRule(for: child)?.id == parent.id)
+    #expect(throws: BlockError.coveredByRule("reddit.com")) {
+        try store.requestBlockException(ruleId: child.id, reason: "Read the thread", now: during)
+    }
+    #expect(try store.blockPolicy(now: during).exceptions.isEmpty)
+    try store.requestBlockException(ruleId: parent.id, reason: "Read the thread", now: during)
+    #expect(try store.blockPolicy(now: during).coveringRule(for: child) == nil)
+    try store.requestBlockException(ruleId: child.id, reason: "Read the thread", now: during)
+    let policy = try store.blockPolicy(now: during)
+    #expect(BrowserState(policy).rules.isEmpty)
+    #expect(policy.exceptions.count == 2)
+}
+
+@Test func weeklyHoursMustLeaveAReachableEditingWindow() throws {
+    let store = try Store(url: freshURL())
+    let refused = BlockError.invalidHours("Leave a gap in weekly focus hours so you can edit your blocking rules.")
+    #expect(throws: refused) { try store.addFocusHours(FocusHours(days: "daily", time: "0-24")) }
+    #expect(try store.blockStatus().windows.isEmpty)
+
+    let reddit = try store.addBlockRule(.domain(BlockDomain(parsing: "reddit.com")), now: monday)
+    try store.addFocusHours(FocusHours(days: "mon-sat", time: "0-24"), now: monday)
+    let sunday = try store.addFocusHours(FocusHours(days: "sun", time: "0-23:59"), now: monday)
+    let before = try store.blockStatus().windows
+    #expect(throws: refused) { try store.addFocusHours(FocusHours(days: "sun", time: "23:59-24"), now: monday) }
+    #expect(try store.blockStatus().windows == before)
+
+    let gap = ISO8601DateFormatter().date(from: "2026-11-08T23:59:00Z")!
+    #expect(try store.blockPolicy(now: monday, calendar: utc).until == gap)
+    #expect(try !store.blockPolicy(now: gap, calendar: utc).isActive)
+    #expect(throws: refused) {
+        try store.replaceFocusWindows(sunday.map(\.id), with: FocusHours(days: "sun", time: "0-24"), now: gap, calendar: utc)
+    }
+    #expect(try store.blockStatus().windows == before)
+    try store.setBlockRule(reddit.id, enabled: false, now: gap, calendar: utc)
+    #expect(try store.blockStatus().rules.first?.enabled == false)
+
+    let overnight = try Store(url: freshURL())
+    try overnight.addFocusHours(FocusHours(days: "daily", time: "22-12"))
+    #expect(throws: refused) { try overnight.addFocusHours(FocusHours(days: "daily", time: "12-22")) }
+    #expect(try overnight.blockStatus().windows.count == 7)
+}
+
 @Test func handEditedRulesThatDontParseAreIgnored() throws {
     let store = try Store(url: freshURL())
     try store.addBlockPreset(.x, now: monday)

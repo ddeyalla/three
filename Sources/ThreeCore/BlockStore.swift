@@ -152,7 +152,7 @@ extension Store {
     }
 
     private func insertFocusHours(_ hours: FocusHours, now: Date, _ db: Database) throws -> [FocusWindow] {
-        try hours.days.map { day in
+        let windows = try hours.days.map { day in
             let (start, end) = (hours.start.minutes, hours.end.minutes)
             if let id = try String.fetchOne(db, sql: """
                 SELECT id FROM focusWindow WHERE deletedAt IS NULL AND weekday = ? AND startMinute = ? AND endMinute = ?
@@ -165,6 +165,10 @@ extension Store {
                 """, arguments: [w.id, day.rawValue, start, end, now, now])
             return w
         }
+        guard try !FocusWindow.coversEntireWeek(focusWindows(db)) else {
+            throw BlockError.invalidHours("Leave a gap in weekly focus hours so you can edit your blocking rules.")
+        }
+        return windows
     }
 
     // MARK: Loosening: refused while blocking is on
@@ -258,7 +262,8 @@ extension Store {
             guard policy.isActive else { throw BlockError.notBlocking }
             guard !policy.strict else { throw BlockError.strictSession }
             if let open = policy.exceptions.first(where: { $0.ruleId == ruleId }) { return open }
-            guard policy.blocked.contains(where: { $0.id == ruleId }) else { throw BlockError.noSuchRule(ruleId) }
+            guard let rule = policy.blocked.first(where: { $0.id == ruleId }) else { throw BlockError.noSuchRule(ruleId) }
+            if let parent = policy.coveringRule(for: rule) { throw BlockError.coveredByRule(parent.target.value) }
             let e = BlockException(id: UUID().uuidString, ruleId: ruleId, reason: reason,
                                    expiresAt: now.addingTimeInterval(BlockPolicy.exceptionDuration))
             try db.execute(sql: """

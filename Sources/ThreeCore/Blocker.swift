@@ -15,6 +15,7 @@ public enum BlockError: LocalizedError, Equatable {
     case noSuchWindow(String)
     case missingReason
     case tooManyDomains
+    case coveredByRule(String)
 
     public var errorDescription: String? {
         switch self {
@@ -22,13 +23,14 @@ public enum BlockError: LocalizedError, Equatable {
         case .invalidApp(let why), .invalidHours(let why): why
         case .protectedApp(let id): "\(id) can't be blocked. Three never blocks itself or the parts of macOS you need to get around."
         case .protectionActive(let until):
-            "Blocking is on\(until.map { " until \($0.formatted(date: .omitted, time: .shortened))" } ?? ""). Rules and focus hours can only be loosened while it's off."
+            "Blocking is on\(until.map { " until \($0.formatted(date: .abbreviated, time: .shortened))" } ?? ""). Rules and focus hours can only be loosened while it's off."
         case .strictSession: "This is a strict session, so nothing can be unblocked until it ends."
         case .notBlocking: "Nothing is blocked right now."
         case .noSuchRule(let id): "No block rule matches \"\(id)\"."
         case .noSuchWindow(let id): "No focus hours match \"\(id)\"."
         case .missingReason: "Say in a few words why you need it."
         case .tooManyDomains: "Three supports up to \(BlockRule.maxDomains) enabled website rules. No rules were changed."
+        case .coveredByRule(let domain): "This website is also blocked by \(domain). Unblock that rule first."
         }
     }
 }
@@ -301,6 +303,22 @@ public struct FocusWindow: Identifiable, Hashable, Sendable {
     public let end: ClockTime
 
     public var isOvernight: Bool { end <= start }
+
+    static func coversEntireWeek(_ windows: [FocusWindow]) -> Bool {
+        let week = 7 * 1440
+        let spans = windows.flatMap { window -> [Range<Int>] in
+            let day = (window.weekday.rawValue - 1) * 1440
+            let start = day + window.start.minutes
+            let end = day + window.end.minutes + (window.isOvernight ? 1440 : 0)
+            return end > week ? [start..<week, 0..<(end - week)] : [start..<end]
+        }.sorted { $0.lowerBound < $1.lowerBound }
+        var end = 0
+        for span in spans {
+            if span.lowerBound > end { return false }
+            end = max(end, span.upperBound)
+        }
+        return end == week
+    }
 }
 
 // MARK: Policy
@@ -364,6 +382,14 @@ public struct BlockPolicy: Hashable, Sendable {
     public var strict: Bool { focus?.strict ?? false }
     /// When blocking ends in the normal course, across every reason that holds now.
     public var until: Date? { [focus?.until, focusHours?.end].compactMap(\.self).max() }
+
+    public func coveringRule(for rule: BlockRule) -> BlockRule? {
+        guard case .domain(let domain) = rule.target else { return nil }
+        return blocked.filter {
+            guard $0.id != rule.id, case .domain(let parent) = $0.target else { return false }
+            return parent.covers(domain)
+        }.min { $0.target.value.count < $1.target.value.count }
+    }
 
     public static func evaluate(at now: Date, calendar: Calendar, rules: [BlockRule], windows: [FocusWindow],
                                 running: RunningFocus?, exceptions: [BlockException]) -> BlockPolicy {

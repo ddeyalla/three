@@ -128,7 +128,7 @@ private struct Sandbox {
     init(chromeExists: Bool = true) throws {
         let fm = FileManager.default
         try fm.createDirectory(at: setup.bundledExtension, withIntermediateDirectories: true)
-        try json("{}").write(to: setup.bundledExtension.appendingPathComponent("manifest.json"))
+        try json(#"{"key":"three-test-extension-key"}"#).write(to: setup.bundledExtension.appendingPathComponent("manifest.json"))
         try fm.createDirectory(at: setup.launcher.deletingLastPathComponent(), withIntermediateDirectories: true)
         try json("#!/bin/sh\n").write(to: setup.launcher)
         try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: setup.launcher.path)
@@ -172,4 +172,30 @@ private struct Sandbox {
     #expect(throws: ChromeSetupError.browserNotFound(box.chrome.path)) { try box.setup.install() }
     #expect(!FileManager.default.fileExists(atPath: box.chrome.path))
     #expect(!FileManager.default.fileExists(atPath: box.setup.extensionFolder.path))
+}
+
+@Test func setupPreservesFoldersItDoesNotOwn() throws {
+    for key in [nil, "another-extension-key"] as [String?] {
+        let box = try Sandbox()
+        try FileManager.default.createDirectory(at: box.setup.extensionFolder, withIntermediateDirectories: true)
+        let note = box.setup.extensionFolder.appendingPathComponent("notes.txt")
+        try json("Keep this note").write(to: note)
+        if let key {
+            try JSONSerialization.data(withJSONObject: ["key": key])
+                .write(to: box.setup.extensionFolder.appendingPathComponent("manifest.json"))
+        }
+        #expect(throws: ChromeSetupError.foreignExtension(box.setup.extensionFolder.path)) { try box.setup.install() }
+        #expect(try Data(contentsOf: note) == json("Keep this note"))
+        #expect(box.setup.manifestStatus() == .missing)
+    }
+}
+
+@Test func setupDoesNotReplaceASymlinkEvenToAMatchingExtension() throws {
+    let box = try Sandbox()
+    let fm = FileManager.default
+    try fm.createDirectory(at: box.setup.extensionFolder.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try fm.createSymbolicLink(at: box.setup.extensionFolder, withDestinationURL: box.setup.bundledExtension)
+    #expect(throws: ChromeSetupError.foreignExtension(box.setup.extensionFolder.path)) { try box.setup.install() }
+    #expect(try box.setup.extensionFolder.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == true)
+    #expect(box.setup.manifestStatus() == .missing)
 }

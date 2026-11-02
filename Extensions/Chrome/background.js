@@ -1,5 +1,5 @@
 // Keeps Chrome's session rules matching what Three says to block. Session rules vanish when Chrome quits, and
-// every state carries a lease, so blocking can't outlive Three: with no fresh state, the rules lapse.
+// every state carries a lease from the native host. With no fresh state, the rules lapse.
 // The extension sends Three only a hello and the ids of rules that matched; never an address.
 import { HOST, PROTOCOL, blockPagePath, parseState, rulesInForce, sameRules, sessionRules, tabsToBlock } from './state.js';
 

@@ -13,6 +13,7 @@ public enum ChromeSetupError: LocalizedError, Equatable {
     case launcherMissing(String)
     case extensionMissing(String)
     case foreignManifest(String)
+    case foreignExtension(String)
 
     public var errorDescription: String? {
         switch self {
@@ -20,6 +21,7 @@ public enum ChromeSetupError: LocalizedError, Equatable {
         case .launcherMissing(let path): "The native host launcher isn't at \(path). Build or reinstall Three."
         case .extensionMissing(let path): "The Chrome extension isn't at \(path). Build or reinstall Three."
         case .foreignManifest(let path): "\(path) belongs to something else, so Three left it alone. Move it aside to connect Chrome."
+        case .foreignExtension(let path): "\(path) isn't Three's extension copy, so Three left it alone. Move it aside to connect Chrome."
         }
     }
 }
@@ -89,6 +91,13 @@ public struct ChromeSetup: Sendable {
             throw ChromeSetupError.extensionMissing(bundledExtension.path)
         }
         guard manifestStatus() != .foreign else { throw ChromeSetupError.foreignManifest(manifestURL.path) }
+        if fm.fileExists(atPath: extensionFolder.path) {
+            let values = try extensionFolder.resourceValues(forKeys: [.isSymbolicLinkKey])
+            guard values.isSymbolicLink != true, let key = extensionKey(at: bundledExtension),
+                  extensionKey(at: extensionFolder) == key else {
+                throw ChromeSetupError.foreignExtension(extensionFolder.path)
+            }
+        }
 
         try fm.createDirectory(at: extensionFolder.deletingLastPathComponent(), withIntermediateDirectories: true)
         let staging = extensionFolder.deletingLastPathComponent()
@@ -107,6 +116,13 @@ public struct ChromeSetup: Sendable {
 
         try fm.createDirectory(at: manifestURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try manifestData().write(to: manifestURL, options: .atomic)
+    }
+
+    private func extensionKey(at folder: URL) -> String? {
+        guard let data = try? Data(contentsOf: folder.appendingPathComponent("manifest.json")),
+              let manifest = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let key = manifest["key"] as? String, !key.isEmpty else { return nil }
+        return key
     }
 
     /// Removes Three's manifest so Chrome can no longer start the host. The app should refuse this while

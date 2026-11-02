@@ -163,15 +163,16 @@ func dayLabel(_ days: [Weekday]) -> String {
 
 func printBlockStatus(_ status: BlockStatus) {
     let p = status.policy, now = Date()
-    let time = { (d: Date) in d.formatted(date: .omitted, time: .shortened) }
+    let time = { (d: Date) in d.formatted(date: Calendar.current.isDate(d, inSameDayAs: now) ? .omitted : .abbreviated, time: .shortened) }
     if p.isActive, let until = p.until {
         let why = switch BrowserState(p).reason {
         case .focus?: "focus on \"\(p.focus?.taskTitle ?? "this task")\""
-        case .paused?: "paused focus. Blocking lifts 15 minutes after the pause unless you resume"
-        case .overrun?: "focus past its planned end. Blocking lifts 15 minutes after it unless you finish"
+        case .paused?: "paused focus"
+        case .overrun?: "focus past its planned end"
         default: "focus hours"
         }
-        print("Blocking until \(time(until)) · \(why)\(p.strict ? " · strict" : "")")
+        let hours = p.focus != nil && p.focusHours != nil ? " and focus hours" : ""
+        print("Blocking until \(time(until)) · \(why)\(hours)\(p.strict ? " · strict" : "")")
     } else if !status.rules.contains(where: \.enabled) {
         print("Blocking off · no rules yet. Add some: three block add reddit")
     } else {
