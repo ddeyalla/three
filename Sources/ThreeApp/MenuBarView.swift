@@ -207,18 +207,22 @@ struct UnblockMenu: View {
 
     var body: some View {
         let options = model.blocking.unblockOptions
-        Menu("Unblock for 5 Minutes") {
-            ForEach(options) { option in
-                switch option {
-                case .available(let rule):
-                    Button(rule.name) { model.requestUnblock(rule) }
-                case .covered(let rule, let parent):
-                    Button("\(rule.name) (also blocked by \(parent.name))") {}.disabled(true)
-                case .alreadyOpen(let rule, let until):
-                    Button("\(rule.name) · open until \(Format.time(until))") {}.disabled(true)
+        if options.isEmpty {
+            // A disabled Menu still reaches the menu bar enabled, with an empty submenu.
+            Button("Unblock for 5 Minutes") {}.disabled(true)
+        } else {
+            Menu("Unblock for 5 Minutes") {
+                ForEach(options) { option in
+                    switch option {
+                    case .available(let rule):
+                        Button(rule.name) { model.requestUnblock(rule) }
+                    case .covered(let rule, let parent):
+                        Button("\(rule.name) (also blocked by \(parent.name))") {}.disabled(true)
+                    case .alreadyOpen(let rule, let until):
+                        Button("\(rule.name) · open until \(Format.time(until))") {}.disabled(true)
+                    }
                 }
             }
         }
-        .disabled(options.isEmpty)
     }
 }
