@@ -57,7 +57,7 @@ CategoryAllow  categoryId, blockRuleId
 FocusHours  weekday, start, end
 BlockEvent  id, at, blockRuleId, sessionId?, action [blocked|unblocked], reason?
 MeetingCache  date, eventId, title, start, end   (written by the app, read by CLI/MCP)
-Command       id, kind, payload, createdAt, handledAt?   (intents from CLI/MCP, executed by the app)
+Command       id, kind, payload, createdAt, handledAt?   (v0.4+: calendar intents from CLI/MCP, executed by the app)
 ```
 
 The record is local-first. Every row carries `id` (UUID), `updatedAt` and `deletedAt` (soft delete), so CloudKit sync can be added later without a migration (§10).
@@ -232,7 +232,7 @@ This is the core of the product. The CLI and the MCP server are the same binary,
   ```json
   { "mcpServers": { "three": { "command": "three", "args": ["mcp"] } } }
   ```
-- **Division of work.** The app is the only process that touches EventKit, notifications and the timer. The `three` binary only reads the database and writes rows: plan and task edits go in directly; timer and calendar actions (`start_focus`, `commit_day`) go in as `Command` rows, which the app executes.
+- **Division of work.** The app is the only process that touches EventKit, notifications and the timer. The `three` binary only reads the database and writes rows. Plan, task and timer edits go in directly: the timer is a `Session` row with timestamps, so the CLI can start or pause it and the app reacts by rescheduling notifications. Calendar actions (`commit_day` writing events, from v0.4) go in as `Command` rows, which the app executes.
 - **If the app isn't running,** any command that needs it launches it in the background first (`open -g -b <bundle id>`). Launch at login is on by default.
 - **Reads come from the database only.** Meetings come from the `MeetingCache` the app refreshes, so the CLI never needs calendar permission.
 
@@ -342,7 +342,4 @@ After 4 weeks of use:
 
 ## 14. Open questions
 
-1. Name: "Three" is a placeholder.
-2. Weekends: plan as normal, or "off unless you plan"?
-3. Should finishing the last task of the day trigger anything (a summary note to Claude, a Linear update), or just close quietly?
-4. Default category set: Coding, Writing, Admin, Learning, Meetings-prep? (Five colours to start.)
+Resolved 2026-11-02, defaults accepted: the name is **Three**; weekends plan as normal; the day closes quietly; categories start as Coding, Writing, Admin, Learning, Meeting prep.
