@@ -300,7 +300,7 @@ extension Store {
     }
 
     private func end(_ s: inout Session, reason: EndReason, at now: Date, _ db: Database) throws {
-        try trackRecoverySession(s, at: now, db)
+        try trackRecoverySession(s, at: now, finishingPause: true, db)
         if let pausedAt = s.pausedAt {
             s.pausedSeconds += max(0, Int(now.timeIntervalSince(pausedAt)))
             s.pausedAt = nil
@@ -458,7 +458,7 @@ extension Store {
                 throw ThreeError.invalid("This timer changed. Use the current session's controls.")
             }
             guard let pausedAt = s.pausedAt else { return }
-            try trackRecoverySession(s, at: now, db)
+            try trackRecoverySession(s, at: now, finishingPause: true, db)
             s.pausedSeconds += max(0, Int(now.timeIntervalSince(pausedAt)))
             s.pausedAt = nil; s.updatedAt = now
             try s.update(db)

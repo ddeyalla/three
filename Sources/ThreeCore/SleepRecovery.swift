@@ -192,7 +192,7 @@ extension Store {
         try RecoveryGap.filter(Column("state") == RecoveryState.observing).fetchOne(db)
     }
 
-    func trackRecoverySession(_ session: Session, at now: Date, _ db: Database) throws {
+    func trackRecoverySession(_ session: Session, at now: Date, finishingPause: Bool = false, _ db: Database) throws {
         guard session.kind == .focus, var gap = try observingRecovery(db) else { return }
         if now < gap.lastObservedAt || now < session.startedAt || session.pausedAt.map({ $0 > now }) == true {
             gap.clockReliable = false
@@ -203,6 +203,13 @@ extension Store {
             INSERT INTO recoveryImpact(gapId, sessionId, baselineWork) VALUES(?, ?, ?)
             ON CONFLICT(gapId, sessionId) DO NOTHING
             """, arguments: [gap.id, session.id, session.recordedElapsed(at: now)])
+        if finishingPause, let pausedAt = session.pausedAt {
+            let pause = max(0, now.timeIntervalSince(pausedAt))
+            let roundingCredit = pause - pause.rounded(.down)
+            try db.execute(sql: """
+                UPDATE recoveryImpact SET baselineWork = baselineWork + ? WHERE gapId = ? AND sessionId = ?
+                """, arguments: [roundingCredit, gap.id, session.id])
+        }
     }
 
     private func finishRecovery(_ gap: inout RecoveryGap, at instant: RecoveryInstant, _ db: Database) throws {
@@ -212,7 +219,7 @@ extension Store {
         for var impact in impacts {
             let session = try Session.fetchOne(db, key: impact.sessionId)!
             let delta = session.recordedElapsed(at: instant.date) - impact.baselineWork
-            if delta < 0 || session.endedAt.map({ $0 < gap.startedAt }) == true { gap.clockReliable = false }
+            if delta < -0.002 || session.endedAt.map({ $0 < gap.startedAt }) == true { gap.clockReliable = false }
             impact.eligibleSeconds = max(0, min(delta, session.elapsed(at: instant.date)))
             candidates.append(impact)
         }

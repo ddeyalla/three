@@ -6,9 +6,11 @@ The recovery unit starts at `3270869ce3165137f228e3a36243450929bfcfd3` on `t3/du
 
 Migration `v12-sleep-recovery` adds `session.recoveryTrimSeconds`, with zero for old records, and the `recoveryGap` and `recoveryImpact` tables. Old JSON sessions also decode with zero trim. The unique running-session index stays unchanged.
 
-`Session.elapsed(at:)` subtracts the additive trim after the existing pause calculation. `remaining` uses that result. `plannedEnd` adds the trim to the shared deadline. Task totals, history, trends, and day-close use the same elapsed owner.
+`Session.elapsed(at:)` subtracts the additive trim after the existing pause calculation. `remaining` uses that result. `plannedEnd` adds the trim to the shared deadline. Task totals, history, and day-close use the same elapsed owner. The coordinator must repeat final trend verification after integrating v12.
 
 A gap stores the actual begin observation and each affected focus session's unadjusted elapsed value. At return, the difference in unadjusted elapsed is the eligible absence. Completed pauses cancel through the cumulative pause total. An active pause caps elapsed at its begin. No historical pause intervals are inferred. Focus starts, pause, resume, extend, and the shared end helper record transitions against the open gap on the same transaction. Reflection completion and deferred reflection use that end helper.
+
+When a pause ends inside a gap, recovery adds its fractional rounding credit to the baseline. The existing integer pause total would otherwise include that fraction as work. Recovery cannot trim it as unpaused absence. A negative difference within two milliseconds clamps to zero because GRDB stores dates at millisecond precision. Larger regressions disable trim.
 
 Nested lock and sleep share one observing gap. Duplicate begin events for an active source and duplicate end events converge. All observed sources must end before the gap closes. A relaunch closes an already durable observing gap at the relaunch observation. A relaunch with no begin record creates no absence.
 
@@ -37,6 +39,8 @@ The implementation compares unadjusted elapsed snapshots instead of adding a pau
 
 The Model the Domain principle led to the durable gap and impact records. Make Operations Idempotent led to a single transaction for observation and decision. Sequence Work into Verifiable Units led to a verified accounting commit before native adaptation. The user forbids nested delegates. Design exploration and cleanup run in-thread, and the parent owns independent review.
 
+The coordinator's `d4cd2567449c14d591d9c713cf88e7133f9ebf7d` is imported as `4e4defd728dbffecaa9a713f29df9543ccdb5478`. This dependency adds the transaction-owned expected-session guard to pause and resume. The recovery hooks remain after that guard. The decision-log conflict retains both upstream rows. This worker does not claim the identity fix as its own feature.
+
 ## Executed checks
 
 | Check | Result | Evidence |
@@ -44,5 +48,8 @@ The Model the Domain principle led to the durable gap and impact records. Make O
 | `./scripts/swift.sh test --filter DayCloseTests` | PASS, 24 tests | `build/verification/non-calendar/405-initial.log` |
 | First recovery test compile | FAIL, missing `try` in the new reflection fixture, corrected | Initial `405-core-focused.log`, superseded by the rerun |
 | `./scripts/swift.sh test --filter ThreeCoreTests` | PASS, 192 tests | `build/verification/non-calendar/405-core.log` |
+| `./scripts/swift.sh test --filter fractionalPauseRoundingCannotTrimTimeOutsideUnpausedAbsence` before the precision fix | FAIL, 1.3 seconds of pause-rounding credit was incorrectly eligible | `build/verification/non-calendar/405-fractional-before.log` |
+| `./scripts/swift.sh test --filter SleepRecoveryTests` after the precision fix | PASS, 18 tests | `build/verification/non-calendar/405-fractional-after.log` |
+| `./scripts/swift.sh test --filter ThreeCoreTests` after the imported identity fix and precision fix | PASS, 194 tests | `build/verification/non-calendar/405-final-core.log` |
 
 Physical sleep, physical lock, native review interaction, and integrated app lifecycle acceptance remain unproved. Headless event and Store tests do not close those gates. The coordinator must integrate the lifecycle hooks before native acceptance.

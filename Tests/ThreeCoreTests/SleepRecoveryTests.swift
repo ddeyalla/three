@@ -333,4 +333,21 @@ private func savedSession(_ store: Store, _ id: String) throws -> Session {
         }
         #expect(try store.recoveryStatus().observing == nil)
     }
+
+    @Test(arguments: [false, true])
+    func fractionalPauseRoundingCannotTrimTimeOutsideUnpausedAbsence(endWhilePaused: Bool) throws {
+        let store = try recoveryStore()
+        let session = try store.startFocus(taskId: recoveryTask(store).id, now: origin)
+        try store.pause(now: instant(99.5).date)
+        try store.observeRecovery(.began(.sleep), at: instant(100))
+        try store.resume(now: instant(200.1).date)
+        try store.pause(now: instant(300.2).date)
+        if endWhilePaused { try store.stop(now: instant(400.9).date) }
+        else { try store.resume(now: instant(400.9).date) }
+        let review = try #require(try store.observeRecovery(.ended(.sleep), at: instant(1000)).reviews.first)
+        let eligible = endWhilePaused ? 100.1 : 699.2
+        #expect(abs(review.eligibleSeconds - eligible) < 0.002)
+        try store.decideRecovery(review.id, decision: .trim)
+        #expect(abs(try savedSession(store, session.id).recoveryTrimSeconds - eligible) < 0.002)
+    }
 }
