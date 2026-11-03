@@ -246,6 +246,35 @@ private func closeTask(_ store: Store, day: DayKey = closeDay, title: String = "
         #expect(throws: ThreeError.self) { try store.closeEligibleDays(now: now, limit: 32) }
     }
 
+    @Test func reviewStepsReachEveryClosedDayBeyondTheRecentWindow() throws {
+        let store = try closeStore()
+        let count = 40
+        for offset in 0..<count {
+            let day = closeDay.adding(days: offset)
+            try closeTask(store, day: day)
+            try store.commit(day: day)
+        }
+        let now = closeDue.addingTimeInterval(Double(count) * 86400)
+        var batch = try store.closeEligibleDays(now: now, limit: 31)
+        while let after = batch.nextAfter { batch = try store.closeEligibleDays(now: now, limit: 31, after: after) }
+        let latest = closeDay.adding(days: count - 1)
+        #expect(try store.recentDayCloses().count == 31)
+        #expect(try store.recentDayCloses().first?.day == latest)
+
+        var day = latest
+        var visited = [day]
+        while let previous = try store.closedDays(around: day).previous { day = previous; visited.append(day) }
+        #expect(day == closeDay)
+        #expect(visited.count == count)
+        #expect(try store.closedDays(around: closeDay).previous == nil)
+        while let next = try store.closedDays(around: day).next { day = next; visited.append(day) }
+        #expect(day == latest)
+        #expect(visited.count == 2 * count - 1)
+        #expect(try store.closedDays(around: latest).next == nil)
+        // A day that never closed (today) steps back to the latest close.
+        #expect(try store.closedDays(around: latest.adding(days: 1)).previous == latest)
+    }
+
     @Test func commitmentSnapshotStaysProspectiveAndStableAcrossPlanEdits() throws {
         let store = try closeStore()
         let task = try closeTask(store)

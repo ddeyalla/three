@@ -39,35 +39,33 @@ struct ReviewSheet: View {
     }
 }
 
-/// Steps between closed days. Days come from `recentDayCloses`, newest first.
-enum ReviewDays {
-    static func previous(before day: DayKey, closed: [DayKey]) -> DayKey? { closed.filter { $0 < day }.max() }
-    static func next(after day: DayKey, closed: [DayKey]) -> DayKey? { closed.filter { $0 > day }.min() }
-}
-
 /// The Day section: one closed day at a time, newest first, with arrows to step through them.
+/// The arrows ask the store for the neighbouring close, so they reach every closed day rather
+/// than only the recent ones held in `dayCloses`.
 private struct DayReview: View {
     @Environment(AppModel.self) private var model
+    @State private var neighbours: (previous: DayKey?, next: DayKey?) = (nil, nil)
 
-    private var closed: [DayKey] { model.dayCloses.map(\.day) }
-    private var day: DayKey { model.reviewingDay ?? closed.first ?? model.snapshot.day }
+    /// Reloads the neighbours when the day changes or the store does (a day may have just closed).
+    private struct Neighbourhood: Hashable { let day: DayKey; let takenAt: Date }
+
+    private var latest: DayKey? { model.dayCloses.first?.day }
+    private var day: DayKey { model.reviewingDay ?? latest ?? model.snapshot.day }
 
     var body: some View {
-        let previous = ReviewDays.previous(before: day, closed: closed)
-        let next = ReviewDays.next(after: day, closed: closed)
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: Space.sm) {
-                Button("Previous Closed Day", systemImage: "chevron.left") { model.reviewingDay = previous }
+                Button("Previous Closed Day", systemImage: "chevron.left") { model.reviewingDay = neighbours.previous }
                     .labelStyle(.iconOnly)
-                    .disabled(previous == nil)
+                    .disabled(neighbours.previous == nil)
                 Text(historyDayTitle(day, full: true))
                     .font(Typo.focus)
                     .monospacedDigit()
-                Button("Next Closed Day", systemImage: "chevron.right") { model.reviewingDay = next }
+                Button("Next Closed Day", systemImage: "chevron.right") { model.reviewingDay = neighbours.next }
                     .labelStyle(.iconOnly)
-                    .disabled(next == nil)
+                    .disabled(neighbours.next == nil)
                 Spacer()
-                if let latest = closed.first, latest != day {
+                if let latest, latest != day {
                     Button("Latest") { model.reviewingDay = latest }
                         .font(Typo.body)
                 }
@@ -77,6 +75,9 @@ private struct DayReview: View {
             .padding(.top, Space.lg)
             DayCloseView(day: day)
                 .id(day)
+        }
+        .task(id: Neighbourhood(day: day, takenAt: model.snapshot.takenAt)) {
+            neighbours = (try? model.store.closedDays(around: day)) ?? (nil, nil)
         }
     }
 }
