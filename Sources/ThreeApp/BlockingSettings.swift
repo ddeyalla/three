@@ -123,7 +123,7 @@ struct BlockingSettings: View {
                     .autocorrectionDisabled()
                     .focused($siteFocused)
                     .onSubmit { addSite(site) }
-                    .onChange(of: site) { listNote = nil }
+                    .onChange(of: site) { _, text in if !text.isEmpty { listNote = nil } }  // clearing after an add keeps its note
                 Button("Add") { addSite(site) }
                     .disabled(site.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
@@ -200,7 +200,8 @@ struct BlockingSettings: View {
                                     : "\(target.value) is already covered by \(rule.target.value).", isProblem: false)
             } else {
                 site = ""
-                listNote = nil
+                // A typed bundle identifier lands under apps; say so, since the field reads as websites.
+                listNote = if case .app = target { ListNote(message: "Blocked app \(rule.name).", isProblem: false) } else { nil }
                 siteFocused = true
             }
         } catch {

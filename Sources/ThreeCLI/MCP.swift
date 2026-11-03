@@ -303,8 +303,8 @@ private struct ThreeMCP: Sendable {
             case "app": try BlockTarget(app: value)
             case _?: throw ThreeError.invalid("Block rule kind must be domain or app.")
             }
-            _ = try store.addBlockRule(target)
-            return try result(BlockStatusJSON(store.blockStatus(), now: Date()))
+            let rule = try store.addBlockRule(target)
+            return try result(AddedBlockRuleJSON(rule: rule, status: BlockStatusJSON(store.blockStatus(), now: Date())))
         case .setTaskStrict: try store.setTaskStrict(a.requiredString("id"))
         }
         return try result(["ok": true])
@@ -415,4 +415,18 @@ private func failure(_ code: String, _ message: String) -> CallTool.Result {
     struct Failure: Encodable { let code: String; let message: String }
     let text = try! mcpJSON(Failure(code: code, message: message))
     return .init(content: [.text(text: text, annotations: nil, _meta: nil)], isError: true)
+}
+
+/// The blocker status with the rule that now covers the value, so an agent sees whether it became an app or a domain.
+struct AddedBlockRuleJSON: Encodable {
+    struct Rule: Encodable { let id: String, kind: String, value: String }
+    let rule: BlockRule, status: BlockStatusJSON
+
+    private enum Key: String, CodingKey { case added }
+
+    func encode(to encoder: any Encoder) throws {
+        try status.encode(to: encoder)
+        var container = encoder.container(keyedBy: Key.self)
+        try container.encode(Rule(id: rule.id, kind: rule.target.kind, value: rule.target.value), forKey: .added)
+    }
 }

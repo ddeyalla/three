@@ -40,9 +40,12 @@ struct BlockAdd: ParsableCommand {
         discussion: """
         three block add reddit news.ycombinator.com com.tinyspeck.slackmacgap /Applications/Music.app
         Each name is an app when it's a .app path, an installed app's bundle identifier, or reverse-DNS such as \
-        com.apple.Music (three or more parts, starting with com, org, net, io, edu, gov, app, dev, co or me, and not \
-        ending in a common web ending such as .com). Anything else is a site, so app.slack.com stays a site. \
-        Use --app or --site when Three guesses wrong.
+        com.apple.Music (three or more parts, starting with com, org, net, io, edu, gov, app, dev, co or me, \
+        with a capital letter after the first part or a last part that isn't a web ending such as .com or .tv). \
+        Anything else is a site, so app.zoom.us stays a site.
+        Use --app or --site when Three guesses wrong. Bundle identifiers that start with anything else, such as \
+        us.zoom.xos, or that are all lowercase and end in a web ending, such as com.apple.news, need --app unless \
+        the app is installed.
         A site covers its subdomains. Paths such as youtube.com/shorts aren't supported.
         """
     )
@@ -60,8 +63,14 @@ struct BlockAdd: ParsableCommand {
         } + sites.map { .domain(try BlockDomain(parsing: $0)) } + apps.map(BlockTarget.init(app:))
         let s = try store()
         let rules = try s.addBlockRules(targets)
-        for (target, rule) in zip(targets, rules) where rule.target != target {
-            print("\(target.value) is already covered by \(rule.target.value).")
+        for (target, rule) in zip(targets, rules) {
+            if rule.target != target {
+                print("\(target.value) is already covered by \(rule.target.value).")
+            } else if case .app = target {
+                print("Blocked app \(target.value)")
+            } else {
+                print("Blocked site \(target.value)")
+            }
         }
         printBlockStatus(try s.blockStatus())
     }
