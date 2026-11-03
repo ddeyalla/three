@@ -29,6 +29,26 @@ The immutable copy for further verification is `build/verification/non-calendar/
 
 ## Remaining gates
 
-The performance optimization is still owned by its isolated worker. A fresh independent reviewer must inspect final lifecycle and adapter integration. Terra must attempt native recovery, fixed menus, Setup and Trends against an identified release artifact. The prior inaccessible-window and SystemUIServer tool failures remain explicit. Physical sleep/lock, login startup, notification authorization, notch/Space/display behavior, and macOS 26 acceptance remain unproved.
+At this checkpoint the performance optimization was still owned by its isolated worker. A fresh independent reviewer is inspecting lifecycle and adapter integration at `288b064`. Terra is attempting native recovery, fixed menus, Setup and Trends against the frozen `a305ba9` release artifact. The prior inaccessible-window and SystemUIServer tool failures remain explicit. Physical sleep/lock, login startup, notification authorization, notch/Space/display behavior, and macOS 26 acceptance remain unproved.
 
 BPRO-407's discovery verdict passed independently. That result does not close any implementation ticket. Calendar work and BPRO-396 remain excluded. No merge, release, install, production settings change, or paid model call occurred.
+
+## Event-date reuse integration
+
+Worker commit `e043c9bfe4e855b4b7c6517cab917179615acff5` was imported as `dbba9ae`. Its product change only reuses History's request-scoped session civil dates for linked block events. Unlinked events retain occurrence-date conversion. The moved-commitment fix remains in its ancestry. No other product file changes in this unit.
+
+The coordinator inspected the product and measurement-driver diffs, History's grouping owner, and the retained comparison receipts. All 144 warmup/measured responses have matching per-case output hashes. Each side has one warmup and five measured samples per path and case. Error counts are zero, storage receipts match, all cleanup exit receipts are zero, and 32 additional date responses passed. The worker's performance conclusion remains scoped to its matched v12 artifacts and fixture, as described in [the report](read-performance.md#v12-event-date-reuse-comparison). The maximum-window comparison remains inconclusive. No new timing or native rendering claim comes from integration.
+
+Executed again against the combined product at `dbba9ae`:
+
+| Result | Check | Evidence under `build/verification/non-calendar/` |
+| --- | --- | --- |
+| PASS | `make test` | `perf-integrated-full-tests.log`. 216 Core, 72 App, 22 extension tests and design lint. |
+| PASS | Release bundle, strict deep signing, plist | `perf-integrated-release-build.log`, valid 0.2.4 build 146 bundle. |
+| PASS | Packaged Stats, History and recovery scripts | `perf-integrated-{stats,history,recovery}.log`. Includes Keep/Trim report parity and concurrent decisions. |
+| PASS | Baseline-versus-integrated event attribution | `perf-integrated-dates.log` and `perf-integrated-dates/date-checks.json`. Thirty-two CLI/MCP responses cover Cairo transitions, Apia's skipped date, and Los Angeles midnight with unchanged fixture storage. |
+| PASS | Python driver parsing and Git whitespace | No source compilation or whitespace error. |
+
+The new immutable release copy is `build/verification/non-calendar/frozen-dbba9ae/Three.app`. `perf-integrated-release-identity.json` binds it to the integrated source. ThreeApp SHA-256 is `d3ff4c1322fdaf02f3614c96e030b0107067cebb800289aff38ee9af8ee01d56`; CLI SHA-256 is `e2b864559d7e50a68dbeb194d692aee1751fb61834d9c8ac1393aea4ec52f8a2`. The copy's hashes match and strict signing passes.
+
+The currently running reviewer and Terra retain their original frozen inputs. Their results cannot be relabelled as verification of this later product change. A fresh bounded review of event-date reuse remains required after the sole reviewer slot is free. The original supervisor failure above remains recorded; these checks did not rerun it or establish its cause.
