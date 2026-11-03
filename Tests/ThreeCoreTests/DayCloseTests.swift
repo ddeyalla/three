@@ -275,6 +275,27 @@ private func closeTask(_ store: Store, day: DayKey = closeDay, title: String = "
         #expect(try store.closedDays(around: latest.adding(days: 1)).previous == latest)
     }
 
+    @Test func closedDayNeighboursAreEmptyWithoutClosesAndSkipGapDays() throws {
+        let store = try closeStore()
+        let empty = try store.closedDays(around: closeDay)
+        #expect(empty.previous == nil && empty.next == nil)
+
+        let later = closeDay.adding(days: 3)
+        for day in [closeDay, later] {
+            try closeTask(store, day: day)
+            try store.commit(day: day)
+        }
+        let batch = try store.closeEligibleDays(now: later.startDate.addingTimeInterval(22 * 3600))
+        #expect(batch.attempts.count == 2)
+        // A gap day that never closed sits between the two closes.
+        let gap = try store.closedDays(around: closeDay.adding(days: 1))
+        #expect(gap.previous == closeDay && gap.next == later)
+        let first = try store.closedDays(around: closeDay)
+        #expect(first.previous == nil && first.next == later)
+        let last = try store.closedDays(around: later)
+        #expect(last.previous == closeDay && last.next == nil)
+    }
+
     @Test func commitmentSnapshotStaysProspectiveAndStableAcrossPlanEdits() throws {
         let store = try closeStore()
         let task = try closeTask(store)

@@ -1,3 +1,4 @@
+import os
 import SwiftUI
 import ThreeCore
 
@@ -44,26 +45,28 @@ struct ReviewSheet: View {
 /// than only the recent ones held in `dayCloses`.
 private struct DayReview: View {
     @Environment(AppModel.self) private var model
-    @State private var neighbours: (previous: DayKey?, next: DayKey?) = (nil, nil)
-
-    /// Reloads the neighbours when the day changes or the store does (a day may have just closed).
-    private struct Neighbourhood: Hashable { let day: DayKey; let takenAt: Date }
+    /// The closes either side of `day`, kept with the day they were read for.
+    private struct Neighbours { let day: DayKey; let previous: DayKey?; let next: DayKey? }
+    @State private var loaded: Neighbours?
 
     private var latest: DayKey? { model.dayCloses.first?.day }
     private var day: DayKey { model.reviewingDay ?? latest ?? model.snapshot.day }
+    /// Nil until the neighbours of the shown day are read, so a quick second click never
+    /// steps from the day before.
+    private var neighbours: Neighbours? { loaded?.day == day ? loaded : nil }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: Space.sm) {
-                Button("Previous Closed Day", systemImage: "chevron.left") { model.reviewingDay = neighbours.previous }
+                Button("Previous Closed Day", systemImage: "chevron.left") { step(to: neighbours?.previous) }
                     .labelStyle(.iconOnly)
-                    .disabled(neighbours.previous == nil)
+                    .disabled(neighbours?.previous == nil)
                 Text(historyDayTitle(day, full: true))
                     .font(Typo.focus)
                     .monospacedDigit()
-                Button("Next Closed Day", systemImage: "chevron.right") { model.reviewingDay = neighbours.next }
+                Button("Next Closed Day", systemImage: "chevron.right") { step(to: neighbours?.next) }
                     .labelStyle(.iconOnly)
-                    .disabled(neighbours.next == nil)
+                    .disabled(neighbours?.next == nil)
                 Spacer()
                 if let latest, latest != day {
                     Button("Latest") { model.reviewingDay = latest }
@@ -76,11 +79,31 @@ private struct DayReview: View {
             DayCloseView(day: day)
                 .id(day)
         }
-        .task(id: Neighbourhood(day: day, takenAt: model.snapshot.takenAt)) {
-            neighbours = (try? model.store.closedDays(around: day)) ?? (nil, nil)
+        // Read synchronously (two indexed lookups) whenever the shown day changes or a new day closes.
+        .onAppear(perform: loadNeighbours)
+        .onChange(of: day, loadNeighbours)
+        .onChange(of: latest, loadNeighbours)
+    }
+
+    private func step(to target: DayKey?) {
+        guard let target else { return }
+        model.reviewingDay = target
+        loadNeighbours()
+    }
+
+    /// On failure keeps what was last read; the arrows stay off until a read for this day succeeds.
+    private func loadNeighbours() {
+        let day = day
+        do {
+            let around = try model.store.closedDays(around: day)
+            loaded = Neighbours(day: day, previous: around.previous, next: around.next)
+        } catch {
+            reviewLog.error("Couldn't read the closed days around \(day.rawValue, privacy: .public): \(error.localizedDescription, privacy: .public)")
         }
     }
 }
+
+private let reviewLog = Logger(subsystem: "com.deyalla.three", category: "review")
 
 struct DayCloseView: View {
     @Environment(AppModel.self) private var model

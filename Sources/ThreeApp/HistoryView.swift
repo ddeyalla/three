@@ -359,8 +359,9 @@ private struct HistoryTaskDetail: View {
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(expanded ? "Hide details" : "Show details")
-            .accessibilityValue(row.task.title)
+            .accessibilityLabel("\(row.task.title), \(statusLine), \(focusLine)")
+            .accessibilityValue(expanded ? "Expanded" : "Collapsed")
+            .accessibilityHint(expanded ? "Hides task details" : "Shows task details")
             .help(expanded ? "Hide details" : "Show details")
             if expanded { details }
         }
@@ -369,12 +370,20 @@ private struct HistoryTaskDetail: View {
         .glassEffect(.regular, in: .rect(cornerRadius: Radius.card))
     }
 
+    private var statusLine: String {
+        "\(row.task.status == .todo ? "To do" : row.task.status.rawValue.capitalized)\(row.task.deletedAt == nil ? "" : " · Deleted") · \(row.category?.name ?? "Unknown category")\(row.category?.archived == true ? " · Archived category" : "")"
+    }
+
+    private var focusLine: String {
+        "\(Format.duration(row.focusSeconds)) focused · \(Format.duration(TimeInterval(row.derivedPlannedSeconds))) derived planned"
+    }
+
     private var header: some View {
         VStack(alignment: .leading, spacing: Space.xs) {
             Text(row.task.title).font(Typo.body)
-            Text("\(row.task.status == .todo ? "To do" : row.task.status.rawValue.capitalized)\(row.task.deletedAt == nil ? "" : " · Deleted") · \(row.category?.name ?? "Unknown category")\(row.category?.archived == true ? " · Archived category" : "")")
+            Text(statusLine)
                 .font(Typo.meta).foregroundStyle(.secondary)
-            Text("\(Format.duration(row.focusSeconds)) focused · \(Format.duration(TimeInterval(row.derivedPlannedSeconds))) derived planned")
+            Text(focusLine)
                 .font(Typo.meta).foregroundStyle(.secondary).monospacedDigit()
         }
     }
