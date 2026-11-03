@@ -107,12 +107,15 @@ private func proposed(_ title: String) -> NewTask {
     let step = try store.addStep(to: task.id, title: "Keep this step")
     try store.addTag("keep", to: task.id)
     let before = try store.snapshot().tasks[0]
-    for state in ["closed", "deleted"] {
+    for state in ["closed", "deleted", "deleted-plan"] {
         try store.db.write { db in
+            try db.execute(sql: "UPDATE dayPlan SET status = 'draft', deletedAt = NULL")
+            try db.execute(sql: "UPDATE task SET deletedAt = NULL WHERE id = ?", arguments: [task.id])
             if state == "closed" {
                 try db.execute(sql: "UPDATE dayPlan SET status = 'closed'")
+            } else if state == "deleted-plan" {
+                try db.execute(sql: "UPDATE dayPlan SET deletedAt = CURRENT_TIMESTAMP")
             } else {
-                try db.execute(sql: "UPDATE dayPlan SET status = 'draft'")
                 try db.execute(sql: "UPDATE task SET deletedAt = CURRENT_TIMESTAMP WHERE id = ?", arguments: [task.id])
             }
         }
@@ -122,6 +125,7 @@ private func proposed(_ title: String) -> NewTask {
         #expect(throws: ThreeError.self) { try store.removeStep(step.id) }
         #expect(throws: ThreeError.self) { try store.addTag("new", to: task.id) }
         #expect(throws: ThreeError.self) { try store.removeTag(before.tags[0].id, from: task.id) }
+        #expect(throws: ThreeError.self) { try store.setTags(task.id, ["replaced"]) }
         #expect(try store.db.read { try Step.fetchAll($0) } == before.steps)
         #expect(try store.db.read { try Tag.fetchAll($0) } == before.tags)
     }

@@ -170,7 +170,7 @@ extension Store {
     /// Replaces a task's tags with `names`, creating any that don't exist yet.
     public func setTags(_ taskId: String, _ names: [String]) throws {
         try write { db in
-            guard try FocusTask.exists(db, key: taskId) else { throw ThreeError.noSuchTask(taskId) }
+            _ = try editableTask(taskId, db)
             try db.execute(sql: "DELETE FROM taskTag WHERE taskId = ?", arguments: [taskId])
             try link(taskId, to: names, db)
         }
