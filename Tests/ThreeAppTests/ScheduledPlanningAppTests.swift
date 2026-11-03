@@ -18,6 +18,28 @@ struct ScheduledPlanningAppTests {
         return url
     }
 
+    @Test func idleScheduleChecksDoNotMakeTestLookBusy() async throws {
+        let store = try store()
+        let planning = try PlanningController(store: store, helper: try helper(), deliverNotice: { _ in })
+        let now = Date()
+        planning.check(now: now)
+        let busyWhenDisabled = planning.checking
+        await planning.task?.value
+        #expect(!busyWhenDisabled)
+        #expect(planning.lastRun == nil)
+
+        var settings = planning.settings
+        settings.enabled = true
+        settings.localTime = "23:59"
+        planning.save(settings)
+        let morning = Calendar.current.startOfDay(for: now).addingTimeInterval(9 * 3600)
+        planning.check(now: morning)
+        let busyBeforePlanningTime = planning.checking
+        await planning.task?.value
+        #expect(!busyBeforePlanningTime)
+        #expect(planning.lastRun == nil)
+    }
+
     @Test func testShowsOutputAndFailureAndDoesNotRepeatNudgeOnReload() async throws {
         let store = try store()
         var settings = PlanningSettings()
