@@ -158,6 +158,12 @@ struct TaskDetailLine: View {
                 Circle().fill(row.category.color).frame(width: 6, height: 6)
                 Text(row.category.name)
             }
+            if row.task.strict {
+                Text("Strict")
+                    .fixedSize()
+                    .help("No new unblock requests during this task's focus sessions. Strictness is one-way.")
+                    .accessibilityLabel("Strict task. No new unblock requests. Strictness is one-way.")
+            }
             ViewThatFits(in: .horizontal) {
                 details(tags: true, extras: true)
                 details(tags: true, extras: false)
@@ -526,6 +532,12 @@ struct TaskMenuItems: View {
                 Button(c.name) { model.perform { try model.store.updateTask(row.id, category: c.id) } }
             }
         }
+        Button(row.task.strict ? "Strict (one-way)" : "Make strict (one-way)") {
+            model.perform { try model.store.setTaskStrict(row.id) }
+        }
+        .disabled(row.task.strict)
+        .help("Prevents new unblock requests during this task's focus sessions. This cannot be undone. Existing unblocks last until they expire.")
+        .accessibilityHint("Prevents new unblock requests. This cannot be undone. Existing unblocks last until they expire.")
         if !model.liveTags.isEmpty || !row.tags.isEmpty {
             Menu("Tags") {
                 ForEach(Array(Set(model.liveTags + row.tags)).sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }) { tag in
