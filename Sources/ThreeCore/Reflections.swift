@@ -17,6 +17,7 @@ public struct ReflectionPrompt: Sendable {
         return current.id == session.id && current.kind == .focus && current.isRunning
             && current.plannedSeconds == session.plannedSeconds && current.pausedSeconds == session.pausedSeconds
             && current.pausedAt == session.pausedAt
+            && current.recoveryTrimSeconds == session.recoveryTrimSeconds
     }
 }
 

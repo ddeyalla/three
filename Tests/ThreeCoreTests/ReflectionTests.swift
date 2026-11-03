@@ -92,6 +92,69 @@ func changedFocusCannotBeEndedByOldReflection(change: String) throws {
     }
 }
 
+@Test(arguments: ["extend", "finish", "defer"])
+func recoveryTrimInvalidatesOldReflectionActions(action: String) throws {
+    let store = try reflectionStore()
+    let task = try store.addTask(NewTask(title: "Review after sleep", category: "Coding", blockMinutes: 30), source: .app)
+    let start = DayKey.today.startDate.addingTimeInterval(9 * 3600)
+    try store.startFocus(taskId: task.id, minutes: 5, now: start)
+    func instant(_ seconds: TimeInterval) -> RecoveryInstant {
+        RecoveryInstant(date: start.addingTimeInterval(seconds), continuousSeconds: 1000 + seconds, clockID: "boot")
+    }
+    try store.observeRecovery(.began(.sleep), at: instant(100))
+    let review = try #require(try store.observeRecovery(.ended(.sleep), at: instant(1000)).reviews.first)
+    let original = try #require(try store.snapshot().running)
+    let oldPrompt = ReflectionPrompt(session: original, openedAt: original.plannedEnd)
+    let peer = try Store(url: URL(fileURLWithPath: store.db.path))
+    try peer.decideRecovery(review.id, decision: .trim, now: instant(1000).date)
+    let before = try store.snapshot()
+    let trimmed = try #require(before.running)
+    #expect(trimmed.recoveryTrimSeconds == 900)
+    #expect(trimmed.remaining(at: instant(1000).date) == 200)
+    #expect(!oldPrompt.matches(trimmed))
+
+    let staleError = ThreeError.invalid("This focus block changed. Open its reflection again.")
+    switch action {
+    case "extend":
+        #expect(throws: staleError) {
+            try store.extend(minutes: 5, expectedSession: original, now: instant(1000).date)
+        }
+    case "finish":
+        #expect(throws: staleError) {
+            try store.finishFocus(outcome: .done, rating: .focused, note: "Stale answer", markTaskDone: true,
+                                  expectedSession: original, now: instant(1000).date)
+        }
+    default:
+        #expect(try !store.deferReflection(oldPrompt, note: "Stale timeout", now: instant(1000).date))
+    }
+    let after = try store.snapshot()
+    #expect(after.running == before.running)
+    #expect(after.sessions == before.sessions)
+    #expect(after.tasks.map(\.task) == before.tasks.map(\.task))
+    #expect(try store.deferredReflections().isEmpty)
+
+    let refreshed = ReflectionPrompt(session: trimmed, openedAt: trimmed.plannedEnd)
+    #expect(refreshed.matches(after.running))
+    switch action {
+    case "extend":
+        try store.extend(minutes: 5, expectedSession: trimmed, now: instant(1000).date)
+        let extended = try #require(try store.snapshot().running)
+        #expect(extended.id == trimmed.id && extended.recoveryTrimSeconds == 900)
+        #expect(extended.remaining(at: instant(1000).date) == 500)
+    case "finish":
+        try store.finishFocus(outcome: .done, rating: .focused, note: "Refreshed answer", markTaskDone: true,
+                              expectedSession: trimmed, now: instant(1000).date)
+        let saved = try #require(try store.snapshot().sessions.first { $0.id == trimmed.id })
+        #expect(!saved.isRunning && saved.note == "Refreshed answer" && saved.recoveryTrimSeconds == 900)
+        #expect(try store.snapshot().tasks.first?.task.status == .done)
+    default:
+        #expect(try store.deferReflection(refreshed, note: "Preserved draft", now: refreshed.deadline))
+        let deferred = try #require(try store.deferredReflections().first)
+        #expect(deferred.id == trimmed.id && deferred.session.note == "Preserved draft")
+        #expect(deferred.session.recoveryTrimSeconds == 900)
+    }
+}
+
 @Test func automaticReflectionKeepsAnUnsubmittedNote() throws {
     let store = try reflectionStore()
     let prompt = try overduePrompt(in: store)

@@ -96,3 +96,20 @@ The coordinator's `d4cd2567449c14d591d9c713cf88e7133f9ebf7d` is imported as `4e4
 The local decision log is `build/verification/non-calendar/405-decisions.tsv`. This worker leaves all shared app composition to its assigned owner. No nested delegates, app launches, desktop control, production mutations, real sync, release changes, or provider calls ran.
 
 Physical sleep, physical lock, native review interaction, integrated app lifecycle acceptance, and final v12 trend integration remain COULD NOT RUN under this worker's scope. Headless event and Store tests do not close those gates. The coordinator must integrate the lifecycle hooks before native acceptance. Independent parent review remains pending. The candidate is not claimed as BPRO-405 acceptance.
+
+## Coordinator correction after independent review
+
+The frozen `7e0e382` review found that a pre-trim `ReflectionPrompt` still matched the adjusted running session. The shared guard omitted `recoveryTrimSeconds`. A compiled Store probe accepted stale finish, guarded extension, and timeout deferral after the deadline moved by 900 seconds. The review report is retained at `/Users/divyanshudv/.t3/worktrees/adhd/t3-53387266/.audit/405-review/report.md`.
+
+`ReflectionPrompt.matches` now includes the trim value. This protects all three callers inside their Store write transactions. A new parameterized regression uses a peer Store to trim and verifies that rejected actions leave every session and task unchanged. It also verifies that a refreshed prompt can extend, finish, or defer with its draft intact.
+
+Executed proof on the coordinator correction follows.
+
+| Result | Command | Evidence |
+| --- | --- | --- |
+| FAIL before the guard correction | `./scripts/swift.sh test --filter recoveryTrimInvalidatesOldReflectionActions` | `build/verification/non-calendar/405-identity-before.log`. All three action cases reproduced stale acceptance. |
+| PASS, 213 Core and 61 App tests | `./scripts/swift.sh test` | `build/verification/non-calendar/405-identity-after.log`. Includes the three fixed cases and refreshed-prompt assertions. |
+| PASS, zero stale identity failures | `python3 build/verification/non-calendar/405-identity-fix/link-probe.py IdentityProbe --app` | `build/verification/non-calendar/405-identity-probe-after.log`. The reviewer's probe links the corrected compiled Core and App objects. Existing stale notification rejection still passes. |
+| PASS | `git diff --check` | No whitespace errors. |
+
+The same independent review passed the moved-commitment statistics fix, Apia/Cairo cases, and all seven database-scoped notification paths across real processes. Those results do not replace native submenu acceptance. A fresh recheck of this trim guard correction remains pending. App lifecycle and protocol composition retain their separate owners and acceptance gates.
