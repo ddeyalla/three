@@ -6,7 +6,7 @@ Production data preservation failed during the day-close and reflection QA pass.
 
 The [native receipt](close-reflection-native.md) records that `cua.getApp('com.deyalla.three.finalqa.7fa641595269')` launched a stopped QA bundle without `THREE_DB`. The app selected the production default database before any fixture interaction. The delegate identified PID 87242 and its production database with `lsof`, stopped that exact QA process, and reported the incident. Its subsequent isolated checks do not undo this preservation failure.
 
-The QA startup applied migrations v8 through v12 and closed the November 2 plan at `2026-11-03 14:02:33.681 UTC`, or `19:32:33.681 Asia/Kolkata`. The installed Three executable remained unchanged. Its original PID 92331 and start time remain present. Manual Test data and executable fingerprints matched the baseline; its original PID 29492 was already absent before this incident.
+The QA startup applied migrations v8 through v12 and closed the November 2 plan at `2026-11-03 14:02:33.681 UTC`, or `19:32:33.681 Asia/Kolkata`. The installed Three executable remained unchanged. At 14:40 UTC its original PID 92331 and start time were still present. That process has since exited; see the quiescent capture below. Manual Test data and executable fingerprints matched the baseline; its original PID 29492 was already absent before this incident.
 
 The coordinator stopped the completed desktop delegate and confirmed no pending child runs. No other desktop delegate is active. Further desktop QA is stopped. Checking an environment after launch was insufficient because Store migration and day-close run during startup. A future QA entry point must enforce disposable paths before the app starts, including launches initiated by automation.
 
@@ -53,4 +53,32 @@ Codex Sol 6.1 High independently passed 82 captured-artifact checks. The coordin
 
 The reviewer found a P1 race in the original proposal because the comparison preceded process shutdown. It also required explicit handle/WAL exclusion and identity/metadata/rollback gates. The revised sequence above incorporates those requirements. These are required execution preconditions, not completed live checks. The reviewer is stopped with no pending children or owned persistent processes.
 
-A fresh read-only coordinator capture at `2026-11-03 14:40:21 UTC` still matches the reviewed post-incident schema and all table fingerprints. The installed executable hash still matches, and PID 92331 retains its original start time. The capture's temporary read-only Python connection exited; a subsequent handle check found only the installed process. No production stop, restoration, or restart has occurred. This checkpoint does not substitute for the required post-shutdown comparison.
+A fresh read-only coordinator capture at `2026-11-03 14:40:21 UTC` still matches the reviewed post-incident schema and all table fingerprints. The installed executable hash still matched, and PID 92331 still had its original start time at that capture. The capture's temporary read-only Python connection exited; a subsequent handle check found only the installed process. No production stop, restoration, or restart has occurred. This checkpoint does not substitute for the required post-shutdown comparison.
+
+## Quiescent capture after production exit
+
+At `2026-11-03 15:01:50 UTC` no Three process was running. PID 92331 had exited. The exit cause was not recorded, and no crash report exists. `lsof +D` on the Three data directory showed no handles.
+
+The production `three.sqlite-wal` mtime was 20:29:00 local, or 14:59:00 UTC. That is after the 14:40 checkpoint. The `three.sqlite` mtime was November 2 18:58:12 local, and the `three.sqlite-shm` mtime was November 3 06:22:12 local. Inodes 337183820, 337183822, and 337183823 and the file sizes were identical before and after copying.
+
+The three files were copied with `cp -p` to `build/verification/non-calendar/production-incident-20261103T141845055376Z/quiescent-20261103T150232Z/`. Their SHA-256 values are:
+
+- main: `3bca2704edf8d87f1e1a172f37aceb77056154ca398448972140db52d3e75f96`
+- WAL: `c00b787c62800243fd9e9577793d91531482d4f1f1923db470d89de513fc4f3f`
+- SHM: `14ac980f9b8e9f99f3015837bcbaa269949251be0caa3268405c8b20f1121fd8`
+
+Analysis ran on a second scratch copy, not on the preserved set. The scratch copy passes the integrity check and has no foreign-key violations. Its schema is identical to `production-current-consistent.sqlite`. Every table is identical at row level except `step`. One step row changed:
+
+- Row `92EF683A-39DD-43FE-B947-BE5B2D32B5D1`, on task `F972A51F-7834-46E7-BDE3-D2335A5F0859` ("Build the v1 and clear the tasks"), changed `done` from 0 to 1.
+- Its `updatedAt` changed from `2026-11-03 00:47:38.313` to `2026-11-03 14:59:00.305`.
+
+This is real user work after the incident. The step 4 gate of the proposed v7 restoration would correctly stop on it. A v7 restore would now lose this step completion unless it is reconciled.
+
+Two options remain for the user:
+
+- (a) Keep the upgraded v12 database. The packaged CLI read check already found it compatible. The only incident artifacts in it are the closed November 2 plan and its `dayClose` row.
+- (b) Restore v7, then re-apply the single step completion, under the same gates.
+
+No decision has been made. The user declined installing a new app build for now. Nothing is recommended for execution here.
+
+The coordinator's read-only assessment at 19:51 local created an empty `-wal` file and a 32 KB `-shm` file next to each of the five `three-backup-*.sqlite` files in the production data directory. Those sidecars have a 19:51 mtime. The main backup files are unchanged and keep their older mtimes. The sidecars are harmless, but they contradict the earlier statement that no production-directory writes occurred. They are left in place.
