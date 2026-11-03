@@ -49,7 +49,8 @@ struct TaskCard<Trailing: View, Actions: View>: View {
                     .padding(.leading, Space.xl + Space.md)
             }
             .contentShape(.rect)
-            .onTapGesture(perform: onTap)
+            // Clicking the card around the field saves, since glass and text don't take focus from it.
+            .onTapGesture { renaming ? commitRename() : onTap() }
             .modifier(CardDragSource(row: row, reorder: reorder) { dragPreview })
             if let reference = row.task.linearRef {
                 Group {
@@ -97,6 +98,8 @@ struct TaskCard<Trailing: View, Actions: View>: View {
                     .onSubmit(commitRename)
                     .onExitCommand { renaming = false }
                     .onChange(of: titleFocused) { if !titleFocused && renaming { commitRename() } }
+                    // Switching lists mid-edit keeps what was typed.
+                    .onDisappear(perform: commitRename)
                     .focusedValue(\.todayFocus, .entry)
                     .accessibilityLabel("Task title")
             } else {
@@ -116,7 +119,7 @@ struct TaskCard<Trailing: View, Actions: View>: View {
         .pointerStyle(canRename && !renaming ? .horizontalText : nil)
         // Off while renaming, so clicks inside the field place the cursor instead of starting over.
         .gesture(TapGesture().onEnded { canRename ? beginRename() : onTap() }, including: renaming ? .subviews : .all)
-        .help(renaming ? "" : canRename ? "Click to rename" : row.task.title)
+        .help(renaming ? "" : row.task.title)
         .accessibilityAddTraits(renaming ? [] : .isButton)
         .accessibilityValue(renaming ? "" : expanded ? "Details expanded" : "Details collapsed")
         .accessibilityAction(named: expanded ? "Collapse" : "Expand", onTap)
