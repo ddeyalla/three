@@ -453,7 +453,7 @@ enum ReflectionPresentation {
 
 /// What the tasks pane shows.
 enum Destination: String, Hashable, CaseIterable {
-    case today, inbox, upcoming, done, tags
+    case today, inbox, upcoming, done, tags, history
 
     var title: String { rawValue.capitalized }
 }

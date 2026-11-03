@@ -10,7 +10,7 @@ struct Three: AsyncParsableCommand {
         abstract: "Plan three focused tasks a day and run them on a timer.",
         subcommands: [Today.self, Status.self, Add.self, Plan.self, Commit.self, Start.self, Pause.self,
                       Resume.self, Extend.self, Stop.self, Done.self, Drop.self, Tomorrow.self, Capture.self, Inbox.self,
-                      Schedule.self, Upcoming.self, Logbook.self, Steps.self, Tags.self, Categories.self, Settings.self,
+                      Schedule.self, Upcoming.self, Logbook.self, HistoryCommand.self, Steps.self, Tags.self, Categories.self, Settings.self,
                       Block.self, NativeHost.self, MCPCommand.self, PlanningRunCommand.self]
     )
 }
@@ -507,6 +507,31 @@ struct Logbook: ParsableCommand {
         for d in log {
             print(d.day.rawValue)
             for r in d.tasks { print("  ✓ \(r.task.title)  [\(r.category.name) · \(clockMinutes(r.focusedSeconds))]\(tagSuffix(r))") }
+        }
+    }
+}
+
+struct HistoryCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "history", abstract: "Read month, day, task, and session history over at most 366 local dates.")
+    @Option(help: "First inclusive local date, yyyy-MM-dd.") var from: String
+    @Option(help: "Last inclusive local date, yyyy-MM-dd.") var to: String
+    @OptionGroup var common: Common
+
+    func run() throws {
+        let report = try store().historyReport(from: parsePlanDay(from), through: parsePlanDay(to))
+        if common.json { return try emit(report) }
+        print("History \(report.from) through \(report.through) · \(report.timeZoneIdentifier)")
+        print("Planned totals are derived from current task records; dropped, carried, and deleted tasks are excluded.")
+        for day in report.days {
+            print("\(day.day): \(clockMinutes(day.totals.focusSeconds)) focused · \(clockMinutes(TimeInterval(day.totals.plannedSeconds))) planned · \(day.totals.doneTaskCount)/\(day.totals.plannedTaskCount) done")
+            if day.tasks.isEmpty && day.sessions.isEmpty { print("  No recorded activity.") }
+            for row in day.tasks {
+                print("  \(row.task.title) [\(row.task.status.rawValue) · \(row.category?.name ?? "Unknown category") · \(clockMinutes(row.focusSeconds)) focused]")
+            }
+            for row in day.sessions {
+                print("  \(row.session.kind.rawValue) \(row.id): \(clockMinutes(row.actualSeconds)) actual / \(clockMinutes(TimeInterval(row.session.plannedSeconds))) planned")
+                if let note = row.session.note { print("    \(note)") }
+            }
         }
     }
 }

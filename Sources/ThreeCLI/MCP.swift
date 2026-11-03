@@ -83,6 +83,7 @@ private enum MCPTool: String, CaseIterable {
     case listCategories = "list_categories", upsertCategory = "upsert_category"
     case startFocus = "start_focus", pause, resume, stop, extend, startBreak = "start_break", finishFocus = "finish_focus"
     case getStatus = "get_status", getCarryover = "get_carryover", getHistory = "get_history"
+    case getHistoryReport = "get_history_report"
     case getBlockStatus = "get_block_status", addBlockRule = "add_block_rule", setTaskStrict = "set_task_strict"
 
     var definition: Tool {
@@ -133,6 +134,8 @@ private enum MCPTool: String, CaseIterable {
             (text, fields, required, readOnly) = ("Read unfinished planned tasks before date. Excludes undated inbox tasks. Does not move anything.", ["date": dateField], ["date"], true)
         case .getHistory:
             (text, fields, required, readOnly) = ("Read sessions and reflections by inclusive local start date. At most 366 days. No calendar or trend model is implied.", ["from": dateField, "to": dateField], ["from", "to"], true)
+        case .getHistoryReport:
+            (text, fields, required, readOnly) = ("Read shared month/day/task/session history with focus and derived planned totals. Includes empty dates and deleted references. Inclusive local start dates, at most 366 days. Does not modify records.", ["from": dateField, "to": dateField], ["from", "to"], true)
         case .getBlockStatus:
             (text, fields, required, readOnly) = ("Read current blocker policy, rules, focus hours, today's hits and browser coverage.", [:], [], true)
         case .addBlockRule:
@@ -263,6 +266,7 @@ private struct ThreeMCP: Sendable {
         case .getStatus: return try result(dayJSON(store.snapshot()).running)
         case .getCarryover: return try result(store.carryover(before: a.day("date")).map(MCPTask.init))
         case .getHistory: return try result(store.history(from: a.day("from"), through: a.day("to")))
+        case .getHistoryReport: return try result(store.historyReport(from: a.day("from"), through: a.day("to")))
         case .getBlockStatus: return try result(BlockStatusJSON(store.blockStatus(), now: Date()))
         case .addBlockRule:
             let kind = try a.requiredString("kind"), value = try a.requiredString("value")

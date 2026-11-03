@@ -68,6 +68,7 @@ struct ThreeApp: App {
                 Divider()
                 Button("Done") { model.destination = .done }.keyboardShortcut("4")
                 Button("Tags") { model.destination = .tags }.keyboardShortcut("5")
+                Button("History") { model.destination = .history }.keyboardShortcut("6")
                 Divider()
                 Button("Review Saved Reflection") {
                     if let saved = model.deferredReflections.first { model.reviewReflection(saved) }

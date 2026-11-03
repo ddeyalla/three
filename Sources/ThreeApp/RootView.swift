@@ -8,7 +8,13 @@ struct RootView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        WorkspaceView()
+        Group {
+            if model.destination == .history {
+                HistoryView()
+            } else {
+                WorkspaceView()
+            }
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay(alignment: .bottom) {
             if model.error != nil {
@@ -30,7 +36,7 @@ struct RootView: View {
             if open == "settings" || open == "blocking" { openSettings() }
         }
         .preferredColorScheme(.dark)
-        .frame(minWidth: 1060, minHeight: 640)
+        .frame(minWidth: model.destination == .history ? 600 : 1060, minHeight: 640)
     }
 }
 
@@ -51,11 +57,16 @@ struct TasksPane: View {
                 case .upcoming: UpcomingList()
                 case .done: DoneList()
                 case .tags: TagsList()
+                case .history: EmptyView()
                 }
             }
             .frame(maxHeight: .infinity, alignment: .top)
-            SettingsLink {
-                Label("Settings", systemImage: "gearshape")
+            HStack(spacing: Space.lg) {
+                Button("History", systemImage: "clock.arrow.circlepath") { model.destination = .history }
+                Spacer()
+                SettingsLink {
+                    Label("Settings", systemImage: "gearshape")
+                }
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
