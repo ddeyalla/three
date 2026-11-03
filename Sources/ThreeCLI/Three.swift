@@ -10,7 +10,7 @@ struct Three: AsyncParsableCommand {
         abstract: "Plan three focused tasks a day and run them on a timer.",
         subcommands: [Today.self, Status.self, Add.self, Plan.self, Commit.self, Start.self, Pause.self,
                       Resume.self, Extend.self, Stop.self, Done.self, Drop.self, Tomorrow.self, Capture.self, Inbox.self,
-                      Schedule.self, Upcoming.self, Logbook.self, HistoryCommand.self, DayReviewCommand.self, CloseDayCommand.self,
+                      Schedule.self, Upcoming.self, Logbook.self, HistoryCommand.self, StatsCommand.self, DayReviewCommand.self, CloseDayCommand.self,
                       CarryCommand.self, DismissCarryCommand.self, Steps.self, Tags.self, Categories.self, Settings.self,
                       Block.self, NativeHost.self, MCPCommand.self, PlanningRunCommand.self]
     )
@@ -534,6 +534,40 @@ struct HistoryCommand: ParsableCommand {
                 if let note = row.session.note { print("    \(note)") }
             }
         }
+    }
+}
+
+struct StatsCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "stats", abstract: "Read five recorded trends and a bounded streak. Defaults to the last 28 local dates.")
+    @Option(help: "First inclusive local date. At most 366 dates.") var from: String?
+    @Option(help: "Last inclusive local date, no later than today.") var to: String?
+    @OptionGroup var common: Common
+
+    func run() throws {
+        let report = try store().stats(from: from.map(parsePlanDay), through: to.map(parsePlanDay))
+        if common.json { return try emit(report) }
+        let metrics = report.metrics
+        print("Trends \(report.from) through \(report.through) · \(report.timeZoneIdentifier)")
+        print("\(clockMinutes(metrics.focusSeconds)) recorded focus · \(clockMinutes(TimeInterval(metrics.derivedPlannedSeconds))) derived planned")
+        print("Committed completion: \(percentage(metrics.completion)) (\(metrics.completedTaskCount)/\(metrics.committedPlannedTaskCount))")
+        print("Actual / committed planned: \(percentage(metrics.actualToPlanned))")
+        print("Focused-rated share: \(percentage(metrics.quality.focusedShare)); \(metrics.quality.missingRatingCount) unrated sessions")
+        print("Linked hits / focus hour: \(number(metrics.blocks.hitsPerFocusHour.value)); unblocks / focus hour: \(number(metrics.blocks.unblocksPerFocusHour.value))")
+        print("\(metrics.blocks.unassociatedHits) unassociated hits; recorded events do not establish complete blocker coverage.")
+        print("\(metrics.breaks.takenCount) taken breaks · \(metrics.breaks.skippedCount) skipped · \(metrics.breaks.missingDecisionCount) unknown choices")
+        print("Streak: \(report.streak.isLowerBound ? "at least " : "")\(report.streak.days) days in this range")
+        for day in report.days {
+            print("\(day.day): \(clockMinutes(day.metrics.focusSeconds)) focus · seven-day average \(number(day.sevenDayAverageMinutes)) min\(day.isPartial ? " · partial" : "")")
+        }
+        print("\(metrics.legacyCommittedPlanCount) legacy plans excluded from completion and accuracy; missing commitments are not inferred.")
+    }
+
+    private func number(_ value: Double?) -> String {
+        value.map { $0.formatted(.number.precision(.fractionLength(1))) } ?? "unavailable"
+    }
+
+    private func percentage(_ ratio: StatsRatio) -> String {
+        ratio.percent.map { "\(number($0))%" } ?? "undefined (zero denominator)"
     }
 }
 

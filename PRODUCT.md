@@ -75,7 +75,7 @@ The record is local-first. The implemented schema is not sync-ready without migr
 2. **Commit.** A notification says "Today's plan is ready". The Today screen shows the draft. You drag to reorder, change block lengths or drop a task, then press **Commit**. Committing writes the time blocks to the calendar (§9.2). If no plan exists by your planning time, you get a single nudge, not repeated ones.
 3. **Focus.** Start the next task. The timer runs for the block length, or one session's worth of it.
 4. **Reflect → Break.** See §5.3.
-5. **Carry over.** At day close (default 22:00, or when every task is resolved) the app writes a short summary. Unfinished tasks are marked `carried` and offered to the next day's planner. They are never moved forward silently.
+5. **Carry over.** At day close (default 22:00, or when every task is resolved) the app saves a summary and offers unfinished work for review. Only explicit acceptance creates a copy on a later day and marks its source `carried`. Dismissal stays on the original day. Focus, unresolved reflection and recovery defer closure. Work never moves forward silently.
 
 ## 5. Screens
 
@@ -207,9 +207,9 @@ Changed from the original plan: no Give up timer and no launch agent; strict onl
 ### 7.5 What it records
 
 - Each block hit (which rule, when) and each unblock (rule, reason, when it ends), with the session when there is one. Never the address of the page.
-- The app shows none of this as counts. `three block status` lists today's hits per rule.
+- `three block status` lists today's hits per rule. The shared statistics report and Trends show recorded hits and unblocks per focus hour, with unassociated events and missing coverage stated separately.
 
-Not built from the original plan: distractions in the Today summary, the Timeline and Trends, and in `get_stats`.
+Distraction counts in the Today summary and Timeline remain deferred. `get_stats` returns the same recorded trends as the native chart view; it does not infer unrecorded browser activity.
 
 ### 7.6 How it works
 
@@ -272,7 +272,7 @@ three add "Fix login bug" --cat Coding --block 45m --linear ENG-123
 three commit
 three start [task#] [--min 25]   |  three pause | resume | stop
 three done 2 --note "merged"
-three stats --range 30d --json
+three stats --json                  # last 28 local dates; optional --from and --to
 ```
 
 Every command supports `--json` for scripts.

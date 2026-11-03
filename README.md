@@ -81,6 +81,7 @@ three done 2 [--note "merged"]
 three tags [--json] | three tags add 2 onboarding  # time per tag; tag a task
 three logbook [--days 30]                         # what you finished
 three history --from 2026-10-01 --to 2026-11-03 --json # month, day, task, and session detail
+three stats [--from 2026-10-07 --to 2026-11-03] --json # five trends, per-tag values, and bounded streak
 three drop 3 | tomorrow 3
 three status [--json]
 three categories [add Health --color "#4FBF8B" | rename A B | color A "#hex" | archive A]

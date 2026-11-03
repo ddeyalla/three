@@ -40,7 +40,7 @@ def draft_command():
         guide = rpc.request("resources/read", {"uri": "three://plan-day-guide"})["result"]["contents"][0]["text"]
         assert "Scheduled mode targets " + date in guide
         assert "buffer" in guide.lower()
-        for name in ["commit_day", "start_focus", "pause", "resume", "stop", "extend", "start_break", "finish_focus", "add_task", "update_task", "remove_task", "move_task", "set_task_status", "carry_task", "schedule_task", "upsert_category", "add_block_rule", "set_task_strict"]:
+        for name in ["commit_day", "start_focus", "pause", "resume", "stop", "extend", "start_break", "finish_focus", "add_task", "update_task", "remove_task", "move_task", "set_task_status", "carry_task", "schedule_task", "upsert_category", "add_block_rule", "set_task_strict", "close_day", "dismiss_carry", "get_day_close", "get_history_report", "get_stats"]:
             rpc.call(name, {}, error="scheduled_only")
         proposal = {"date": date, "tasks": [mcp.task("Scheduled fixture review"), mcp.task("Scheduled fixture proof"), mcp.task("Scheduled fixture handoff")], "commit": False}
         rpc.call("plan_day", dict(proposal, commit=True), error="scheduled_only")
@@ -111,7 +111,7 @@ def main():
         malformed_env = dict(env, THREE_PLANNING_RUN="bad", THREE_PLANNING_DATE="today")
         malformed = subprocess.run([str(binary), "mcp"], input="", env=malformed_env, capture_output=True, text=True, timeout=15)
         assert malformed.returncode != 0 and malformed.stdout == "", malformed
-        print(json.dumps({"status": "PASS", "run": run["id"], "source": "routine", "forbidden_mutations": 18,
+        print(json.dumps({"status": "PASS", "run": run["id"], "source": "routine", "forbidden_mutations": 20, "additional_read_tools_refused": 3,
                           "packaged_helper": str(binary), "authenticated_model_run": False}, indent=2))
     print("PASS: native command runner -> relocated packaged MCP helper -> routine draft -> explicit normal-channel commit. No model or paid calls.")
 

@@ -73,7 +73,7 @@ struct TrendsView: View {
                     .fixedSize()
                     Text("\(Format.duration(metrics.focusSeconds)) recorded focus · \(Format.duration(TimeInterval(metrics.derivedPlannedSeconds))) derived planned")
                         .monospacedDigit()
-                    Text("\(metrics.commitmentSnapshotPlanCount) plans with commitment snapshots · \(metrics.legacyCommittedPlanCount) legacy committed plans excluded from completion and accuracy")
+                    Text("\(metrics.commitmentSnapshotPlanCount) plans with commitment records · \(metrics.legacyCommittedPlanCount) older plans excluded from completion and accuracy")
                         .font(Typo.meta).foregroundStyle(.secondary)
                     Text("Recorded break choices · \(metrics.breaks.takenCount) taken · \(metrics.breaks.skippedCount) skipped · \(metrics.breaks.missingDecisionCount) unknown after ended focus · \(metrics.breaks.pendingFocusSessionCount) pending focus")
                         .font(Typo.meta).foregroundStyle(.secondary).monospacedDigit()
@@ -88,8 +88,8 @@ struct TrendsView: View {
                 TrendsFocusChart(days: days, accent: model.accent)
                 TrendsCompletionChart(weeks: weeks, metrics: metrics, accent: model.accent)
                 TrendsAccuracyChart(days: days, metrics: metrics, accent: model.accent)
-                TrendsQualityChart(metrics: metrics, accent: model.accent)
-                TrendsBlocksChart(days: days, metrics: metrics, accent: model.accent)
+                TrendsQualityChart(weeks: weeks, metrics: metrics, accent: model.accent)
+                TrendsBlocksChart(days: days, weeks: weeks, metrics: metrics, accent: model.accent)
                 DisclosureGroup("What these numbers include") {
                     VStack(alignment: .leading, spacing: Space.sm) {
                         Text(report.provenance.actualTime)
@@ -99,7 +99,7 @@ struct TrendsView: View {
                         Text(report.provenance.breaks)
                         Text(report.provenance.tags)
                         Text(report.provenance.coverage)
-                        Text("Pre-v11 commitment snapshots and unrecorded break choices remain unavailable. Complete activity coverage is unknown. Zero means no matching recorded rows, not proof of no activity.")
+                        Text("Older plans without commitment records and unrecorded break choices remain unavailable. Complete activity coverage is unknown. Zero means no matching recorded rows, not proof of no activity.")
                         Text("Missing task references: \(report.missingData.missingTaskReferenceCount). Missing category references: \(report.missingData.missingCategoryReferenceCount).")
                     }
                     .font(Typo.meta).foregroundStyle(.secondary).textSelection(.enabled)
@@ -231,24 +231,31 @@ private struct TrendsAccuracyChart: View {
 }
 
 private struct TrendsQualityChart: View {
+    let weeks: [StatsWeek]
     let metrics: StatsMetrics
     let accent: Color
 
     var body: some View {
-        TrendsCard(title: "Focused-rated session share", note: "Focused ratings divided by recorded focus-session ratings. Sessions without ratings remain unavailable and do not count as scattered. Categories reflect current task records.") {
+        TrendsCard(title: "Focused-rated session share", note: "Weekly focused ratings divided by recorded focus-session ratings. Sessions without ratings remain unavailable and do not count as scattered. The category breakdown reflects current task records.") {
             Text("\(ratioText(metrics.quality.focusedShare)) · \(metrics.quality.focusedSessionCount) focused of \(metrics.quality.ratedSessionCount) rated · \(metrics.quality.missingRatingCount) unrated")
                 .monospacedDigit()
-            Chart(metrics.categoryQuality) { category in
-                if let percent = category.quality.focusedShare.percent {
-                    BarMark(x: .value("Focused percent", percent), y: .value("Category", category.category?.name ?? category.categoryId ?? "Unknown category"))
-                        .foregroundStyle(category.category?.color ?? accent)
-                        .accessibilityLabel(category.category?.name ?? "Unknown category")
-                        .accessibilityValue(qualityText(category.quality))
+            Chart(weeks) { week in
+                if let percent = week.metrics.quality.focusedShare.percent {
+                    BarMark(x: .value("Week starting", week.weekStarting.rawValue), y: .value("Focused percent", percent))
+                        .foregroundStyle(accent)
+                        .accessibilityLabel(weekLabel(week))
+                        .accessibilityValue(qualityText(week.metrics.quality))
                 }
             }
-            .chartXScale(domain: 0...100)
-            .chartXAxisLabel("Percent focused among recorded ratings")
+            .chartYScale(domain: 0...100)
+            .chartYAxisLabel("Percent focused among recorded ratings")
             .frame(height: 190)
+            DisclosureGroup("Weekly quality values") {
+                ForEach(weeks) { week in
+                    Text("\(weekLabel(week)) · \(qualityText(week.metrics.quality))")
+                        .font(Typo.meta).monospacedDigit()
+                }
+            }
             ForEach(metrics.categoryQuality) { category in
                 Text("\(category.category?.name ?? "Unknown category") · \(qualityText(category.quality))")
                     .font(Typo.meta).monospacedDigit()
@@ -262,30 +269,31 @@ private struct TrendsQualityChart: View {
 
 private struct TrendsBlocksChart: View {
     let days: [StatsDay]
+    let weeks: [StatsWeek]
     let metrics: StatsMetrics
     let accent: Color
 
     var body: some View {
-        TrendsCard(title: "Recorded distractions per focus hour", note: "Solid circles show linked block hits per focus hour. Dashed squares show granted unblocks per focus hour. Linked events follow their focus session's start day. Unassociated events are separate and excluded from rates.") {
+        TrendsCard(title: "Recorded distractions per focus hour", note: "Weekly solid circles show linked block hits per focus hour. Dashed squares show granted unblocks per focus hour. Linked events follow their focus session's start day. Unassociated events are separate and excluded from rates.") {
             Text("\(rateText(metrics.blocks.hitsPerFocusHour)) hits / focus hour · \(rateText(metrics.blocks.unblocksPerFocusHour)) unblocks / focus hour")
                 .monospacedDigit()
             Text("\(metrics.blocks.associatedHits) linked hits · \(metrics.blocks.associatedUnblocks) linked unblocks · \(Format.duration(metrics.focusSeconds)) focus denominator")
                 .font(Typo.meta).monospacedDigit()
-            Chart(days) { day in
-                if let hits = day.metrics.blocks.hitsPerFocusHour.value {
-                    LineMark(x: .value("Day", day.day.rawValue), y: .value("Hits per focus hour", hits), series: .value("Event", "Hits"))
+            Chart(weeks) { week in
+                if let hits = week.metrics.blocks.hitsPerFocusHour.value {
+                    LineMark(x: .value("Week starting", week.weekStarting.rawValue), y: .value("Hits per focus hour", hits), series: .value("Event", "Hits"))
                         .foregroundStyle(accent)
                         .symbol(.circle)
-                        .accessibilityLabel("\(dayLabel(day)), recorded hits per focus hour")
-                        .accessibilityValue(rateText(day.metrics.blocks.hitsPerFocusHour))
+                        .accessibilityLabel("\(weekLabel(week)), recorded hits per focus hour")
+                        .accessibilityValue(rateText(week.metrics.blocks.hitsPerFocusHour))
                 }
-                if let unblocks = day.metrics.blocks.unblocksPerFocusHour.value {
-                    LineMark(x: .value("Day", day.day.rawValue), y: .value("Unblocks per focus hour", unblocks), series: .value("Event", "Unblocks"))
+                if let unblocks = week.metrics.blocks.unblocksPerFocusHour.value {
+                    LineMark(x: .value("Week starting", week.weekStarting.rawValue), y: .value("Unblocks per focus hour", unblocks), series: .value("Event", "Unblocks"))
                         .foregroundStyle(.primary)
                         .lineStyle(StrokeStyle(dash: [4, 3]))
                         .symbol(.square)
-                        .accessibilityLabel("\(dayLabel(day)), recorded unblocks per focus hour")
-                        .accessibilityValue(rateText(day.metrics.blocks.unblocksPerFocusHour))
+                        .accessibilityLabel("\(weekLabel(week)), recorded unblocks per focus hour")
+                        .accessibilityValue(rateText(week.metrics.blocks.unblocksPerFocusHour))
                 }
             }
             .chartYAxisLabel("Events per focus hour")
@@ -297,7 +305,7 @@ private struct TrendsBlocksChart: View {
                 .font(Typo.meta).monospacedDigit()
             Text("Top recorded sites and apps").font(Typo.heading)
             ForEach(metrics.blocks.topTargets) { target in
-                Text("\(target.target ?? "Unavailable rule \(target.ruleId)") · \(target.hitCount) hits · \(target.unblockCount) unblocks, including \(target.unassociatedHits) hits and \(target.unassociatedUnblocks) unblocks outside matching focus sessions")
+                Text("\(target.target ?? "Unavailable rule") · \(target.hitCount) hits · \(target.unblockCount) unblocks, including \(target.unassociatedHits) hits and \(target.unassociatedUnblocks) unblocks outside matching focus sessions")
                     .font(Typo.meta).monospacedDigit().textSelection(.enabled)
             }
             if metrics.blocks.topTargets.isEmpty {

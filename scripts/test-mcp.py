@@ -109,8 +109,8 @@ def run(binary, scratch):
         initialize(rpc)
         tools = rpc.request("tools/list")["result"]["tools"]
         names = {tool["name"] for tool in tools}
-        assert len(names) == 30, names
-        assert {"plan_day", "set_task_strict", "get_history", "get_history_report", "get_day_close", "close_day", "dismiss_carry"} <= names
+        assert len(names) == 31, names
+        assert {"plan_day", "set_task_strict", "get_history", "get_history_report", "get_stats", "get_day_close", "close_day", "dismiss_carry"} <= names
         assert not {"block_now", "get_meetings", "get_free_time", "remove_block_rule", "disable_blocking", "request_block_exception"} & names
         for tool in tools:
             assert tool["inputSchema"]["additionalProperties"] is False, tool

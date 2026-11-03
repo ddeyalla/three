@@ -83,6 +83,7 @@ A `?` marks an optional field. All other fields are required unless a row says o
 | `get_carryover` | `date` | Task rows for unfinished planned tasks before the given date, oldest day first. Undated inbox tasks are excluded. Reads do not move tasks. Closed-day work remains read-only. |
 | `get_history` | `from`, `to` | Session records, including reflections. Inclusive local start dates. The range must be ordered and span at most 366 days. |
 | `get_history_report` | `from`, `to` | Typed month/day/task/session report with empty dates, category totals, and deleted references. Uses the same bounded dates and shared accounting as native History and `three history --from DATE --to DATE --json`. Planned totals are explicitly derived from current task rows. |
+| `get_stats` | Optional `from`, `to` | Shared five trends, per-tag values, and bounded streak. Defaults to 28 local dates through today, maximum 366; future ranges are rejected. Ratios include explicit numerators and denominators, with null values when undefined. Prospective commitments define completion and accuracy. Missing ratings, break decisions, historical commitments and blocker coverage remain explicit. Same result as `three stats --from DATE --to DATE --json`. |
 | `get_block_status` | none | The existing CLI blocker status object, including reason, rules, focus hours, hits, exceptions, browser connections, and coverage limits. |
 | `add_block_rule` | `kind`, `value` | Blocker status after adding or re-enabling a rule. Kind is `domain` or `app`. A repeated domain may return its covering parent rule without adding a duplicate. |
 | `set_task_strict` | `id` | `{ok:true}`. One-way change to strict. Repeats are harmless. No false parameter exists. |
@@ -132,7 +133,7 @@ Tool failures return `isError=true` with one text item containing `{code,message
 
 Invalid `tools/call` or `resources/read` parameter envelopes return JSON-RPC `-32602`. An unknown resource also returns `-32602`. The SDK handles malformed JSON with `-32700` and unknown methods with `-32601`. SDK `0.12.1` uses a generated response ID when malformed input has no recoverable request ID. Resource read failures return `-32603` without database details.
 
-`get_meetings`, free-time calculations, calendar writes, `get_stats`, and `block_now` are unsupported. `get_history` provides existing session and reflection data. It does not invent a trend model. Manual timed blocking has no Store lifecycle, so no tool exposes it. There are no blocker removal, disable, exception, rule replacement, focus-hours reduction, or strictness-loosening tools. Human blocker controls remain in the app.
+`get_meetings`, free-time calculations, calendar writes, and `block_now` are unsupported. `get_history` preserves its session-array response; detailed history and trends have explicit read operations. Manual timed blocking has no Store lifecycle, so no tool exposes it. There are no blocker removal, disable, exception, rule replacement, focus-hours reduction, or strictness-loosening tools. Human blocker controls remain in the app.
 
 ## Verification
 
