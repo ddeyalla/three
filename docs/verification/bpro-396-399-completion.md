@@ -52,3 +52,25 @@ The recommended small follow-up is an opt-in Launch at login toggle using `SMApp
 ## Closure
 
 The [BPRO-399 correction review](bpro-399-final-review.md) passed and released desktop ownership with no remaining owned processes. The exact-timestamp follow-up also passed. BPRO-399 has no remaining identified implementation or independent review blocker; parent tracker acceptance completed and Linear was independently read back as Done at `2026-11-03T04:42:44.568Z`. BPRO-396 cannot be truthfully marked Done while its native/runtime/release predicates remain false. Production database table fingerprints, installed binary/manifest hashes, PID and start time match the final baseline comparison in `final-cleanup.txt`. No owned QA app was launched by this worker, and all its fixture/supervisor processes have exited. BPRO-399 is Done; BPRO-396 stays In Progress with its concrete blocker comment and pending macOS 26 machine question. No owned process or scheduled future write remains from this pass.
+
+## Parent integration acceptance
+
+Final integration is on `dv/ai-planning-v04` in `/Users/divyanshudv/Documents/code-deyalla/adhd`.
+The parent read back Linear after acceptance. BPRO-397, BPRO-398, and BPRO-399 are Done. BPRO-396 remains In Progress with its release blocker recorded.
+
+The final product Sources tree is `259dd94be221ceda95f666f5cf9544d21df1f689`.
+The parent suite passed 134 Core, 26 App, and 22 extension tests. Release build and strict signing passed.
+Normal MCP, relocated draft review, scheduled MCP, and all four supervisor cases passed against the packaged helper.
+These results live in `build/final-planning-tests.log`, `final-planning-mcp.log`, `final-planning-draft.log`, `final-planning-scheduled.log`, and `final-planning-supervisor.log` in the integration checkout.
+
+The source-aligned local release build is `build/Three.app`, version 0.2.4, and is not a published release.
+Its app executable SHA-256 is `07313d4ec38b43abb4ee14a5fb28268f864e141e85e355715273a82cda98c39e`.
+Its helper SHA-256 is `ff03e34736117aef2d013007e36cdc4040aa82a0e693d9e28b8d7e14341d251c`.
+`build/final-artifact-release.log`, `final-artifact-signing.log`, and `final-artifact-sha256.txt` record that artifact.
+The runtime launcher was syntax-checked and rejected this macOS 27 host with exit 78 before any QA launch.
+The macOS 26 launch branch remains unexecuted.
+
+Independent implementation, adversarial, native, correction, and timestamp reviews used `codex/gpt-6.1-sol` with high reasoning only.
+The timestamp review reproduced the original defect and found no new failure in the correction.
+The remaining attention item is BPRO-396's actual popover, Chrome restart, macOS 26, and hide-refusal acceptance.
+No release tag, publication, push, installation, production restart, or real authenticated model run occurred.
