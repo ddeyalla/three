@@ -1,0 +1,4 @@
+ts	phase	decision	why	evidence	result
+2026-11-03T10:00:00Z	frame	Start from the clean committed planning branch and preserve existing worktrees	The current base includes the approved planning and menu fixes	81e5a96a4dd65c9ecf4dcc77ae50978a7df72d9c	verified
+2026-11-03T10:00:00Z	contracts	Keep Session.elapsed and Store transactions as the shared authorities	Clients must agree on totals and lifecycle guards	Sources/ThreeCore/Models.swift; Sources/ThreeCore/Operations.swift	frozen in contracts.md
+2026-11-03T10:00:00Z	tools	Continue from live ticket descriptions after shared Linear notes failed	The notes tool returned Tool get_agent_context not found	Linear get_agent_context response	acceptance unaffected
