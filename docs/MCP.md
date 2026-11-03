@@ -87,6 +87,8 @@ The five-task ceiling counts every live task except dropped and carried tasks. T
 
 A draft `plan_day` refuses committed and closed plans before changing rows. Explicit `commit=true` replanning can replace untouched tasks on a committed day, while tasks with session history remain. Those retained tasks count toward five. A closed day cannot be edited or reopened. Starting focus commits a draft. Only one timer runs at a time. A focus start can end an existing break, but cannot replace another focus session.
 
+An upgrade normalizes date spellings accepted by older CLI versions. If two stored spellings identify one day, it retains the canonical plan ID when possible and merges tasks without losing sessions, steps, or tags. The more restrictive live plan status wins. A historical collision can expose more than five existing tasks. No task is discarded or moved automatically, and new admissions remain blocked until there is room. Removing a carried original is refused so its copied work cannot be duplicated by reopening it. Checklist and tag edits also respect closed and deleted tasks.
+
 Mutations are not globally replay-safe. Repeating `add_task` creates another task. Repeating a draft `plan_day` replaces untouched rows with new IDs. Read the result after an uncertain write before retrying. The Store makes each write atomic and preserves session history. It does not provide a client idempotency key.
 
 ## Results and resources

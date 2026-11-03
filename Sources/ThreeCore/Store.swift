@@ -51,7 +51,17 @@ public final class Store: @unchecked Sendable {
         var config = Configuration()
         config.busyMode = .timeout(5)
         db = try DatabasePool(path: url.path, configuration: config)
-        if let migration { try Store.migrator.migrate(db, upTo: migration) } else { try Store.migrator.migrate(db) }
+        if let migration {
+            try Store.migrator.migrate(db, upTo: migration)
+        } else {
+            try Store.migrator.migrate(db)
+            // An older CLI can write legacy dates while the installed app catches up with an upgrade.
+            try db.write { db in
+                if try Bool.fetchOne(db, sql: "SELECT EXISTS(SELECT 1 FROM dayPlan WHERE day NOT GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]')") == true {
+                    try Self.canonicalizePlanDates(db)
+                }
+            }
+        }
     }
 
     private static var migrator: DatabaseMigrator {
@@ -238,6 +248,46 @@ public final class Store: @unchecked Sendable {
                 t.column("seenAt", .datetime).notNull()
             }
         }
+        m.registerMigration("v8-canonical-plan-dates") { db in
+            try canonicalizePlanDates(db)
+        }
         return m
+    }
+
+    private static func canonicalizePlanDates(_ db: Database) throws {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        var groups: [String: [Row]] = [:]
+        for row in try Row.fetchAll(db, sql: "SELECT * FROM dayPlan ORDER BY deletedAt IS NOT NULL, createdAt, id") {
+            let raw: String = row["day"]
+            guard let date = formatter.date(from: raw) else {
+                throw ThreeError.invalid("An existing plan has an unreadable date. The database was not changed.")
+            }
+            groups[DayKey(date).rawValue, default: []].append(row)
+        }
+        for (day, plans) in groups {
+            let keeper = plans.first { row in
+                let raw: String = row["day"]
+                let deleted: Date? = row["deletedAt"]
+                return raw == day && deleted == nil
+            } ?? plans[0]
+            let id: String = keeper["id"]
+            var status: String = keeper["status"]
+            var committed: Date? = keeper["committedAt"]
+            for plan in plans where (plan["id"] as String) != id {
+                let otherId: String = plan["id"]
+                let deleted: Date? = plan["deletedAt"]
+                let offset = (try Int.fetchOne(db, sql: "SELECT MAX(position) FROM task WHERE dayPlanId = ?", arguments: [id]) ?? -1) + 1
+                try db.execute(sql: "UPDATE task SET dayPlanId = ?, position = position + ?, deletedAt = COALESCE(deletedAt, ?) WHERE dayPlanId = ?", arguments: [id, offset, deleted, otherId])
+                let otherStatus: String = plan["status"]
+                if deleted == nil, otherStatus == "closed" || (status == "draft" && otherStatus == "committed") { status = otherStatus }
+                let otherCommitted: Date? = plan["committedAt"]
+                if let otherCommitted { committed = min(committed ?? otherCommitted, otherCommitted) }
+                try db.execute(sql: "DELETE FROM dayPlan WHERE id = ?", arguments: [otherId])
+            }
+            try db.execute(sql: "UPDATE dayPlan SET day = ?, status = ?, committedAt = ? WHERE id = ?", arguments: [day, status, committed, id])
+        }
     }
 }
