@@ -1,3 +1,4 @@
 ts	phase	decision	why	evidence	result
 2026-11-03T01:11:35Z	frame	Partition v0.3 QA from v0.4 implementation	Release proof must correspond to the frozen blocker source	d993f48; .audit/bpro-396-399-plan.md	open
 2026-11-03T01:11:35Z	design	Reuse DayPlan draft status and reject unsafe replacement	A second proposal store adds a lifecycle the tickets do not need	Sources/ThreeCore/Operations.swift:173	open
+2026-11-03T01:51:45Z	review	Reproduced three Store lifecycle failures and repaired each owner	The green MCP suite missed composed carry, child-record and upgrade failures	build/review-carried-fixed.log; build/review-closed-fixed.log; build/review-legacy-fixed.log; build/planning-review-final.log; build/planning-review-stdio.log	111 Core tests and real stdio passed
