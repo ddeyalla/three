@@ -8,15 +8,7 @@ struct RootView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        Group {
-            if model.destination == .history {
-                HistoryView()
-            } else if model.destination == .trends {
-                TrendsView().environment(model)
-            } else {
-                WorkspaceView()
-            }
-        }
+        WorkspaceView()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay(alignment: .bottom) {
             if model.error != nil {
@@ -56,21 +48,22 @@ struct RootView: View {
             if open == "settings" || open == "blocking" { openSettings() }
         }
         .preferredColorScheme(.dark)
-        .sheet(isPresented: Binding(get: { model.reviewingRecovery || model.reviewingDay != nil }, set: {
-            if !$0 { model.reviewingRecovery = false; model.reviewingDay = nil }
+        // Recovery review keeps priority: it shows first whenever both are requested.
+        .sheet(isPresented: Binding(get: { model.reviewingRecovery || model.reviewSection != nil }, set: {
+            if !$0 { model.reviewingRecovery = false; model.closeReview() }
         })) {
             if model.reviewingRecovery {
                 RecoveryReviewView(controller: model.recovery, dismiss: { model.reviewingRecovery = false })
             } else {
-                DayReviewSheet()
+                ReviewSheet()
             }
         }
-        .frame(minWidth: [.history, .trends].contains(model.destination) ? 600 : 1060, minHeight: 640)
+        .frame(minWidth: 1060, minHeight: 640)
     }
 }
 
-/// Capsules for today, the inbox, the week ahead, what's done and the tags,
-/// then the list for whichever is chosen. Settings sits at the foot.
+/// Capsules for today, the week ahead, the inbox, what's done and the tags,
+/// then the list for whichever is chosen. Review and Settings sit at the foot.
 struct TasksPane: View {
     @Environment(AppModel.self) private var model
 
@@ -86,14 +79,14 @@ struct TasksPane: View {
                 case .upcoming: UpcomingList()
                 case .done: DoneList()
                 case .tags: TagsList()
-                case .history, .trends: EmptyView()
                 }
             }
             .frame(maxHeight: .infinity, alignment: .top)
             HStack(spacing: Space.lg) {
-                Button("History", systemImage: "clock.arrow.circlepath") { model.destination = .history }
-                Button("Trends", systemImage: "chart.bar") { model.destination = .trends }
-                Button("Day review") { model.reviewingDay = model.dayCloses.first?.day ?? model.snapshot.day }
+                Button { model.openReview(.day) } label: {
+                    Label("Review", systemImage: "chart.bar.xaxis")
+                }
+                .help("Day review, history and trends (⌘6)")
                 Spacer()
                 SettingsLink {
                     Label("Settings", systemImage: "gearshape")
@@ -109,14 +102,20 @@ struct TasksPane: View {
 
     /// One control for every view: words for the three lists, icons for what's done and the tags.
     private var header: some View {
-        ChoiceCapsules(selection: Binding(get: { model.destination }, set: { model.destination = $0 }), options: [
-            .init(.today, "Today"),
-            .init(.inbox, "Inbox"),
-            .init(.upcoming, "Upcoming"),
-            .init(.done, "Done", symbol: "checkmark.circle"),
-            .init(.tags, "Tags", symbol: "number"),
-        ])
+        ChoiceCapsules(selection: Binding(get: { model.destination }, set: { model.destination = $0 }),
+                       options: Destination.ordered.map { .init($0, $0.title, symbol: $0.capsuleSymbol) })
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+extension Destination {
+    /// Words for the three lists, icons for what's done and the tags.
+    var capsuleSymbol: String? {
+        switch self {
+        case .done: "checkmark.circle"
+        case .tags: "number"
+        case .today, .upcoming, .inbox: nil
+        }
     }
 }
 

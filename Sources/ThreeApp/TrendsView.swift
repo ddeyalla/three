@@ -2,6 +2,8 @@ import Charts
 import SwiftUI
 import ThreeCore
 
+/// The Trends section of the Review sheet: four weeks from the shared stats read. A row of headline
+/// numbers, then the five charts. Method notes and raw values sit behind each chart's Details.
 struct TrendsView: View {
     @Environment(AppModel.self) private var model
     @State private var state = LoadState.loading
@@ -20,20 +22,10 @@ struct TrendsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Space.lg) {
-            HStack {
-                Button("Today", systemImage: "chevron.left") { model.destination = .today }
-                    .buttonStyle(.glass)
-                Text("Trends").font(Typo.title)
-                Spacer()
-                Button("Refresh", systemImage: "arrow.clockwise") { refresh += 1 }
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.glass)
-                    .help("Refresh recorded trends and active-session totals")
-            }
+        Group {
             switch state {
             case .loading:
-                ProgressView("Reading trends…")
+                ProgressView().controlSize(.small)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             case .failed(let message):
                 VStack(spacing: Space.md) {
@@ -47,9 +39,6 @@ struct TrendsView: View {
             }
         }
         .font(Typo.body)
-        .padding(Space.xl)
-        .background(.thinMaterial, in: .rect(cornerRadius: Radius.panel))
-        .padding(Space.sm)
         .task(id: ReadKey(revision: model.snapshot.takenAt, refresh: refresh)) { await load() }
     }
 
@@ -58,40 +47,54 @@ struct TrendsView: View {
         let metrics = selected?.metrics ?? report.metrics
         let days = selected?.days ?? report.days
         let weeks = selected?.weeks ?? report.weeks
+        let empty = metrics.quality.focusSessionCount == 0 && metrics.derivedPlannedSeconds == 0
         return ScrollView {
             VStack(alignment: .leading, spacing: Space.xl) {
-                VStack(alignment: .leading, spacing: Space.sm) {
-                    Text("\(report.from.rawValue) to \(report.through.rawValue) · Four weeks")
-                        .font(Typo.heading)
-                    Text("Today and this week are partial. Active-session totals are frozen at the last refresh.")
-                        .font(Typo.meta).foregroundStyle(.secondary)
-                    Picker("Tag", selection: $tagId) {
-                        Text("All tags").tag("")
-                        ForEach(report.tags) { tag in Text("@\(tag.tag.name)").tag(tag.id) }
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: Space.xs) {
+                        Text("Last four weeks").font(Typo.heading)
+                        Text("\(trendsShortDate(report.from)) – \(trendsShortDate(report.through)) · today and this week are partial")
+                            .font(Typo.meta).foregroundStyle(.secondary)
                     }
-                    .pickerStyle(.menu)
-                    .fixedSize()
-                    Text("\(Format.duration(metrics.focusSeconds)) recorded focus · \(Format.duration(TimeInterval(metrics.derivedPlannedSeconds))) derived planned")
-                        .monospacedDigit()
-                    Text("\(metrics.commitmentSnapshotPlanCount) plans with commitment records · \(metrics.legacyCommittedPlanCount) older plans excluded from completion and accuracy")
-                        .font(Typo.meta).foregroundStyle(.secondary)
-                    Text("Recorded break choices · \(metrics.breaks.takenCount) taken · \(metrics.breaks.skippedCount) skipped · \(metrics.breaks.missingDecisionCount) unknown after ended focus · \(metrics.breaks.pendingFocusSessionCount) pending focus")
-                        .font(Typo.meta).foregroundStyle(.secondary).monospacedDigit()
-                    Text(streakText(report.streak)).font(Typo.body)
-                    Text("Streak uses all tags. A committed plan needs a task finished on that plan's day. An incomplete today retains yesterday's streak.")
-                        .font(Typo.meta).foregroundStyle(.secondary)
-                    if metrics.quality.focusSessionCount == 0 && metrics.derivedPlannedSeconds == 0 {
-                        Text("No focus sessions or eligible planned tasks recorded in this range. Plan a task and record focus to populate these trends.")
-                            .foregroundStyle(.secondary)
+                    Spacer()
+                    if !report.tags.isEmpty {
+                        Picker("Tag", selection: $tagId) {
+                            Text("All tags").tag("")
+                            ForEach(report.tags) { tag in Text("@\(tag.tag.name)").tag(tag.id) }
+                        }
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+                        .fixedSize()
                     }
                 }
-                TrendsFocusChart(days: days, accent: model.accent)
-                TrendsCompletionChart(weeks: weeks, metrics: metrics, accent: model.accent)
-                TrendsAccuracyChart(days: days, metrics: metrics, accent: model.accent)
-                TrendsQualityChart(weeks: weeks, metrics: metrics, accent: model.accent)
-                TrendsBlocksChart(days: days, weeks: weeks, metrics: metrics, accent: model.accent)
+                HStack(spacing: Space.md) {
+                    TrendsTile(value: streakValue(report.streak), label: "day streak · all tags")
+                    TrendsTile(value: Format.duration(metrics.focusSeconds), label: "focused")
+                    TrendsTile(value: shortPercent(metrics.completion), label: "plan completion")
+                    TrendsTile(value: shortPercent(metrics.quality.focusedShare), label: "rated focused")
+                }
+                if empty {
+                    VStack(spacing: Space.sm) {
+                        Image(systemName: "chart.bar").font(Typo.title).foregroundStyle(.tertiary)
+                        Text("No focus sessions or planned tasks in these four weeks.")
+                            .foregroundStyle(.secondary)
+                        Text("Plan a task and run a focus block; the charts fill in from there.")
+                            .font(Typo.meta).foregroundStyle(.tertiary)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 200)
+                } else {
+                    TrendsFocusChart(days: days, accent: model.accent)
+                    TrendsCompletionChart(weeks: weeks, metrics: metrics, accent: model.accent)
+                    TrendsAccuracyChart(days: days, metrics: metrics, accent: model.accent)
+                    TrendsQualityChart(weeks: weeks, metrics: metrics, accent: model.accent)
+                    TrendsBlocksChart(days: days, weeks: weeks, metrics: metrics, accent: model.accent)
+                }
                 DisclosureGroup("What these numbers include") {
                     VStack(alignment: .leading, spacing: Space.sm) {
+                        Text(streakText(report.streak) + ". Streak uses all tags. A committed plan needs a task finished on that plan's day. An incomplete today retains yesterday's streak.")
+                        Text("\(Format.duration(TimeInterval(metrics.derivedPlannedSeconds))) derived planned time.")
+                        Text("\(metrics.commitmentSnapshotPlanCount) plans with commitment records · \(metrics.legacyCommittedPlanCount) older plans excluded from completion and accuracy.")
+                        Text("Recorded break choices · \(metrics.breaks.takenCount) taken · \(metrics.breaks.skippedCount) skipped · \(metrics.breaks.missingDecisionCount) unknown after ended focus · \(metrics.breaks.pendingFocusSessionCount) pending focus.")
                         Text(report.provenance.actualTime)
                         Text(report.provenance.plannedTime)
                         Text(report.provenance.completion)
@@ -99,17 +102,18 @@ struct TrendsView: View {
                         Text(report.provenance.breaks)
                         Text(report.provenance.tags)
                         Text(report.provenance.coverage)
-                        Text("Older plans without commitment records and unrecorded break choices remain unavailable. Complete activity coverage is unknown. Zero means no matching recorded rows, not proof of no activity.")
+                        Text("Older plans without commitment records and unrecorded break choices remain unavailable. Complete activity coverage is unknown. Zero means no matching recorded rows, not proof of no activity. Active-session totals are frozen at the last refresh.")
                         Text("Missing task references: \(report.missingData.missingTaskReferenceCount). Missing category references: \(report.missingData.missingCategoryReferenceCount).")
+                        Text("As of \(report.takenAt.formatted(date: .abbreviated, time: .shortened)) · \(report.timeZoneIdentifier)")
                     }
-                    .font(Typo.meta).foregroundStyle(.secondary).textSelection(.enabled)
+                    .font(Typo.meta).foregroundStyle(.secondary).textSelection(.enabled).monospacedDigit()
                     .padding(.top, Space.sm)
                 }
-                Text("As of \(report.takenAt.formatted(date: .abbreviated, time: .shortened)) · \(report.timeZoneIdentifier)")
-                    .font(Typo.meta).foregroundStyle(.secondary)
+                .font(Typo.meta)
+                .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.trailing, Space.sm)
+            .padding(Space.xl)
         }
     }
 
@@ -117,7 +121,8 @@ struct TrendsView: View {
         guard !Task.isCancelled else { return }
         let store = model.store
         let calendar = Calendar.current
-        state = .loading
+        // Refresh in place once something is shown; the spinner is for the first read only.
+        if case .loaded = state {} else { state = .loading }
         do {
             let report = try await Task.detached(priority: .userInitiated) { try store.stats(calendar: calendar) }.value
             guard !Task.isCancelled else { return }
@@ -130,12 +135,28 @@ struct TrendsView: View {
     }
 }
 
+private struct TrendsTile: View {
+    let value: String
+    let label: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.xs) {
+            Text(value).font(Typo.title).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+            Text(label).font(Typo.meta).foregroundStyle(.secondary).lineLimit(1)
+        }
+        .padding(Space.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassEffect(.regular, in: .rect(cornerRadius: Radius.card))
+        .accessibilityElement(children: .combine)
+    }
+}
+
 private struct TrendsFocusChart: View {
     let days: [StatsDay]
     let accent: Color
 
     var body: some View {
-        TrendsCard(title: "Daily focus", note: "Bars show recorded focus minutes. The line shows the trailing seven-day average, including recorded zero days. The first six averages are unavailable.") {
+        TrendsCard(title: "Daily focus", headline: "Bars are minutes focused; the dashed line is the seven-day average") {
             Chart(days) { day in
                 BarMark(x: .value("Day", day.day.rawValue), y: .value("Focus minutes", day.metrics.focusMinutes))
                     .foregroundStyle(accent.opacity(0.6))
@@ -152,12 +173,11 @@ private struct TrendsFocusChart: View {
             .chartXScale(domain: days.map { $0.day.rawValue })
             .chartXAxis { trendsDateAxis(days.map(\.day)) }
             .chartYAxisLabel("Minutes")
-            .frame(height: 190)
-            DisclosureGroup("Daily focus values") {
-                ForEach(days) { day in
-                    Text("\(dayLabel(day)) · \(Format.duration(day.metrics.focusSeconds)) · Average \(day.sevenDayAverageMinutes.map { "\($0.formatted(.number.precision(.fractionLength(1)))) min" } ?? "unavailable, fewer than seven included dates")")
-                        .font(Typo.meta).monospacedDigit()
-                }
+            .frame(height: 160)
+        } details: {
+            Text("The line is the trailing seven-day average, including recorded zero days. The first six averages are unavailable.")
+            ForEach(days) { day in
+                Text("\(dayLabel(day)) · \(Format.duration(day.metrics.focusSeconds)) · Average \(day.sevenDayAverageMinutes.map { "\($0.formatted(.number.precision(.fractionLength(1)))) min" } ?? "unavailable, fewer than seven included dates")")
             }
         }
     }
@@ -169,9 +189,9 @@ private struct TrendsCompletionChart: View {
     let accent: Color
 
     var body: some View {
-        TrendsCard(title: "Weekly plan completion", note: "Done original commitment tasks divided by all original commitment tasks, including later drops and carries. Closed days use frozen outcomes. Drafts and legacy plans without snapshots are excluded.") {
-            Text("\(ratioText(metrics.completion)) · \(metrics.completedTaskCount) of \(metrics.committedPlannedTaskCount) committed planned tasks done")
-                .monospacedDigit()
+        TrendsCard(title: "Plan completion", headline: metrics.completion.value == nil
+                   ? "Unavailable until a committed plan has a recorded commitment snapshot with tasks"
+                   : "\(ratioText(metrics.completion)) · \(metrics.completedTaskCount) of \(metrics.committedPlannedTaskCount) committed tasks done") {
             Chart(weeks) { week in
                 if let percent = week.metrics.completion.percent {
                     BarMark(x: .value("Week starting", week.weekStarting.rawValue), y: .value("Completion percent", percent))
@@ -184,13 +204,11 @@ private struct TrendsCompletionChart: View {
             .chartXAxis { trendsDateAxis(weeks.map(\.weekStarting)) }
             .chartYScale(domain: 0...100)
             .chartYAxisLabel("Percent")
-            .frame(height: 170)
+            .frame(height: 140)
+        } details: {
+            Text("Done original commitment tasks divided by all original commitment tasks, including later drops and carries. Closed days use frozen outcomes. Drafts and legacy plans without snapshots are excluded.")
             ForEach(weeks) { week in
                 Text("\(weekLabel(week)) · \(ratioText(week.metrics.completion)) · \(week.metrics.completedTaskCount) of \(week.metrics.committedPlannedTaskCount) tasks")
-                    .font(Typo.meta).monospacedDigit()
-            }
-            if metrics.completion.value == nil {
-                Text("Completion is unavailable until a committed plan has a recorded commitment snapshot with tasks.").foregroundStyle(.secondary)
             }
         }
     }
@@ -202,9 +220,9 @@ private struct TrendsAccuracyChart: View {
     let accent: Color
 
     var body: some View {
-        TrendsCard(title: "Actual / planned time", note: "Recorded focus on dates with commitment snapshots divided by original committed planned time. 100% means equal time. Unplanned focus on those dates counts in actual time; the ratio can exceed 100%. Legacy dates and drafts are excluded.") {
-            Text("\(ratioText(metrics.actualToPlanned)) · \(Format.duration(metrics.accuracyFocusSeconds)) actual / \(Format.duration(TimeInterval(metrics.committedPlannedSeconds))) committed planned")
-                .monospacedDigit()
+        TrendsCard(title: "Actual vs planned time", headline: metrics.actualToPlanned.value == nil
+                   ? "Unavailable: no committed planned time with a snapshot is recorded"
+                   : "\(ratioText(metrics.actualToPlanned)) · \(Format.duration(metrics.accuracyFocusSeconds)) actual of \(Format.duration(TimeInterval(metrics.committedPlannedSeconds))) planned") {
             Chart {
                 RuleMark(y: .value("Equal actual and planned", 100))
                     .foregroundStyle(Theme.idle)
@@ -222,15 +240,11 @@ private struct TrendsAccuracyChart: View {
             .chartXScale(domain: days.map { $0.day.rawValue })
             .chartXAxis { trendsDateAxis(days.map(\.day)) }
             .chartYAxisLabel("Percent")
-            .frame(height: 170)
-            if metrics.actualToPlanned.value == nil {
-                Text("Accuracy is unavailable because no committed planned time with a snapshot is recorded.").foregroundStyle(.secondary)
-            }
-            DisclosureGroup("Daily time values") {
-                ForEach(days) { day in
-                    Text("\(dayLabel(day)) · \(ratioText(day.metrics.actualToPlanned)) · \(Format.duration(day.metrics.accuracyFocusSeconds)) actual / \(Format.duration(TimeInterval(day.metrics.committedPlannedSeconds))) committed planned")
-                        .font(Typo.meta).monospacedDigit()
-                }
+            .frame(height: 140)
+        } details: {
+            Text("Recorded focus on dates with commitment snapshots divided by original committed planned time. 100% means equal time. Unplanned focus on those dates counts in actual time; the ratio can exceed 100%. Legacy dates and drafts are excluded.")
+            ForEach(days) { day in
+                Text("\(dayLabel(day)) · \(ratioText(day.metrics.actualToPlanned)) · \(Format.duration(day.metrics.accuracyFocusSeconds)) actual / \(Format.duration(TimeInterval(day.metrics.committedPlannedSeconds))) committed planned")
             }
         }
     }
@@ -242,9 +256,9 @@ private struct TrendsQualityChart: View {
     let accent: Color
 
     var body: some View {
-        TrendsCard(title: "Focused-rated session share", note: "Weekly focused ratings divided by recorded focus-session ratings. Sessions without ratings remain unavailable and do not count as scattered. The category breakdown reflects current task records.") {
-            Text("\(ratioText(metrics.quality.focusedShare)) · \(metrics.quality.focusedSessionCount) focused of \(metrics.quality.ratedSessionCount) rated · \(metrics.quality.missingRatingCount) unrated")
-                .monospacedDigit()
+        TrendsCard(title: "Focus quality", headline: metrics.quality.ratedSessionCount == 0
+                   ? "No focus ratings recorded yet. Rate a session in its reflection to see this"
+                   : "\(ratioText(metrics.quality.focusedShare)) rated focused · \(metrics.quality.focusedSessionCount) of \(metrics.quality.ratedSessionCount) rated · \(metrics.quality.missingRatingCount) unrated") {
             Chart(weeks) { week in
                 if let percent = week.metrics.quality.focusedShare.percent {
                     BarMark(x: .value("Week starting", week.weekStarting.rawValue), y: .value("Focused percent", percent))
@@ -256,20 +270,15 @@ private struct TrendsQualityChart: View {
             .chartXScale(domain: weeks.map { $0.weekStarting.rawValue })
             .chartXAxis { trendsDateAxis(weeks.map(\.weekStarting)) }
             .chartYScale(domain: 0...100)
-            .chartYAxisLabel("Percent focused among recorded ratings")
-            .frame(height: 190)
-            DisclosureGroup("Weekly quality values") {
-                ForEach(weeks) { week in
-                    Text("\(weekLabel(week)) · \(qualityText(week.metrics.quality))")
-                        .font(Typo.meta).monospacedDigit()
-                }
+            .chartYAxisLabel("Percent focused")
+            .frame(height: 140)
+        } details: {
+            Text("Weekly focused ratings divided by recorded focus-session ratings. Sessions without ratings remain unavailable and do not count as scattered. The category breakdown reflects current task records.")
+            ForEach(weeks) { week in
+                Text("\(weekLabel(week)) · \(qualityText(week.metrics.quality))")
             }
             ForEach(metrics.categoryQuality) { category in
                 Text("\(category.category?.name ?? "Unknown category") · \(qualityText(category.quality))")
-                    .font(Typo.meta).monospacedDigit()
-            }
-            if metrics.quality.ratedSessionCount == 0 {
-                Text("No focus ratings recorded. Rate a focus session to see quality trends.").foregroundStyle(.secondary)
             }
         }
     }
@@ -282,11 +291,9 @@ private struct TrendsBlocksChart: View {
     let accent: Color
 
     var body: some View {
-        TrendsCard(title: "Recorded distractions per focus hour", note: "Weekly solid circles show linked block hits per focus hour. Dashed squares show granted unblocks per focus hour. Linked events follow their focus session's start day. Unassociated events are separate and excluded from rates.") {
-            Text("\(rateText(metrics.blocks.hitsPerFocusHour)) hits / focus hour · \(rateText(metrics.blocks.unblocksPerFocusHour)) unblocks / focus hour")
-                .monospacedDigit()
-            Text("\(metrics.blocks.associatedHits) linked hits · \(metrics.blocks.associatedUnblocks) linked unblocks · \(Format.duration(metrics.focusSeconds)) focus denominator")
-                .font(Typo.meta).monospacedDigit()
+        TrendsCard(title: "Distraction pull", headline: metrics.blocks.hitsPerFocusHour.value == nil
+                   ? "Unavailable: no focus time is recorded"
+                   : "\(rateText(metrics.blocks.hitsPerFocusHour)) block hits and \(rateText(metrics.blocks.unblocksPerFocusHour)) unblocks per focus hour") {
             Chart(weeks) { week in
                 if let hits = week.metrics.blocks.hitsPerFocusHour.value {
                     LineMark(x: .value("Week starting", week.weekStarting.rawValue), y: .value("Hits per focus hour", hits), series: .value("Event", "Hits"))
@@ -306,28 +313,28 @@ private struct TrendsBlocksChart: View {
             }
             .chartXScale(domain: weeks.map { $0.weekStarting.rawValue })
             .chartXAxis { trendsDateAxis(weeks.map(\.weekStarting)) }
-            .chartYAxisLabel("Events per focus hour")
-            .frame(height: 190)
-            if metrics.blocks.hitsPerFocusHour.value == nil {
-                Text("Rates are unavailable because no focus time is recorded.").foregroundStyle(.secondary)
-            }
-            Text("Outside matching focus sessions · \(metrics.blocks.unassociatedHits) hits · \(metrics.blocks.unassociatedUnblocks) unblocks")
-                .font(Typo.meta).monospacedDigit()
-            Text("Top recorded sites and apps").font(Typo.heading)
-            ForEach(metrics.blocks.topTargets) { target in
-                Text("\(target.target ?? "Unavailable rule") · \(target.hitCount) hits · \(target.unblockCount) unblocks, including \(target.unassociatedHits) hits and \(target.unassociatedUnblocks) unblocks outside matching focus sessions")
-                    .font(Typo.meta).monospacedDigit().textSelection(.enabled)
-            }
+            .chartYAxisLabel("Per focus hour")
+            .frame(height: 140)
             if metrics.blocks.topTargets.isEmpty {
-                Text("No matching block events recorded.").foregroundStyle(.secondary)
-            }
-            Text("Only recorded events are shown. Unconfigured sites and apps, unsupported browsers, and other unrecorded activity are not measured.")
-                .font(Typo.meta).foregroundStyle(.secondary)
-            DisclosureGroup("Daily distraction values") {
-                ForEach(days) { day in
-                    Text("\(dayLabel(day)) · \(rateText(day.metrics.blocks.hitsPerFocusHour)) hits / hour · \(rateText(day.metrics.blocks.unblocksPerFocusHour)) unblocks / hour · \(day.metrics.blocks.associatedHits) linked hits · \(day.metrics.blocks.associatedUnblocks) linked unblocks · \(Format.duration(day.metrics.focusSeconds)) focus")
-                        .font(Typo.meta).monospacedDigit()
+                Text("No matching block events recorded.").font(Typo.meta).foregroundStyle(.secondary)
+            } else {
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    Text("Most blocked").font(Typo.heading)
+                    ForEach(metrics.blocks.topTargets) { target in
+                        Text("\(target.target ?? "Unavailable rule") · \(target.hitCount) hits · \(target.unblockCount) unblocks")
+                            .font(Typo.meta).monospacedDigit().textSelection(.enabled)
+                    }
                 }
+            }
+        } details: {
+            Text("Solid circles are linked block hits per focus hour; dashed squares are granted unblocks per focus hour. Linked events follow their focus session's start day. Unassociated events are separate and excluded from rates. Only recorded events are shown; unconfigured sites and apps, unsupported browsers and other unrecorded activity are not measured.")
+            Text("\(metrics.blocks.associatedHits) linked hits · \(metrics.blocks.associatedUnblocks) linked unblocks · \(Format.duration(metrics.focusSeconds)) focus denominator")
+            Text("Outside matching focus sessions · \(metrics.blocks.unassociatedHits) hits · \(metrics.blocks.unassociatedUnblocks) unblocks")
+            ForEach(metrics.blocks.topTargets) { target in
+                Text("\(target.target ?? "Unavailable rule") · including \(target.unassociatedHits) hits and \(target.unassociatedUnblocks) unblocks outside matching focus sessions")
+            }
+            ForEach(days) { day in
+                Text("\(dayLabel(day)) · \(rateText(day.metrics.blocks.hitsPerFocusHour)) hits / hour · \(rateText(day.metrics.blocks.unblocksPerFocusHour)) unblocks / hour · \(day.metrics.blocks.associatedHits) linked hits · \(day.metrics.blocks.associatedUnblocks) linked unblocks · \(Format.duration(day.metrics.focusSeconds)) focus")
             }
         }
     }
@@ -348,16 +355,30 @@ private func trendsDateAxis(_ dates: [DayKey]) -> some AxisContent {
     }
 }
 
-private struct TrendsCard<Content: View>: View {
+/// A chart with its title and one headline line. The method note and every plotted value
+/// sit behind Details, so the numbers stay checkable without crowding the chart.
+private struct TrendsCard<Content: View, Details: View>: View {
     let title: String
-    let note: String
+    let headline: String
     @ViewBuilder var content: Content
+    @ViewBuilder var details: Details
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.md) {
-            Text(title).font(Typo.focus).accessibilityAddTraits(.isHeader)
-            Text(note).font(Typo.meta).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: Space.xs) {
+                Text(title).font(Typo.focus).accessibilityAddTraits(.isHeader)
+                Text(headline).font(Typo.body).foregroundStyle(.secondary).monospacedDigit()
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             content
+            DisclosureGroup("Details") {
+                VStack(alignment: .leading, spacing: Space.xs) { details }
+                    .font(Typo.meta).foregroundStyle(.secondary).monospacedDigit().textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, Space.xs)
+            }
+            .font(Typo.meta)
+            .foregroundStyle(.secondary)
         }
         .padding(Space.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -387,4 +408,18 @@ private func streakText(_ streak: StatsStreak) -> String {
     if streak.isLowerBound && streak.days == 0 { return "Streak unavailable beyond this range" }
     let count = "\(streak.isLowerBound ? "At least " : "")\(streak.days) day\(streak.days == 1 ? "" : "s") in the streak"
     return count + (streak.endingOn.map { " ending \($0.rawValue)" } ?? "")
+}
+
+/// Tile value: a whole percent, or "Unavailable" when the denominator is zero (never 0%).
+private func shortPercent(_ ratio: StatsRatio) -> String {
+    ratio.percent.map { "\(Int($0.rounded()))%" } ?? "Unavailable"
+}
+
+private func streakValue(_ streak: StatsStreak) -> String {
+    if streak.isLowerBound && streak.days == 0 { return "Unavailable" }
+    return "\(streak.isLowerBound ? "≥" : "")\(streak.days)"
+}
+
+private func trendsShortDate(_ day: DayKey) -> String {
+    day.startDate.formatted(.dateTime.month(.abbreviated).day())
 }

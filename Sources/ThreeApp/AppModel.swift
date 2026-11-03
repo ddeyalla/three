@@ -27,7 +27,13 @@ final class AppModel {
     private(set) var tagSummaries: [TagSummary] = []
     private(set) var deferredReflections: [DeferredReflection] = []
     private(set) var dayCloses: [DayCloseSummary] = []
-    var reviewingDay: DayKey?
+    /// The day shown in the Review sheet's Day section. Setting a day opens the sheet there;
+    /// nil shows the most recent closed day.
+    var reviewingDay: DayKey? {
+        didSet { if reviewingDay != nil { reviewSection = .day } }
+    }
+    /// The Review sheet (Day · History · Trends) is open on this section; nil when closed.
+    var reviewSection: ReviewSection?
     var reviewingRecovery = false
     private(set) var reflectionPresentation: ReflectionPresentation?
     var destination: Destination = .today
@@ -92,8 +98,12 @@ final class AppModel {
         } catch {
             fatalError("Three can't open its database: \(error)")
         }
-        // THREE_OPEN=inbox|upcoming|done|tags opens on that view, for screenshots and scripts.
-        if let open = ProcessInfo.processInfo.environment["THREE_OPEN"], let d = Destination(rawValue: open) { destination = d }
+        // THREE_OPEN=inbox|upcoming|done|tags opens on that view, and day|history|trends opens
+        // the Review sheet there, for screenshots and scripts. Anything else stays on Today.
+        if let open = ProcessInfo.processInfo.environment["THREE_OPEN"] {
+            if let d = Destination(rawValue: open) { destination = d }
+            reviewSection = ReviewSection(rawValue: open)
+        }
         recovery.didChange = { [weak self] affectedIDs in
             guard let self else { return }
             var ids = affectedIDs
@@ -144,8 +154,18 @@ final class AppModel {
     var hasRecoveryNotice: Bool { !recovery.reviews.isEmpty || recovery.error != nil }
 
     func reviewRecovery() {
-        reviewingDay = nil
+        closeReview()
         reviewingRecovery = true
+    }
+
+    /// Opens the Review sheet on a section. The Day section starts on the most recent closed day.
+    func openReview(_ section: ReviewSection) {
+        reviewSection = section
+    }
+
+    func closeReview() {
+        reviewSection = nil
+        reviewingDay = nil
     }
 
     private func invalidateRecovery(_ affectedIDs: Set<String>) {
@@ -661,9 +681,26 @@ final class ReflectionPresentation {
     }
 }
 
-/// What the tasks pane shows.
+/// What the tasks pane shows. History and Trends live in the Review sheet, not here.
 enum Destination: String, Hashable, CaseIterable {
-    case today, inbox, upcoming, done, tags, history, trends
+    case today, inbox, upcoming, done, tags
 
     var title: String { rawValue.capitalized }
+
+    /// The order of the capsules and the Go menu (⌘1 to ⌘5).
+    static let ordered: [Destination] = [.today, .upcoming, .inbox, .done, .tags]
+}
+
+/// The sections of the Review sheet, in order (⌘6 to ⌘8 in the Go menu).
+enum ReviewSection: String, Hashable, CaseIterable, Identifiable {
+    case day, history, trends
+
+    var id: Self { self }
+    var title: String {
+        switch self {
+        case .day: "Day"
+        case .history: "History"
+        case .trends: "Trends"
+        }
+    }
 }

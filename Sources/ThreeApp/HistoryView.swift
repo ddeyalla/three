@@ -30,6 +30,8 @@ struct HistoryMonth {
     }
 }
 
+/// The History section of the Review sheet: the honest focus record, one month at a time.
+/// Days with recorded activity on the left, newest first; the chosen day's tasks and sessions on the right.
 struct HistoryView: View {
     @Environment(AppModel.self) private var model
     @State private var month = Date()
@@ -49,179 +51,177 @@ struct HistoryView: View {
         let refresh: Int
     }
 
-    private var monthKey: String { HistoryMonth(containing: month)?.key ?? "unavailable" }
+    private var range: HistoryMonth? { HistoryMonth(containing: month) }
+    private var monthKey: String { range?.key ?? "unavailable" }
+    private var isThisMonth: Bool { HistoryMonth(containing: Date())?.key == monthKey }
     private var readKey: ReadKey { ReadKey(month: monthKey, revision: model.snapshot.takenAt, refresh: refresh) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Space.lg) {
-            header
-            switch state {
-            case .loading:
-                ProgressView("Reading history…")
-                    .font(Typo.body)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            case .failed(let message):
-                VStack(spacing: Space.md) {
-                    Text("History couldn't be read").font(Typo.focus)
-                    Text(message).font(Typo.body).foregroundStyle(.secondary).textSelection(.enabled)
-                    Button("Try Again") { refresh += 1 }
-                        .buttonStyle(.glass)
+        HStack(alignment: .top, spacing: 0) {
+            VStack(alignment: .leading, spacing: Space.md) {
+                monthControls
+                switch state {
+                case .loading:
+                    ProgressView().controlSize(.small).frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .failed:
+                    Spacer()
+                case .loaded(let report):
+                    monthTotals(report.totals)
+                    dayList(report)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            case .loaded(let report):
-                HistorySummary(totals: report.totals)
-                Text("Planned time is derived from current task records. Dropped, carried, and deleted tasks are excluded.")
-                    .font(Typo.meta)
-                    .foregroundStyle(.secondary)
-                GeometryReader { geometry in
-                    if geometry.size.width >= 760 {
-                        HStack(alignment: .top, spacing: Space.xl) {
-                            dayList(report).frame(width: 280)
-                            Divider()
-                            detail(report).frame(maxWidth: .infinity, maxHeight: .infinity)
-                        }
-                    } else if selectedDay != nil {
-                        VStack(alignment: .leading, spacing: Space.md) {
-                            Button("Days in Month", systemImage: "chevron.left") { selectedDay = nil }
-                                .buttonStyle(.plain)
-                                .font(Typo.body)
-                            detail(report)
-                        }
-                    } else {
-                        dayList(report)
-                    }
-                }
-                Text("As of \(report.takenAt.formatted(date: .abbreviated, time: .shortened)) · \(report.timeZoneIdentifier)")
-                    .font(Typo.meta)
-                    .foregroundStyle(.secondary)
             }
+            .padding(Space.lg)
+            .frame(width: 270)
+            .frame(maxHeight: .infinity, alignment: .top)
+            Divider()
+            Group {
+                switch state {
+                case .loading: Color.clear
+                case .failed(let message):
+                    VStack(spacing: Space.md) {
+                        Text("History couldn't be read").font(Typo.focus)
+                        Text(message).font(Typo.body).foregroundStyle(.secondary).textSelection(.enabled)
+                        Button("Try Again") { refresh += 1 }
+                            .buttonStyle(.glass)
+                            .font(Typo.body)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .loaded(let report):
+                    detail(report)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding(Space.xl)
-        .background(.thinMaterial, in: .rect(cornerRadius: Radius.panel))
-        .padding(Space.sm)
         .task(id: readKey) { await load() }
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: Space.md) {
-            HStack {
-                Button("Today", systemImage: "chevron.left") { model.destination = .today }
-                    .font(Typo.body)
-                    .buttonStyle(.glass)
-                Text("History").font(Typo.title)
-                Spacer()
-                Button("Refresh", systemImage: "arrow.clockwise") { refresh += 1 }
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.glass)
-                    .help("Refresh recorded history and active-session totals")
-            }
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: Space.md) {
-                    monthControls
-                    Spacer()
-                    monthPicker
-                }
-                VStack(alignment: .leading, spacing: Space.sm) {
-                    monthControls
-                    monthPicker
-                }
-            }
-        }
-    }
-
     private var monthControls: some View {
-        HStack(spacing: Space.md) {
+        HStack(spacing: Space.sm) {
             Button("Previous Month", systemImage: "chevron.left") { moveMonth(-1) }
                 .labelStyle(.iconOnly)
-                .buttonStyle(.glass)
-            Text(HistoryMonth(containing: month)?.title ?? "Month unavailable")
+            Text(range?.title ?? "Month unavailable")
                 .font(Typo.heading)
-                .fixedSize()
+                .lineLimit(1)
                 .monospacedDigit()
             Button("Next Month", systemImage: "chevron.right") { moveMonth(1) }
                 .labelStyle(.iconOnly)
-                .buttonStyle(.glass)
+                .disabled(isThisMonth)
+            Spacer(minLength: 0)
+            if !isThisMonth {
+                Button("Now") { month = Date() }
+                    .font(Typo.body)
+                    .help("Back to this month")
+            }
         }
+        .buttonStyle(.glass)
     }
 
-    private var monthPicker: some View {
-        HStack(spacing: Space.md) {
-            DatePicker("Go to Month", selection: $month, displayedComponents: .date)
-                .environment(\.calendar, HistoryMonth(containing: month)?.calendar ?? Calendar(identifier: .gregorian))
-                .labelsHidden()
-                .accessibilityLabel("Go to month containing date")
-                .font(Typo.body)
-                .fixedSize()
-            Button("This Month") { month = Date() }
-                .buttonStyle(.glass)
-                .font(Typo.body)
+    private func monthTotals(_ totals: HistoryTotals) -> some View {
+        VStack(alignment: .leading, spacing: Space.xs) {
+            Text("\(Format.duration(totals.focusSeconds)) focused")
+                .font(Typo.title).monospacedDigit()
+            Text("\(totals.doneTaskCount) of \(totals.plannedTaskCount) tasks done · \(Format.duration(TimeInterval(totals.plannedSeconds))) planned · \(Format.duration(totals.breakSeconds)) breaks")
+                .font(Typo.meta).foregroundStyle(.secondary).monospacedDigit()
+                .fixedSize(horizontal: false, vertical: true)
         }
+        .accessibilityElement(children: .combine)
     }
 
     private func moveMonth(_ amount: Int) {
-        if let next = HistoryMonth(containing: month)?.shifted(by: amount) {
+        if let next = range?.shifted(by: amount) {
             month = next
         }
     }
 
-    private func dayList(_ report: HistoryReport) -> some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: Space.sm) {
-                ForEach(report.days) { day in
-                    Button {
-                        selectedDay = day.day
-                    } label: {
-                        VStack(alignment: .leading, spacing: Space.xs) {
-                            HStack {
-                                Text(historyDayTitle(day.day))
-                                    .font(Typo.heading)
-                                Spacer(minLength: Space.sm)
-                                Text(Format.duration(day.totals.focusSeconds))
-                                    .font(Typo.body)
-                                    .monospacedDigit()
+    /// Days with any recorded task or session, newest first. Empty days stay out of the list.
+    private func activeDays(_ report: HistoryReport) -> [HistoryDay] {
+        report.days.filter { !$0.sessions.isEmpty || !$0.tasks.isEmpty }.sorted { $0.day > $1.day }
+    }
+
+    @ViewBuilder private func dayList(_ report: HistoryReport) -> some View {
+        let days = activeDays(report)
+        if days.isEmpty {
+            Text(isThisMonth ? "Nothing recorded this month yet." : "Nothing recorded this month.")
+                .font(Typo.body)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, Space.sm)
+            Spacer()
+        } else {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: Space.xs) {
+                    ForEach(days) { day in
+                        Button {
+                            selectedDay = day.day
+                        } label: {
+                            VStack(alignment: .leading, spacing: Space.xs) {
+                                HStack {
+                                    Text(historyDayTitle(day.day)).font(Typo.body)
+                                    Spacer(minLength: Space.sm)
+                                    Text(Format.duration(day.totals.focusSeconds))
+                                        .font(Typo.body)
+                                        .foregroundStyle(.secondary)
+                                        .monospacedDigit()
+                                }
+                                HistoryCategoryStrip(categories: day.categories)
                             }
-                            HistoryCategoryStrip(categories: day.categories)
-                            Text(day.sessions.isEmpty && day.tasks.isEmpty ? "No recorded activity" :
-                                    "\(day.totals.doneTaskCount) of \(day.totals.plannedTaskCount) tasks done · \(Format.duration(TimeInterval(day.totals.plannedSeconds))) planned")
-                                .font(Typo.meta)
-                                .foregroundStyle(.secondary)
+                            .padding(.horizontal, Space.sm)
+                            .padding(.vertical, Space.sm)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(.rect)
+                            .background(shownDay(report) == day.day ? Theme.rowFill : .clear,
+                                        in: .rect(cornerRadius: Radius.block))
                         }
-                        .padding(Space.md)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(.rect)
-                        .background(selectedDay == day.day ? Theme.rowFill : .clear, in: .rect(cornerRadius: Radius.card))
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(shownDay(report) == day.day ? .isSelected : [])
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(selectedDay == day.day ? .isSelected : [])
                 }
             }
         }
     }
 
+    /// The chosen day, or the most recent day with activity so the detail is never blank.
+    private func shownDay(_ report: HistoryReport) -> DayKey? {
+        let days = activeDays(report)
+        if let selectedDay, days.contains(where: { $0.day == selectedDay }) { return selectedDay }
+        return days.first?.day
+    }
+
     @ViewBuilder private func detail(_ report: HistoryReport) -> some View {
-        if let day = report.days.first(where: { $0.day == selectedDay }) {
+        if let day = report.days.first(where: { $0.day == shownDay(report) }) {
             ScrollView {
-                HistoryDayDetail(day: day)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: Space.xl) {
+                    HistoryDayDetail(day: day, closed: model.dayCloses.contains { $0.day == day.day },
+                                     openDayReview: { model.reviewingDay = day.day })
+                    Text("As of \(report.takenAt.formatted(date: .abbreviated, time: .shortened)) · \(report.timeZoneIdentifier). Planned time is derived from current task records; dropped, carried and deleted tasks are excluded.")
+                        .font(Typo.meta)
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(Space.xl)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         } else {
-            Text("Choose a day to see tasks, sessions, and reflections.")
-                .font(Typo.body)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            VStack(spacing: Space.sm) {
+                Image(systemName: "clock.arrow.circlepath").font(Typo.title).foregroundStyle(.tertiary)
+                Text("Focus sessions and planned tasks show up here, day by day.")
+                    .font(Typo.body).foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
     private func load() async {
         guard !Task.isCancelled else { return }
         let store = model.store
-        guard let range = HistoryMonth(containing: month) else {
+        guard let range else {
             state = .failed("This month is unavailable.")
             return
         }
         let from = range.from, through = range.through, calendar = range.calendar
         if selectedDay.map({ String($0.rawValue.prefix(7)) != monthKey }) == true { selectedDay = nil }
-        state = .loading
+        // Refresh in place; only a new month (or a failure) shows the spinner.
+        if case .loaded(let shown) = state, shown.from == from {} else { state = .loading }
         do {
             let report = try await Task.detached(priority: .userInitiated) {
                 try store.historyReport(from: from, through: through, calendar: calendar)
@@ -283,24 +283,34 @@ private struct HistoryCategoryStrip: View {
 
 private struct HistoryDayDetail: View {
     let day: HistoryDay
+    let closed: Bool
+    let openDayReview: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.xl) {
             VStack(alignment: .leading, spacing: Space.sm) {
-                Text(historyDayTitle(day.day, full: true))
-                    .font(Typo.focus)
+                HStack {
+                    Text(historyDayTitle(day.day, full: true))
+                        .font(Typo.focus)
+                    Spacer()
+                    if closed {
+                        Button("Day Review", systemImage: "arrow.up.forward", action: openDayReview)
+                            .buttonStyle(.glass)
+                            .font(Typo.body)
+                            .help("Open this day's close summary and carry offers")
+                    }
+                }
                 if let plan = day.plan {
                     Text("\(plan.status.rawValue.capitalized) plan\(plan.deletedAt == nil ? "" : " · Deleted")")
                         .font(Typo.meta).foregroundStyle(.secondary)
                 }
                 HistorySummary(totals: day.totals)
                 HistoryCategoryStrip(categories: day.categories)
-                ForEach(day.categories) { category in
-                    Text("\(category.category?.name ?? "Unknown category") · \(Format.duration(category.focusSeconds)) focused")
-                        .font(Typo.meta)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
+                Text(day.categories.map { "\($0.category?.name ?? "Unknown category") \(Format.duration($0.focusSeconds))" }
+                        .joined(separator: " · "))
+                    .font(Typo.meta)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
             }
             if day.tasks.isEmpty && day.sessions.isEmpty {
                 Text("No tasks or sessions were recorded for this day.")
@@ -417,7 +427,7 @@ private struct HistorySessionDetail: View {
     }
 }
 
-private func historyDayTitle(_ day: DayKey, full: Bool = false) -> String {
+func historyDayTitle(_ day: DayKey, full: Bool = false) -> String {
     let formatter = DateFormatter()
     formatter.calendar = Calendar(identifier: .gregorian)
     formatter.locale = Locale(identifier: "en_US_POSIX")

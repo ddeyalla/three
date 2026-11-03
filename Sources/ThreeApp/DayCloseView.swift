@@ -1,24 +1,83 @@
 import SwiftUI
 import ThreeCore
 
-struct DayReviewSheet: View {
+/// One sheet for looking back: the day-close review, the month-by-month history and the
+/// four-week trends. Opened from Review in the tasks pane, the Go menu (⌘6 to ⌘8), and any
+/// "Review day" button. Escape or Done closes it.
+struct ReviewSheet: View {
     @Environment(AppModel.self) private var model
+
+    private var section: ReviewSection { model.reviewSection ?? .day }
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                DatePicker("Review date", selection: Binding(
-                    get: { (model.reviewingDay ?? model.snapshot.day).startDate },
-                    set: { model.reviewingDay = DayKey($0) }), displayedComponents: .date)
+            HStack(spacing: Space.md) {
+                ChoiceCapsules(selection: Binding(get: { section }, set: { model.openReview($0) }),
+                               options: ReviewSection.allCases.map { .init($0, $0.title) })
                 Spacer()
-                Button("Done") { model.reviewingDay = nil }
+                Button("Done") { model.closeReview() }
+                    .buttonStyle(.glass)
+                    .font(Typo.body)
                     .keyboardShortcut(.cancelAction)
             }
-            .padding(Space.lg)
-            DayCloseView(day: model.reviewingDay ?? model.snapshot.day)
-                .id(model.reviewingDay)
+            .padding(.horizontal, Space.xl)
+            .padding(.top, Space.lg)
+            .padding(.bottom, Space.md)
+            Divider()
+            // No transition: sections switch from the keyboard (⌘6 to ⌘8) and should feel instant.
+            Group {
+                switch section {
+                case .day: DayReview()
+                case .history: HistoryView()
+                case .trends: TrendsView()
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: 560, height: 600)
+        .frame(minWidth: 720, idealWidth: 780, maxWidth: 1200, minHeight: 540, idealHeight: 640, maxHeight: 1000)
+        .presentationSizing(.fitted)
+    }
+}
+
+/// Steps between closed days. Days come from `recentDayCloses`, newest first.
+enum ReviewDays {
+    static func previous(before day: DayKey, closed: [DayKey]) -> DayKey? { closed.filter { $0 < day }.max() }
+    static func next(after day: DayKey, closed: [DayKey]) -> DayKey? { closed.filter { $0 > day }.min() }
+}
+
+/// The Day section: one closed day at a time, newest first, with arrows to step through them.
+private struct DayReview: View {
+    @Environment(AppModel.self) private var model
+
+    private var closed: [DayKey] { model.dayCloses.map(\.day) }
+    private var day: DayKey { model.reviewingDay ?? closed.first ?? model.snapshot.day }
+
+    var body: some View {
+        let previous = ReviewDays.previous(before: day, closed: closed)
+        let next = ReviewDays.next(after: day, closed: closed)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: Space.sm) {
+                Button("Previous Closed Day", systemImage: "chevron.left") { model.reviewingDay = previous }
+                    .labelStyle(.iconOnly)
+                    .disabled(previous == nil)
+                Text(historyDayTitle(day, full: true))
+                    .font(Typo.focus)
+                    .monospacedDigit()
+                Button("Next Closed Day", systemImage: "chevron.right") { model.reviewingDay = next }
+                    .labelStyle(.iconOnly)
+                    .disabled(next == nil)
+                Spacer()
+                if let latest = closed.first, latest != day {
+                    Button("Latest") { model.reviewingDay = latest }
+                        .font(Typo.body)
+                }
+            }
+            .buttonStyle(.glass)
+            .padding(.horizontal, Space.xl)
+            .padding(.top, Space.lg)
+            DayCloseView(day: day)
+                .id(day)
+        }
     }
 }
 
@@ -34,22 +93,21 @@ struct DayCloseView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Space.xl) {
-                VStack(alignment: .leading, spacing: Space.xs) {
-                    Text("Day review").font(Typo.title)
-                    Text(day.rawValue).font(Typo.body).foregroundStyle(.secondary)
-                }
                 if let error = actionError ?? loadError {
-                    Label(error, systemImage: "exclamationmark.circle")
-                        .font(Typo.body)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Button("Refresh") { actionError = nil; reload() }
-                        .buttonStyle(.glass).font(Typo.body)
+                    HStack(spacing: Space.md) {
+                        Label(error, systemImage: "exclamationmark.circle")
+                            .font(Typo.body)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer()
+                        Button("Refresh") { actionError = nil; reload() }
+                            .buttonStyle(.glass).font(Typo.body)
+                    }
                 }
                 if let review {
                     summary(review.summary)
                     if review.offers.isEmpty {
-                        Text("No unfinished work waiting for a decision.")
+                        Label("No unfinished work waiting for a decision.", systemImage: "checkmark.circle")
                             .font(Typo.body).foregroundStyle(.secondary)
                     } else {
                         VStack(alignment: .leading, spacing: Space.sm) {
@@ -57,27 +115,38 @@ struct DayCloseView: View {
                             Text(day < .today
                                  ? "Choose what belongs today. Nothing is added automatically."
                                  : "Review this work on a later day to accept it. You can dismiss it now.")
-                                .font(Typo.body).foregroundStyle(.secondary)
+                                .font(Typo.meta).foregroundStyle(.secondary)
                             ForEach(review.offers) { row in offer(row) }
                         }
                     }
                     if !review.decisions.isEmpty {
-                        VStack(alignment: .leading, spacing: Space.sm) {
+                        VStack(alignment: .leading, spacing: Space.xs) {
                             Text("Reviewed").font(Typo.heading)
                             ForEach(review.decisions, id: \.sourceTaskId) { decision in
                                 let title = review.summary.tasks.first { $0.id == decision.sourceTaskId }?.title ?? "Task"
-                                Text(decision.decision == .accepted
-                                     ? "\(title) · Accepted for \(decision.destinationDay?.rawValue ?? "a later day")"
-                                     : "\(title) · Dismissed")
+                                Label(decision.decision == .accepted
+                                      ? "\(title) · Accepted for \(decision.destinationDay?.rawValue ?? "a later day")"
+                                      : "\(title) · Dismissed",
+                                      systemImage: decision.decision == .accepted ? "arrow.turn.down.right" : "xmark")
                                     .font(Typo.body).foregroundStyle(.secondary)
                             }
                         }
                     }
                 } else if status == nil, loadError == nil {
-                    ProgressView("Loading day review").font(Typo.body)
+                    ProgressView().controlSize(.small)
+                        .frame(maxWidth: .infinity, minHeight: 200)
                 } else if loadError == nil {
-                    Text(statusText).font(Typo.body).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    VStack(spacing: Space.sm) {
+                        Image(systemName: "moon.zzz").font(Typo.title).foregroundStyle(.tertiary)
+                        Text(statusText).font(Typo.body).foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if model.dayCloses.isEmpty {
+                            Text("Each committed day is summarised here once it closes.")
+                                .font(Typo.meta).foregroundStyle(.tertiary)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 240)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -89,44 +158,61 @@ struct DayCloseView: View {
     }
 
     private func summary(_ summary: DayCloseSummary) -> some View {
-        VStack(alignment: .leading, spacing: Space.sm) {
-            Text("\(Format.duration(summary.focusedSeconds)) focused").font(Typo.focus).monospacedDigit()
-            Text("\(summary.doneCount) done · \(summary.tasks.filter { $0.status.isOpen }.count) unfinished")
-                .font(Typo.body).monospacedDigit()
-            Text("\(summary.plannedMinutes)m planned · \(summary.commitment == nil ? "Derived from recorded tasks" : "At commitment")")
-                .font(Typo.body).foregroundStyle(.secondary).monospacedDigit()
-            Text(summary.skippedBreakCount.map { "\($0) skipped breaks" } ?? "Skipped breaks unavailable")
-                .font(Typo.body).foregroundStyle(.secondary).monospacedDigit()
-            Text("Saved when the day closed. Later carry decisions keep this summary.")
+        let unfinished = summary.tasks.filter { $0.status.isOpen }.count
+        return VStack(alignment: .leading, spacing: Space.md) {
+            HStack(alignment: .firstTextBaseline, spacing: Space.xxl) {
+                stat(Format.duration(summary.focusedSeconds), "focused")
+                stat("\(summary.doneCount)", "done")
+                stat("\(unfinished)", "unfinished")
+                stat("\(summary.plannedMinutes)m", "planned")
+                stat(summary.skippedBreakCount.map { "\($0)" } ?? "—",
+                     summary.skippedBreakCount == nil ? "skipped breaks unavailable" : "skipped breaks")
+            }
+            Text("Planned time \(summary.commitment == nil ? "derived from recorded tasks" : "as committed"). Saved when the day closed; later carry decisions keep this summary.")
                 .font(Typo.meta).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
+        .padding(Space.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassEffect(.regular, in: .rect(cornerRadius: Radius.card))
+    }
+
+    private func stat(_ value: String, _ label: String) -> some View {
+        VStack(alignment: .leading, spacing: Space.xs) {
+            Text(value).font(Typo.title).monospacedDigit()
+            Text(label).font(Typo.meta).foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
     }
 
     private func offer(_ row: TaskRow) -> some View {
-        VStack(alignment: .leading, spacing: Space.sm) {
-            Text(row.task.title).font(Typo.body).fixedSize(horizontal: false, vertical: true)
-            Text("\(row.category.name) · \(row.task.blockMinutes)m\(row.task.strict ? " · Strict" : "")")
-                .font(Typo.meta).foregroundStyle(.secondary)
-            if !row.task.notes.isEmpty {
-                Text(row.task.notes).font(Typo.body).foregroundStyle(.secondary).lineLimit(3)
+        HStack(alignment: .top, spacing: Space.md) {
+            VStack(alignment: .leading, spacing: Space.xs) {
+                Text(row.task.title).font(Typo.body).fixedSize(horizontal: false, vertical: true)
+                Text("\(row.category.name) · \(row.task.blockMinutes)m\(row.task.strict ? " · Strict" : "")")
+                    .font(Typo.meta).foregroundStyle(.secondary)
+                if !row.task.notes.isEmpty {
+                    Text(row.task.notes).font(Typo.meta).foregroundStyle(.secondary).lineLimit(2)
+                }
             }
+            Spacer(minLength: Space.md)
             HStack(spacing: Space.sm) {
+                Button("Dismiss") { decide { _ = try model.store.dismissCarry(row.id) } }
+                    .help("Leave this work on its original day without adding it to another plan.")
+                    .accessibilityLabel("Dismiss unfinished work \(row.task.title)")
                 Button("Accept today") {
                     decide { _ = try model.store.carryTask(row.id, to: .today) }
                 }
                 .disabled(day >= .today)
                 .help(day >= .today ? "You can accept this work on a later day." : "Copy this work into today's plan.")
                 .accessibilityLabel("Accept \(row.task.title) for today")
-                Button("Dismiss") { decide { _ = try model.store.dismissCarry(row.id) } }
-                    .help("Leave this work on its original day without adding it to another plan.")
-                    .accessibilityLabel("Dismiss unfinished work \(row.task.title)")
             }
             .font(Typo.body)
             .buttonStyle(.glass)
         }
         .padding(Space.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(in: .rect(cornerRadius: Radius.card))
+        .glassEffect(.regular, in: .rect(cornerRadius: Radius.card))
     }
 
     private var statusText: String {

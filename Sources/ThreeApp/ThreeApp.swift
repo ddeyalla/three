@@ -81,15 +81,16 @@ struct ThreeApp: App {
                 Divider()
             }
             CommandMenu("Go") {
-                Button("Today") { model.destination = .today }.keyboardShortcut("1")
-                Button("Inbox") { model.destination = .inbox }.keyboardShortcut("2")
-                Button("Upcoming") { model.destination = .upcoming }.keyboardShortcut("3")
+                ForEach(Array(Destination.ordered.enumerated()), id: \.element) { index, destination in
+                    if index == 3 { Divider() }
+                    Button(destination.title) { model.destination = destination }
+                        .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")))
+                }
                 Divider()
-                Button("Done") { model.destination = .done }.keyboardShortcut("4")
-                Button("Tags") { model.destination = .tags }.keyboardShortcut("5")
-                Button("History") { model.destination = .history }.keyboardShortcut("6")
-                Button("Trends") { model.destination = .trends }.keyboardShortcut("7")
-                Button("Day Review") { model.reviewingDay = model.dayCloses.first?.day ?? model.snapshot.day }
+                ForEach(Array(ReviewSection.allCases.enumerated()), id: \.element) { index, section in
+                    Button(section == .day ? "Day Review" : section.title) { model.openReview(section) }
+                        .keyboardShortcut(KeyEquivalent(Character("\(index + 6)")))
+                }
                 Button("Review Interrupted Focus") { model.reviewRecovery() }
                     .disabled(!model.hasRecoveryNotice)
                 Divider()
