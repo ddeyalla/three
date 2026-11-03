@@ -86,7 +86,11 @@ enum NotchGeometry {
 
     /// Whether the surface should be expanded for a pointer at `mouse` (global coordinates).
     /// Expands on entering the collapsed shape; stays open until the pointer leaves the expanded one.
-    static func wantsExpanded(mouse: CGPoint, expanded: Bool, placement: NotchPlacement) -> Bool {
+    /// `pinned` (opened from the menu or Settings, pointer elsewhere) stays open until the pointer has
+    /// visited the surface once, or the user clicks elsewhere or presses Esc.
+    static func wantsExpanded(mouse: CGPoint, expanded: Bool, pinned: Bool = false,
+                              placement: NotchPlacement) -> Bool {
+        if expanded, pinned { return true }
         // The top screen row reports y == maxY, so grow the rects upward by a point.
         let rect = expanded ? placement.expandedRect.insetBy(dx: -Space.xs, dy: 0)
             : placement.collapsedRect
@@ -167,6 +171,7 @@ final class NotchController {
     @ObservationIgnored private var presentation = NotchPresentation()
     @ObservationIgnored private var observers: [(NotificationCenter, NSObjectProtocol)] = []
     @ObservationIgnored private var mouseMonitors: [Any] = []
+    @ObservationIgnored private var pinned = false
     @ObservationIgnored private var observing = false
     @ObservationIgnored private var generation = 0
 
@@ -226,6 +231,7 @@ final class NotchController {
         reconcile()
         guard isVisible else { return }
         setExpanded(true)
+        pinned = true
         panel?.makeKeyAndOrderFront(nil)
     }
 
@@ -309,18 +315,21 @@ final class NotchController {
 
     private func track(_ mouse: CGPoint) {
         guard isVisible, let placement else { return }
-        let wanted = NotchGeometry.wantsExpanded(mouse: mouse, expanded: surface.isExpanded, placement: placement)
+        if pinned, NotchGeometry.wantsExpanded(mouse: mouse, expanded: true, placement: placement) { pinned = false }
+        let wanted = NotchGeometry.wantsExpanded(mouse: mouse, expanded: surface.isExpanded, pinned: pinned,
+                                                 placement: placement)
         if wanted != surface.isExpanded { setExpanded(wanted) }
     }
 
     private func setExpanded(_ expanded: Bool, animated: Bool = true) {
         // Collapsed, the transparent panel must not swallow clicks meant for the menu bar or apps below.
         panel?.ignoresMouseEvents = !expanded
+        if !expanded { pinned = false }
         guard surface.isExpanded != expanded else { return }
         if !expanded, panel?.isKeyWindow == true { panel?.resignKey() }
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         let animation: Animation? = !animated ? nil
-            : reduceMotion ? .easeOut(duration: 0.15)
+            : reduceMotion ? nil
             : expanded ? .spring(duration: 0.34, bounce: 0.18) : .spring(duration: 0.24, bounce: 0)
         withAnimation(animation) { surface.isExpanded = expanded }
     }

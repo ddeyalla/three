@@ -83,6 +83,11 @@ struct NotchGeometryTests {
         #expect(wants(560, 870, expanded: true))
         #expect(!wants(756, 840, expanded: true))
         #expect(!wants(500, 900, expanded: true))
+        // Opened from the menu or Settings: stays open while the pointer is still elsewhere.
+        let menu = CGPoint(x: 40, y: 970)
+        #expect(NotchGeometry.wantsExpanded(mouse: menu, expanded: true, pinned: true, placement: placement))
+        #expect(!NotchGeometry.wantsExpanded(mouse: menu, expanded: false, pinned: true, placement: placement))
+        #expect(!NotchGeometry.wantsExpanded(mouse: menu, expanded: true, pinned: false, placement: placement))
     }
 
     @Test func supportedBuiltInWinsOverExternalAndDisconnectFallsBack() throws {
