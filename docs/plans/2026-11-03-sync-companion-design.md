@@ -35,6 +35,8 @@ The older PRODUCT claim that every row has UUID/update/delete metadata and needs
 
 The non-calendar run adds lifecycle data after this baseline. Before discovery is accepted, append the integrated day-close/recovery tables and fields to this audit. Their Store-owned snapshots and decisions must be classified explicitly. This is an open review gate until those units integrate.
 
+`scripts/verification/audit-schema.py` captures the packaged helper's actual schema in a new disposable database. It records columns, keys, index definitions, triggers, views, migrations, and the helper hash. The caller supplies the verified build's source commit. The tool never opens an existing application database and refuses to replace an existing receipt. Its v11 rehearsal passed integrity and foreign-key checks and found four added tables, `planCommitment`, `dayClose`, `breakDecision`, and `carryDecision`, plus `task.carriedFromTaskId`. The final committed audit must also include v12 recovery.
+
 ## Record identity and transport
 
 Use one private CloudKit custom zone per account and a versioned record format. A record name combines entity kind with the existing stable id. Membership uses its two stable IDs. Never regenerate IDs on retry or derive task identity from title. Keep CloudKit system fields/change tags separately from user data. Each record includes schema version, owning device id, monotonically increasing device revision, and an optional tombstone. Wall-clock updatedAt is display information, not conflict ordering.

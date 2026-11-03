@@ -132,3 +132,11 @@ PY
 ```
 
 Recovery reconciliation, physical sleep and lock, real login startup, actual notification delivery, macOS 26 acceptance, and independent review remain open until their owners record separate evidence.
+
+## Coordinator integration
+
+Feature commit `f05eda67` is integrated as `76bb3b8`. Imported dependency commits were not duplicated. The coordinator inspected the shared lifecycle, shortcut, status item, notification routing, and Trends composition changes.
+
+PASS `./scripts/swift.sh test --filter ThreeAppTests`, 54 tests. PASS local bundle, strict signature verification, design lint, and whitespace checks. PASS packaged `scripts/test-mcp.py`, including 31 tools and cross-process mutations, and `scripts/test-stats.py`, including fixed numerators, denominators, History parity, and read-only checks. Logs are `405-setup-integrated-app-tests.log`, `405-setup-integrated-bundle.log`, `405-setup-integrated-mcp.log`, and `405-setup-integrated-stats.log` under `build/verification/non-calendar`.
+
+Trends routing is now implemented. These checks do not prove its native chart presentation, global shortcut delivery, login approval, or notification delivery. The current Terra menu diagnosis remains frozen before this setup unit. A subsequent native pass and independent review must use the integrated candidate after recovery composition.
