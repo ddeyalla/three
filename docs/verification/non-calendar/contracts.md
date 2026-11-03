@@ -37,3 +37,11 @@ Commit and normally push verified units. Only the coordinator updates Linear. BP
 ## Throughput checkpoint
 
 Seven scoped tickets include six implementation units and one discovery document. History precedes trends. Recovery and day-close share accounting. Three implementation slots and one desktop owner bound contention. The first integration checkpoint is the smallest verified strict action, followed by history and day-close. Hardware gaps never block an unrelated ready unit.
+
+## BPRO-405 ownership grant after v11 integration
+
+The recovery worker receives exclusive temporary ownership of `Store.swift`, session accounting fields in `Models.swift`, timer hooks in `Operations.swift`, and `DayClose.swift` defaults. It owns new recovery Core/controller/review modules and recovery tests. It reserves only `v12-sleep-recovery`. Every caller must receive the durable unresolved-gap guard by default in the Store; omission by a CLI or view must not permit premature close. The worker does not edit AppModel, ThreeApp, Settings composition, CLI/MCP, History or Stats.
+
+A separate native-setup worker receives exclusive temporary ownership of AppModel.swift, ThreeApp.swift, SettingsView.swift and MenuBarView.swift for hotkey, onboarding, login and notification integration. It owns new setup/platform modules and focused tests. It preserves integrated day-close, notch and history hooks. It does not edit Core, recovery modules, history/stats, or CLI/MCP. No other writer edits either granted area until return. The coordinator will integrate the recovery controller hooks after both return.
+
+The sole Terra desktop owner verifies the frozen integrated candidate independently of both implementation workers. A fresh Sol reviewer checks day-close, notch and the two History date fixes. All implementation and review workers use Sol 6.1 High with no nested delegates.
