@@ -171,7 +171,9 @@ private struct ConnectSettings: View {
     }
 
     private var codexConfig: String {
-        let command = String(decoding: try! JSONEncoder().encode(Self.helperPath), as: UTF8.self)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .withoutEscapingSlashes
+        let command = String(decoding: try! encoder.encode(Self.helperPath), as: UTF8.self)
         return "[mcp_servers.three]\ncommand = \(command)\nargs = [\"mcp\"]"
     }
 
