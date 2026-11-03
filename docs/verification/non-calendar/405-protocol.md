@@ -69,3 +69,19 @@ The parent reported a separate stale-reflection guard finding and owns its fix i
 Native UI, physical sleep/lock, integrated notification reconciliation, and macOS 26 acceptance are COULD NOT RUN in this headless assignment. Parent-owned independent review remains outstanding. These tests do not close BPRO-405. No app composition, other Core logic, Store schema, History/Stats implementation, calendar work, BPRO-396 status, production/manual-test data, real sync, release/version metadata, Linear state, or provider settings changed.
 
 Implementation and verification ran in-thread on Codex gpt-6.1-sol High. No nested delegates ran. The parent retains playbook, review, integration, and Linear ownership.
+
+## Coordinator integration
+
+The coordinator imported this unit as `75fc9aa`, on top of the shared reflection-identity correction `81be12e`. No additional recovery calculations or migration changes were needed.
+
+| Check | Result | Coordinator evidence under `build/verification/non-calendar/` |
+| --- | --- | --- |
+| `./scripts/swift.sh test --filter 'Recovery\|Reflection\|reflection'` | PASS, 34 Core and 9 App tests | `405-protocol-integrated-tests.log` |
+| `./scripts/bundle.sh` and `codesign --verify --deep --strict build/Three.app` | PASS, debug packaged build | `405-protocol-integrated-bundle.log` |
+| `python3 scripts/test-recovery.py --binary build/Three.app/Contents/Helpers/three` | PASS, explicit Keep 1500 seconds, Trim 600 seconds, stable first decision across concurrent contradictory retries | `405-protocol-integrated-recovery.log` |
+| `python3 scripts/test-mcp.py --binary build/Three.app/Contents/Helpers/three` | PASS, 33 manual tools and existing protocol regression checks | `405-protocol-integrated-mcp.log` |
+| `python3 scripts/test-scheduled-planning.py --app build/Three.app` | PASS, exact eight scheduled tools, 21 refused mutations and four refused additional reads | `405-protocol-integrated-scheduled.log` |
+
+The original signed `7e0e382` bundle was preserved with `ditto` at `build/verification/non-calendar/frozen-7e0e382/Three.app` before rebuilding. Its app/helper hashes and full signature still match the schema and native retry receipts. The fresh discovery reviewer received this stable path.
+
+Final lifecycle composition, independent protocol review, integrated release checks, and native acceptance remain open. No app was launched during these coordinator checks.
