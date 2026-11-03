@@ -8,6 +8,7 @@ struct ThreeApp: App {
     @NSApplicationDelegateAdaptor private var delegate: AppDelegate
     @State private var model = AppModel()
     @State private var workspace = WorkspaceLayout()
+    @State private var notch: NotchController?
     @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {
@@ -15,7 +16,7 @@ struct ThreeApp: App {
             RootView()
                 .environment(model)
                 .environment(workspace)
-                .onAppear { delegate.planning = model.planning }
+                .onAppear(perform: startControllers)
         }
         .defaultSize(width: 1240, height: 800)
         .windowStyle(.hiddenTitleBar)
@@ -47,6 +48,10 @@ struct ThreeApp: App {
                     .disabled(model.running?.kind != .focus)
                 Divider()
                 UnblockMenu(model: model)
+                Divider()
+                Button("Show Focus Controls") { notch?.showControls() }
+                    .disabled(notch?.preference.isEnabled != true || notch?.placement == nil
+                              || model.running?.kind != .focus || model.reflectionPresentation != nil)
             }
             CommandGroup(before: .toolbar) {
                 Menu("Arrange Panes") {
@@ -69,6 +74,7 @@ struct ThreeApp: App {
                 Button("Done") { model.destination = .done }.keyboardShortcut("4")
                 Button("Tags") { model.destination = .tags }.keyboardShortcut("5")
                 Button("History") { model.destination = .history }.keyboardShortcut("6")
+                Button("Day Review") { model.reviewingDay = model.dayCloses.first?.day ?? model.snapshot.day }
                 Divider()
                 Button("Review Saved Reflection") {
                     if let saved = model.deferredReflections.first { model.reviewReflection(saved) }
@@ -79,7 +85,7 @@ struct ThreeApp: App {
         }
 
         Settings {
-            SettingsView()
+            SettingsView(notch: notch)
                 .environment(model)
         }
 
@@ -87,15 +93,31 @@ struct ThreeApp: App {
             MenuBarView().environment(model)
         } label: {
             MenuBarLabel().environment(model)
+                .onAppear(perform: startControllers)
         }
         .menuBarExtraStyle(.window)
+    }
+
+    private func startControllers() {
+        delegate.planning = model.planning
+        guard notch == nil else { return }
+        let open = openWindow
+        let controller = NotchController(model: model, openMain: {
+            open(id: "main")
+            NSApp.activate()
+        })
+        notch = controller
+        delegate.notch = controller
+        controller.start()
     }
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     var planning: PlanningController?
+    var notch: NotchController?
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        notch?.stop()
         guard let planning else { return .terminateNow }
         Task {
             await planning.shutdown()

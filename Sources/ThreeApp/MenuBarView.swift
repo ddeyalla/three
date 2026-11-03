@@ -99,7 +99,14 @@ struct MenuBarView: View {
                         Button("End break") { model.stop() }.buttonStyle(.glass)
                     }
                 }
-            } else if let next = model.snapshot.nextTask {
+            } else if model.isTodayClosed {
+                Button("Review closed day") {
+                    model.reviewingDay = model.snapshot.day
+                    openWindow(id: "main")
+                    NSApp.activate()
+                }
+                .buttonStyle(.glass)
+            } else if let next = model.selectedTask {
                 Button { model.start(next) } label: {
                     Label("Start \(next.task.title)", systemImage: "play.fill").lineLimit(1)
                 }

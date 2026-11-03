@@ -516,7 +516,9 @@ struct TaskMenuItems: View {
     let row: TaskRow
 
     var body: some View {
-        if row.task.status.isOpen, model.day(of: row.id) == model.snapshot.day {
+        if model.isTodayClosed, model.day(of: row.id) == model.snapshot.day {
+            Button("Review closed day") { model.reviewingDay = model.snapshot.day }
+        } else if row.task.status.isOpen, model.day(of: row.id) == model.snapshot.day {
             Button("Start now") { model.start(row) }.disabled(model.running?.kind == .focus)
         }
         if row.task.status.isOpen || row.task.status == .dropped {

@@ -8,11 +8,12 @@ enum SettingsTab: Hashable {
 
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
+    var notch: NotchController?
 
     var body: some View {
         @Bindable var model = model
         TabView(selection: $model.settingsTab) {
-            Tab("Timer", systemImage: "timer", value: .timer) { TimerSettings() }
+            Tab("Timer", systemImage: "timer", value: .timer) { TimerSettings(notch: notch) }
             Tab("Planning", systemImage: "calendar", value: .planning) { PlanningSettingsView() }
             Tab("Categories", systemImage: "circle.grid.2x2", value: .categories) { CategorySettings() }
             Tab("Blocking", systemImage: "hand.raised", value: .blocking) { BlockingSettings() }
@@ -28,6 +29,8 @@ struct SettingsView: View {
 private struct TimerSettings: View {
     @Environment(AppModel.self) private var model
     @AppStorage("chime") private var chime = true
+    @State private var closeTime = Date()
+    var notch: NotchController?
 
     var body: some View {
         let p = model.snapshot.preferences
@@ -49,8 +52,28 @@ private struct TimerSettings: View {
             Section {
                 Toggle("Chime when a block ends", isOn: $chime)
             }
+            Section {
+                DatePicker("Close day at", selection: Binding(get: { closeTime }, set: { date in
+                        closeTime = date
+                        var settings = DayCloseSettings()
+                        let parts = Calendar.current.dateComponents([.hour, .minute], from: date)
+                        settings.closeMinute = (parts.hour ?? 22) * 60 + (parts.minute ?? 0)
+                        model.perform { try model.store.setDayCloseSettings(settings) }
+                    }), displayedComponents: .hourAndMinute)
+            } footer: {
+                Text("Committed days close quietly when finished or at this local time. Active focus and pending reviews wait. Unfinished work stays for you to accept or dismiss.")
+                    .foregroundStyle(.secondary)
+            }
+            ErrorNote()
+            if let notch { NotchSettingsSection(controller: notch) }
         }
         .formStyle(.grouped)
+        .onAppear {
+            do {
+                let minute = try model.store.dayCloseSettings().closeMinute
+                closeTime = Calendar.current.date(bySettingHour: minute / 60, minute: minute % 60, second: 0, of: Date()) ?? Date()
+            } catch { model.error = error.localizedDescription }
+        }
     }
 
     private func stepper(_ title: String, _ value: Int, _ range: ClosedRange<Int>, step: Int,

@@ -247,7 +247,7 @@ struct ReflectionView: View {
                 .foregroundStyle(.secondary)
                 .help("Keep this block going")
                 Spacer(minLength: Space.sm)
-                Button("Skip break") { finish(then: next.map { .task($0.id) } ?? .stop) }
+                Button("Skip break") { finish(then: next.map { .task($0.id) } ?? .stop, breakDecision: .skipped) }
                     .buttonStyle(.glass)
                     .help(next.map { "Start \($0.task.title) now" } ?? "End this block")
                 Button("Start \(breakMinutes)m break") { finish(then: .break) }
@@ -257,10 +257,10 @@ struct ReflectionView: View {
         }
     }
 
-    private func finish(then continuation: FocusContinuation) {
+    private func finish(then continuation: FocusContinuation, breakDecision: BreakDecision? = nil) {
         if model.perform({
             try model.store.finishFocus(outcome: outcome, rating: rating, note: note, markTaskDone: outcome == .done,
-                                        expectedSession: presentation.session, continuation: continuation)
+                                        expectedSession: presentation.session, continuation: continuation, breakDecision: breakDecision)
         }) { model.hideReflection() }
     }
 }

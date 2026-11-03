@@ -109,8 +109,8 @@ def run(binary, scratch):
         initialize(rpc)
         tools = rpc.request("tools/list")["result"]["tools"]
         names = {tool["name"] for tool in tools}
-        assert len(names) == 27, names
-        assert {"plan_day", "set_task_strict", "get_history", "get_history_report"} <= names
+        assert len(names) == 30, names
+        assert {"plan_day", "set_task_strict", "get_history", "get_history_report", "get_day_close", "close_day", "dismiss_carry"} <= names
         assert not {"block_now", "get_meetings", "get_free_time", "remove_block_rule", "disable_blocking", "request_block_exception"} & names
         for tool in tools:
             assert tool["inputSchema"]["additionalProperties"] is False, tool
@@ -199,7 +199,7 @@ def run(binary, scratch):
         subprocess.run([str(binary), "step", "add", tomorrow, "First step"], env=env, check=True, capture_output=True)
         rpc.call("schedule_task", {"id": tomorrow, "date": "tomorrow"})
         copied = rpc.call("carry_task", {"id": tomorrow})
-        rpc.call("carry_task", {"id": tomorrow}, error="invalid_input")
+        assert rpc.call("carry_task", {"id": tomorrow})["id"] == copied["id"]
         rpc.call("remove_task", {"id": tomorrow}, error="invalid_input")
         rpc.call("set_task_status", {"id": tomorrow, "status": "todo"}, error="invalid_input")
         future_date = (datetime.date.today() + datetime.timedelta(days=2)).isoformat()

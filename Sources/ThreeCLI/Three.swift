@@ -10,7 +10,8 @@ struct Three: AsyncParsableCommand {
         abstract: "Plan three focused tasks a day and run them on a timer.",
         subcommands: [Today.self, Status.self, Add.self, Plan.self, Commit.self, Start.self, Pause.self,
                       Resume.self, Extend.self, Stop.self, Done.self, Drop.self, Tomorrow.self, Capture.self, Inbox.self,
-                      Schedule.self, Upcoming.self, Logbook.self, HistoryCommand.self, Steps.self, Tags.self, Categories.self, Settings.self,
+                      Schedule.self, Upcoming.self, Logbook.self, HistoryCommand.self, DayReviewCommand.self, CloseDayCommand.self,
+                      CarryCommand.self, DismissCarryCommand.self, Steps.self, Tags.self, Categories.self, Settings.self,
                       Block.self, NativeHost.self, MCPCommand.self, PlanningRunCommand.self]
     )
 }
@@ -533,6 +534,63 @@ struct HistoryCommand: ParsableCommand {
                 if let note = row.session.note { print("    \(note)") }
             }
         }
+    }
+}
+
+struct DayReviewCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "day-review", abstract: "Read the saved summary without closing a day.")
+    @OptionGroup var date: DayOption
+    @OptionGroup var common: Common
+
+    func run() throws {
+        let summary = try store().dayCloseSummary(for: date.day())
+        if common.json { return try emit(summary) }
+        guard let summary else { return print("No saved summary for this day.") }
+        print("\(summary.day) · \(clockMinutes(summary.focusedSeconds)) focused · \(summary.doneCount) done")
+        print("\(summary.plannedMinutes)m planned\(summary.commitment == nil ? " (derived)" : " at commitment")")
+        for task in summary.tasks { print("  \(task.title) [\(task.status.rawValue)]") }
+    }
+}
+
+struct CloseDayCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "close-day", abstract: "Close a committed day only when eligible, without moving unfinished work.")
+    @OptionGroup var date: DayOption
+    @OptionGroup var common: Common
+
+    func run() throws {
+        let outcome = try store().closeDay(date.day())
+        if common.json { return try emit(outcome) }
+        switch outcome {
+        case .closed(let summary): print("Closed \(summary.day). Use day-review to read its summary.")
+        case .deferred(let reason): print("Waiting for \(reason.rawValue).")
+        case .notEligible(let reason): print("Not eligible: \(reason.rawValue).")
+        case .ready: print("Ready to close.")
+        }
+    }
+}
+
+struct CarryCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "carry", abstract: "Accept unfinished planned work onto a later day. Repeats return the original copy.")
+    @Argument(help: "Exact source task ID.") var id: String
+    @OptionGroup var date: DayOption
+    @OptionGroup var common: Common
+
+    func run() throws {
+        let task = try store().carryTask(id, to: date.day())
+        if common.json { return try emit(task) }
+        print("Accepted \(task.title) [\(task.id)].")
+    }
+}
+
+struct DismissCarryCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "dismiss-carry", abstract: "Dismiss unfinished planned work without adding it to another day.")
+    @Argument(help: "Exact source task ID.") var id: String
+    @OptionGroup var common: Common
+
+    func run() throws {
+        let decision = try store().dismissCarry(id)
+        if common.json { return try emit(decision) }
+        print("Dismissed \(decision.sourceTaskId).")
     }
 }
 

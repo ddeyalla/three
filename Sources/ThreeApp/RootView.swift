@@ -36,6 +36,9 @@ struct RootView: View {
             if open == "settings" || open == "blocking" { openSettings() }
         }
         .preferredColorScheme(.dark)
+        .sheet(isPresented: Binding(get: { model.reviewingDay != nil }, set: { if !$0 { model.reviewingDay = nil } })) {
+            DayReviewSheet()
+        }
         .frame(minWidth: model.destination == .history ? 600 : 1060, minHeight: 640)
     }
 }
@@ -63,6 +66,7 @@ struct TasksPane: View {
             .frame(maxHeight: .infinity, alignment: .top)
             HStack(spacing: Space.lg) {
                 Button("History", systemImage: "clock.arrow.circlepath") { model.destination = .history }
+                Button("Day review") { model.reviewingDay = model.dayCloses.first?.day ?? model.snapshot.day }
                 Spacer()
                 SettingsLink {
                     Label("Settings", systemImage: "gearshape")

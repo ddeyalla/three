@@ -22,6 +22,8 @@ final class AppModel {
     private(set) var logbook: [LoggedDay] = []
     private(set) var tagSummaries: [TagSummary] = []
     private(set) var deferredReflections: [DeferredReflection] = []
+    private(set) var dayCloses: [DayCloseSummary] = []
+    var reviewingDay: DayKey?
     private(set) var reflectionPresentation: ReflectionPresentation?
     var destination: Destination = .today
     /// The card opened in place in Inbox, Upcoming or Done, or the tag opened in Tags.
@@ -48,17 +50,23 @@ final class AppModel {
     @ObservationIgnored lazy var appBlocker = AppBlocker(model: self)
     @ObservationIgnored lazy var blockOverlay = BlockOverlayController(model: self)
     @ObservationIgnored private var systemObservers: [NSObjectProtocol] = []
+    @ObservationIgnored private var closeCursor: DayKey?
+    @ObservationIgnored private var nextCloseCheck = Date.distantPast
 
     init() {
         do {
             store = try Store()
             planning = try PlanningController(store: store)
+            let closes = try store.closeEligibleDays()
+            closeCursor = closes.nextAfter
+            nextCloseCheck = Date().addingTimeInterval(60)
             snapshot = try store.snapshot()
             inbox = try store.inbox()
             upcoming = try store.upcoming()
             logbook = try store.logbook()
             tagSummaries = try store.tagSummaries()
             deferredReflections = try store.deferredReflections()
+            dayCloses = try store.recentDayCloses()
             blocking = BlockingState(status: try store.blockStatus(), now: Date())
         } catch {
             fatalError("Three can't open its database: \(error)")
@@ -105,8 +113,11 @@ final class AppModel {
     var runningTask: TaskRow? { snapshot.runningTask }
 
     var selectedTask: TaskRow? {
-        snapshot.tasks.first { $0.id == selectedTaskId && $0.task.status.isOpen } ?? snapshot.nextTask
+        guard !isTodayClosed else { return nil }
+        return snapshot.tasks.first { $0.id == selectedTaskId && $0.task.status.isOpen } ?? snapshot.nextTask
     }
+
+    var isTodayClosed: Bool { snapshot.plan?.status == .closed }
 
     /// The colour of whatever the timer is about.
     var accent: Color {
@@ -144,6 +155,9 @@ final class AppModel {
         now = Date()
         planning.check(now: now)
         if snapshot.day != DayKey(now) { reload() }
+        if now >= nextCloseCheck || now < nextCloseCheck.addingTimeInterval(-60) {
+            if checkDayClose(at: now) { reload(checkClose: false) }
+        }
         // A clock set back by more than a tick leaves the last policy in the future, so read it again.
         if now >= blockingRefreshDue || now < blocking.now.addingTimeInterval(-1) { refreshBlocking() }
         try? store.finishBreakIfDue(now: now)
@@ -165,16 +179,31 @@ final class AppModel {
         }
     }
 
-    func reload() {
+    @discardableResult
+    private func checkDayClose(at date: Date) -> Bool {
+        nextCloseCheck = date.addingTimeInterval(60)
+        do {
+            let closes = try store.closeEligibleDays(now: date, after: closeCursor)
+            closeCursor = closes.nextAfter
+            return closes.attempts.contains { if case .closed = $0.result { true } else { false } }
+        } catch {
+            self.error = error.localizedDescription
+            return false
+        }
+    }
+
+    func reload(checkClose: Bool = true) {
         let selectedBefore = selectedTask?.id
         defer { if selectedTask?.id != selectedBefore { dialOverride = nil } }
         do {
+            if checkClose { checkDayClose(at: Date()) }
             snapshot = try store.snapshot(for: DayKey(Date()))
             inbox = try store.inbox()
             upcoming = try store.upcoming()
             logbook = try store.logbook()
             tagSummaries = try store.tagSummaries()
             deferredReflections = try store.deferredReflections()
+            dayCloses = try store.recentDayCloses()
             if let id = selectedTaskId, !snapshot.tasks.contains(where: { $0.id == id && $0.task.status.isOpen }) {
                 selectedTaskId = nil
             }
@@ -258,6 +287,7 @@ final class AppModel {
     }
 
     func start(_ task: TaskRow? = nil) {
+        guard !isTodayClosed else { reviewingDay = snapshot.day; return }
         let target = task ?? selectedTask
         // The dial shows the selected task's length; any other task works out its own.
         let minutes = target?.id == selectedTask?.id ? dialMinutes : nil
@@ -354,7 +384,7 @@ final class AppModel {
         let shown = destination
         if let preferred { destination = preferred }
         if ![.today, .inbox, .upcoming].contains(destination)
-            || (destination == .today && snapshot.activeTaskCount >= Rules.maxTasks) {
+            || (destination == .today && (isTodayClosed || snapshot.activeTaskCount >= Rules.maxTasks)) {
             destination = .inbox
         }
         quickAddPending = true
@@ -362,6 +392,7 @@ final class AppModel {
     }
 
     func canMoveTodayTask(_ id: String, by offset: Int) -> Bool {
+        guard !isTodayClosed else { return false }
         guard let index = todayRows.firstIndex(where: { $0.id == id }) else { return false }
         return todayRows.indices.contains(index + offset)
     }
@@ -396,7 +427,13 @@ final class AppModel {
     }
 
     func schedule(_ row: TaskRow, on day: DayKey?) {
-        perform { try store.schedule(row.id, on: day) }
+        perform {
+            if let day, carryover.contains(where: { $0.id == row.id }) {
+                _ = try store.carryTask(row.id, to: day)
+            } else {
+                try store.schedule(row.id, on: day)
+            }
+        }
     }
 
     var liveCategories: [ThreeCore.Category] { snapshot.categories.filter { !$0.archived } }

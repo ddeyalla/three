@@ -65,7 +65,10 @@ A `?` marks an optional field. All other fields are required unless a row says o
 | `remove_task` | `id` | `{ok:true}`. Deletes an untouched task or drops a worked task. Stops its running session. |
 | `move_task` | `id`, `index` | `{ok:true}`. Zero-based integer index at least zero. Larger indices append. |
 | `set_task_status` | `id`, `status`, `note?` | `{ok:true}`. Status is `todo`, `done`, `partial`, `dropped`, or `carried`. `note` replaces task notes. Active status requires `start_focus`. |
-| `carry_task` | `id` | The new task record on the original plan's next day. Copies steps and tags. Marks the original `carried`. Refuses running tasks. |
+| `carry_task` | `id`, optional `date` | Accepts unfinished work onto a later date, defaulting to the original plan's next day. Preserves metadata, steps, tags and lineage. Marks the original `carried` without moving its sessions. Closed sources are allowed. Repeats return the same copy. Refuses running or reflection-pending sources and full or closed destinations. |
+| `dismiss_carry` | `id` | Durably dismisses unfinished planned work, including a closed source. Creates no task. Repeats return the original decision; prior acceptance conflicts. |
+| `get_day_close` | `date` | Frozen close summary, or null if none was recorded. Includes original task outcomes, prospective commitment evidence, focus seconds and recorded break decisions. Read-only. |
+| `close_day` | `date` | Attempts eligible closure. Returns the saved summary, deferral reason or ineligibility reason. Active focus, reflection and recovery defer closure. No forced close or implicit carry. |
 | `schedule_task` | `id`, `date` | `{ok:true}`. Moves a task. Also accepts `date=inbox`. Does not copy it. |
 | `list_categories` | none | Category records, including archived categories. |
 | `upsert_category` | `id?`, `name?`, `color_hex?`, `archived?` | Without `id`, requires `name` and `color_hex` and returns a new active category. With `id`, edits the existing category and returns `{ok:true}`. Colors use `#RRGGBB`. Cannot archive the last active category. |

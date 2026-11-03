@@ -1,6 +1,27 @@
 import SwiftUI
 import ThreeCore
 
+struct DayReviewSheet: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                DatePicker("Review date", selection: Binding(
+                    get: { (model.reviewingDay ?? model.snapshot.day).startDate },
+                    set: { model.reviewingDay = DayKey($0) }), displayedComponents: .date)
+                Spacer()
+                Button("Done") { model.reviewingDay = nil }
+                    .keyboardShortcut(.cancelAction)
+            }
+            .padding(Space.lg)
+            DayCloseView(day: model.reviewingDay ?? model.snapshot.day)
+                .id(model.reviewingDay)
+        }
+        .frame(width: 560, height: 600)
+    }
+}
+
 struct DayCloseView: View {
     @Environment(AppModel.self) private var model
     let day: DayKey

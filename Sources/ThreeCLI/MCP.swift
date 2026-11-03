@@ -84,6 +84,7 @@ private enum MCPTool: String, CaseIterable {
     case startFocus = "start_focus", pause, resume, stop, extend, startBreak = "start_break", finishFocus = "finish_focus"
     case getStatus = "get_status", getCarryover = "get_carryover", getHistory = "get_history"
     case getHistoryReport = "get_history_report"
+    case getDayClose = "get_day_close", closeDay = "close_day", dismissCarry = "dismiss_carry"
     case getBlockStatus = "get_block_status", addBlockRule = "add_block_rule", setTaskStrict = "set_task_strict"
 
     var definition: Tool {
@@ -111,7 +112,13 @@ private enum MCPTool: String, CaseIterable {
         case .setTaskStatus:
             (text, fields, required, readOnly) = ("Set todo, done, partial, dropped or carried, with optional task notes. Active requires start_focus. Carried is terminal; carry_task also copies to tomorrow. Closed days and deleted tasks cannot reopen.", ["id": idField, "status": .object(["type": "string", "enum": ["todo", "done", "partial", "dropped", "carried"]]), "note": stringField], ["id", "status"], false)
         case .carryTask:
-            (text, fields, required, readOnly) = ("Copy an open task to its plan's next day with steps and tags, marking the original carried. Refuses running tasks and full destinations.", ["id": idField], ["id"], false)
+            (text, fields, required, readOnly) = ("Accept open work onto a later date, defaulting to its plan's next day. Copies metadata, steps and tags with lineage and preserves source sessions. Closed sources are allowed. Repeats return the same copy. Refuses pending reflections, running tasks and full or closed destinations.", ["id": idField, "date": dateField], ["id"], false)
+        case .dismissCarry:
+            (text, fields, required, readOnly) = ("Dismiss unfinished planned work, including a closed source, without creating another task. Durable and safe to repeat. Conflicts with prior acceptance.", ["id": idField], ["id"], false)
+        case .getDayClose:
+            (text, fields, required, readOnly) = ("Read the frozen day-close summary, or null when none was saved. Includes original outcomes, commitment evidence, focus and known break decisions. Does not close a day.", ["date": dateField], ["date"], true)
+        case .closeDay:
+            (text, fields, required, readOnly) = ("Check and close an eligible committed day. Defers active focus, reflection and recovery. Repeats return the saved summary. Never creates tomorrow's tasks or changes a timer.", ["date": dateField], ["date"], false)
         case .scheduleTask:
             (text, fields, required, readOnly) = ("Move a task to a day, or to the inbox with date=inbox. Refuses running, deleted and carried tasks and closed days.", ["id": idField, "date": .object(["type": "string", "description": "today, tomorrow, yesterday, yyyy-MM-dd, or inbox"])], ["id", "date"], false)
         case .listCategories:
@@ -237,7 +244,12 @@ private struct ThreeMCP: Sendable {
         case .setTaskStatus:
             let status = TaskStatus(rawValue: try a.requiredString("status"))!
             try store.updateTask(a.requiredString("id"), status: status, notes: a.string("note"))
-        case .carryTask: return try result(store.pushToTomorrow(a.requiredString("id")))
+        case .carryTask:
+            if a.string("date") != nil { return try result(store.carryTask(a.requiredString("id"), to: a.day("date"))) }
+            return try result(store.pushToTomorrow(a.requiredString("id")))
+        case .dismissCarry: return try result(store.dismissCarry(a.requiredString("id")))
+        case .getDayClose: return try result(store.dayCloseSummary(for: a.day("date")))
+        case .closeDay: return try result(store.closeDay(a.day("date")))
         case .scheduleTask:
             let date = try a.requiredString("date")
             try store.schedule(a.requiredString("id"), on: date == "inbox" ? nil : a.day("date"))

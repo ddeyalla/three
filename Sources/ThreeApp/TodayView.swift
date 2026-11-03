@@ -37,10 +37,13 @@ private enum NowState {
     case empty
     /// Nothing open, and at least one task done.
     case allDone
+    case closed
 
     @MainActor init(_ model: AppModel) {
         if let running = model.running {
-            self = running.kind == .focus ? .focus(running, model.runningTask) : .rest(running, next: model.snapshot.nextTask)
+            self = running.kind == .focus ? .focus(running, model.runningTask) : .rest(running, next: model.selectedTask)
+        } else if model.isTodayClosed {
+            self = .closed
         } else if let task = model.selectedTask {
             self = .ready(task)
         } else {
@@ -60,7 +63,7 @@ private enum NowState {
     /// Whether there is a time to read: empty and finished days show the dial as a picture only.
     var isTiming: Bool {
         switch self {
-        case .empty, .allDone: false
+        case .empty, .allDone, .closed: false
         default: true
         }
     }
@@ -126,6 +129,7 @@ private struct TimerSection: View {
         case .rest: "Break"
         case .empty: "What are your three today?"
         case .allDone: "All done for today"
+        case .closed: "Today is closed"
         }
     }
 
@@ -148,7 +152,7 @@ private struct TimerSection: View {
             Text("Add a task, then start a block.")
                 .font(Typo.body)
                 .foregroundStyle(.secondary)
-        case .allDone:
+        case .allDone, .closed:
             Text(model.dayProgress.joined(separator: " · "))
                 .font(Typo.body)
                 .foregroundStyle(.secondary)
@@ -290,6 +294,9 @@ private struct Controls: View {
                     .help("Add a task (⌘N)")
                 case .allDone:
                     EmptyView()
+                case .closed:
+                    Button("Review day") { model.reviewingDay = model.snapshot.day }
+                        .buttonStyle(.glass)
                 }
             }
         }
@@ -312,7 +319,11 @@ struct TodayList: View {
     var body: some View {
         PaneList(subtitle: { TodaySummary() }) {
             let snap = model.snapshot
-            if snap.plan?.status == .draft, !snap.tasks.isEmpty {
+            if model.isTodayClosed {
+                Button("Review") { model.reviewingDay = snap.day }
+                    .buttonStyle(.glass)
+                    .controlSize(.small)
+            } else if snap.plan?.status == .draft, !snap.tasks.isEmpty {
                 Button("Commit") { model.perform { try model.store.commit(day: snap.day) } }
                     .buttonStyle(.glass)
                     .controlSize(.small)
@@ -344,7 +355,7 @@ struct TodayList: View {
                             cardFrames[row.id] = $0
                         }
                 }
-                if model.snapshot.activeTaskCount < Rules.maxTasks {
+                if !model.isTodayClosed, model.snapshot.activeTaskCount < Rules.maxTasks {
                     QuickAddField(defaultDay: model.snapshot.day,
                                   placeholder: rows.isEmpty ? "Add your first task" : "Add a task")
                 }
@@ -439,14 +450,16 @@ private struct TodayTaskCard: View {
         TaskCard(row: row, running: isRunning, selected: isSelected,
                  expanded: isRunning || isSelected || model.expandedTaskId == row.id,
                  onTap: {
-                     if row.task.status.isOpen && model.running == nil { model.select(row) }
+                     if model.isTodayClosed { model.reviewingDay = model.snapshot.day }
+                     else if row.task.status.isOpen && model.running == nil { model.select(row) }
                      else { model.toggleExpanded(row) }
                  },
-                 reorder: CardReorder(dragging: dragging,
+                 reorder: model.isTodayClosed ? nil : CardReorder(dragging: dragging,
                                       moveUp: index > 0 ? { model.moveTodayTask(row.id, by: -1) } : nil,
                                       moveDown: index < count - 1 ? { model.moveTodayTask(row.id, by: 1) } : nil)) {
             TaskDurationLabel(row: row)
             Button { editing = true } label: { Image(systemName: "pencil") }
+                .disabled(model.isTodayClosed)
                 .buttonStyle(.plain)
                 .help("Edit task")
                 .accessibilityLabel("Edit \(row.task.title)")
@@ -463,8 +476,8 @@ private struct TodayTaskCard: View {
     @ViewBuilder private var actions: some View {
         TaskMenuItems(row: row)
         Divider()
-        Button("Move Up") { model.moveTodayTask(row.id, by: -1) }.disabled(index == 0)
-        Button("Move Down") { model.moveTodayTask(row.id, by: 1) }.disabled(index == count - 1)
+        Button("Move Up") { model.moveTodayTask(row.id, by: -1) }.disabled(model.isTodayClosed || index == 0)
+        Button("Move Down") { model.moveTodayTask(row.id, by: 1) }.disabled(model.isTodayClosed || index == count - 1)
     }
 }
 
@@ -505,7 +518,7 @@ private struct CarryoverReview: View {
                     HStack {
                         Text("\(row.task.blockMinutes)m").foregroundStyle(.secondary)
                         Spacer()
-                        Button("Dismiss") { model.perform { try model.store.setTaskStatus(row.id, .dropped) } }
+                        Button("Dismiss") { model.perform { _ = try model.store.dismissCarry(row.id) } }
                             .help("Drop \(row.task.title) on its original day")
                         Button("Accept today") { model.perform { try model.store.carryTask(row.id, to: model.snapshot.day) } }
                             .disabled(model.snapshot.activeTaskCount >= Rules.maxTasks || model.running?.taskId == row.id)
