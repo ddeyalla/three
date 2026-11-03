@@ -1,0 +1,11 @@
+ts	phase	decision	why	evidence	result
+2026-11-03T01:16:16Z	frame	Keep release metadata at 0.2.4 until native gates pass	A release label requires observed behavior on the real app	build/verification/bpro-396/baseline.txt	open
+2026-11-03T01:16:16Z	harness	Add isolated relabelled app and two owned AppKit fixtures	The return path needs an observable work app and blocked app without touching production	scripts/verification/bpro-396-qa.py	open
+2026-11-03T01:35:13Z	native	Verified return after switching the blocked overlay through Focus Unblock	AppKit confirmed QA active before cancellation and the work fixture active afterward	build/verification/bpro-396/return-after-cancel.txt	VERIFIED
+2026-11-03T01:35:13Z	native	Used LaunchServices buttons to establish real app activation	CUA background AX operations alone left the work app active and could not prove return	build/verification/bpro-396/return-precondition-after-native-open.txt	VERIFIED
+2026-11-03T01:35:13Z	native	Retain status-item and physical-menu gates as missing proof	CUA exposed no status item and both native menu hosts timed out	build/verification/bpro-396/exception-expired-native-settings.ax.txt	INCONCLUSIVE
+2026-11-03T01:50:51Z	checks	Reran all automated checks against the frozen source	Release preparation needs fresh test and signing results	build/verification/bpro-396/make-test.log	VERIFIED
+2026-11-03T01:50:51Z	native	Verified a real 300-second exception and rehide without clock or database edits	Fixture timestamps and actual hidden state establish normal expiry	build/verification/bpro-396/expiry-observation.txt	VERIFIED
+2026-11-03T01:50:51Z	native	Leave automatic Chrome restart recovery open	Developer mode and the unpacked extension were off after restart; the cause was not isolated	build/verification/bpro-396/chrome-restart-disabled-extension.png	INCONCLUSIVE
+2026-11-03T01:50:51Z	cleanup	Stopped only processes whose owned executable paths matched	Preserve the installed app and every ordinary browser profile	build/verification/bpro-396/cleanup-complete-process-scan.json	VERIFIED
+2026-11-03T01:50:51Z	handoff	Keep 0.3.0 release metadata and packaging closed	Status popover and physical pixels remain unverified; native restart recovery has a fixture gap	docs/verification/bpro-396.md	BLOCKED
