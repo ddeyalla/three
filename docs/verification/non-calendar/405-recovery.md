@@ -33,6 +33,41 @@ Ordered date-only instants support deterministic callers and fixtures. Native ev
 
 `closeDay`, `closeEligibleDays`, and `dayCloseStatus` always query unresolved recovery on their own database connection. The query covers both the session's attributed start day and its task's plan. An injected `DayCloseRecoveryCheck` can add a deferral. Even an explicit false callback cannot disable the durable guard. This protects CLI, MCP, and the existing DayCloseView.
 
+## Coordinator lifecycle hooks
+
+The new app files deliberately do not change AppModel, ThreeApp, Settings, or MenuBarView. The coordinator owns the following composition.
+
+1. Create one `SleepRecoveryController(store: store)` immediately after opening Store. Call `start()` before the initial `closeEligibleDays`, snapshot reconciliation, notification schedule, or reflection timeout. Start registers observers and records `.relaunched` synchronously. A persisted observing gap becomes a pending review before launch catch-up can freeze totals.
+2. After AppModel initializes, assign `recovery.didChange = { [weak self] affectedIDs in ... }`. The callback runs after the event or decision commits. Its IDs are the union of unresolved sessions before and after the operation, including an ended historical session. The callback must invalidate only those session notifications and timer caches. It must not cancel an unrelated newer session's notification.
+3. Route wake through this controller before any AppModel reload. Replace the existing independent wake observer instead of relying on observer registration order. The controller maps workspace will-sleep and did-wake, distributed screen-lock and screen-unlock, and local clock-change notifications into explicit Core events. Display sleep and app activation do not fabricate a gap. Time-zone changes can keep their normal reload path.
+4. Refresh recovery during normal reload before close, expiry, and notification reconciliation. While `suspendsReconciliation(for: running)` is true, suppress expiry chimes, automatic reflection presentation, live-reflection timeout/defer, and focus-end notification scheduling. Do not pause, stop, replace, or extend the shared session. Retain a live reflection's draft and give it a fresh prompt deadline after the explicit recovery decision. Preserve saved reflection answers and notes.
+5. Remove pending and delivered notifications for the callback's affected IDs. Clear `scheduledNotification` only if its cached ID is affected. Rearm `reflectedBlock` only for an affected current session. After keep or trim, reload the Store snapshot and run normal reconciliation against the new shared `plannedEnd`. Other processes can also decide recovery, so compare same-session trim values across ordinary reloads and invalidate the same caches when they change.
+6. Surface `controller.error` and a retry when event persistence fails. The controller retains failed events and their original timestamps in order. Its refresh retries the queue before reading state. Until that succeeds, suspend focus reconciliation and app catch-up close. Action errors on a historical review do not suspend an unrelated newer focus timer.
+7. Offer an explicit quiet entry point when `reviews` is nonempty. Compose `RecoveryReviewView(controller: recovery, dismiss: { ... })` in the existing presentation flow. Keep and Trim are explicit buttons without a default keyboard action. Later and Escape dismiss only the view. They leave the durable decision pending. Stop the controller's observers during app teardown.
+
+The controller has no timer, AppModel dependency, notification permission request, app activation, or automatic review window. `refresh()` does not call `didChange`, so the callback can invoke the owner's normal reload without recursion. Native timestamps use sleep-inclusive `mach_continuous_time` and the boot-session UUID. If that UUID is unavailable, a process identity makes a cross-process relaunch conservative and disables trim.
+
+The UI follows the Emil design engineering skill and Three's existing typography and glass controls.
+
+| Before | After | Why |
+| --- | --- | --- |
+| No recovery decision component | Explicit Keep, Trim, and Later controls | Later leaves the decision durable and unresolved |
+| No interruption detail | Per-session titles, saved/current identity, and eligible trim | A historical correction remains distinguishable from a newer timer |
+| No trustworthy measurement after a clock change | Trim is disabled and the reason is visible | The UI cannot offer an invented duration |
+| No recovery motion | Native controls with no authored animation or default decision shortcut | Keyboard use stays immediate and cannot silently choose a correction |
+
+## Scratch native fixture
+
+Run this opt-in command after the integrated QA app is built.
+
+```sh
+python3 scripts/verification/recovery-fixture.py --binary build/Three.app/Contents/Helpers/three --create --scenario historical
+```
+
+The script creates a new temporary directory and prints its `fixture.json`. It never accepts an existing database path or launches an app. The manifest supplies `THREE_DB`, isolated Chrome data, session and gap IDs, and expected accounting. Scheduled planning stays disabled through its default settings in the new database. The exclusive desktop owner can use that environment with a uniquely identified QA app.
+
+Scenarios are `pending`, `historical`, `untrusted`, and `observing`. Historical records preserve a reflection and verify the real packaged CLI and MCP default close guard. A known 900-second absence is eligible for trim, reducing recorded work from 1500 to 600 seconds. Pending uses the same gap with a running session. Untrusted disables trim. Observing tests relaunch after a durable begin and deliberately lacks native clock evidence, so relaunch offers Keep only. Native physical sleep is still a separate acceptance gate. Do not sleep or lock the shared Mac.
+
 ## Decision trail
 
 The implementation compares unadjusted elapsed snapshots instead of adding a pause-interval ledger. Existing cumulative pause accounting provides the required difference and preserves unknown historical placement. Recovery states and source flags persist together instead of maintaining app-local gap state. Store guards remain mandatory instead of relying on callback composition.
@@ -51,5 +86,13 @@ The coordinator's `d4cd2567449c14d591d9c713cf88e7133f9ebf7d` is imported as `4e4
 | `./scripts/swift.sh test --filter fractionalPauseRoundingCannotTrimTimeOutsideUnpausedAbsence` before the precision fix | FAIL, 1.3 seconds of pause-rounding credit was incorrectly eligible | `build/verification/non-calendar/405-fractional-before.log` |
 | `./scripts/swift.sh test --filter SleepRecoveryTests` after the precision fix | PASS, 18 tests | `build/verification/non-calendar/405-fractional-after.log` |
 | `./scripts/swift.sh test --filter ThreeCoreTests` after the imported identity fix and precision fix | PASS, 194 tests | `build/verification/non-calendar/405-final-core.log` |
+| `./scripts/swift.sh test` on the complete candidate | PASS, 194 Core and 49 App tests | `build/verification/non-calendar/405-final-tests.log` |
+| `./scripts/lint-design.sh` | PASS | `build/verification/non-calendar/405-design-lint.log` |
+| `./scripts/bundle.sh` | PASS, app and packaged helper build and ad-hoc signing | `build/verification/non-calendar/405-final-build.log` |
+| `codesign --verify --deep --strict build/Three.app` | PASS | `build/verification/non-calendar/405-signing.log` |
+| `python3 scripts/verification/recovery-fixture.py --binary build/Three.app/Contents/Helpers/three --create --scenario historical` | PASS, packaged CLI and MCP recovery deferral, shared history read, SQLite integrity and foreign keys | `build/verification/non-calendar/405-packaged-historical.json` |
+| The same fixture command with `pending`, `untrusted`, and `observing` | PASS, isolated fixtures created and integrity checked | `build/verification/non-calendar/405-packaged-{pending,untrusted,observing}.json` |
 
-Physical sleep, physical lock, native review interaction, and integrated app lifecycle acceptance remain unproved. Headless event and Store tests do not close those gates. The coordinator must integrate the lifecycle hooks before native acceptance.
+The local decision log is `build/verification/non-calendar/405-decisions.tsv`. This worker leaves all shared app composition to its assigned owner. No nested delegates, app launches, desktop control, production mutations, real sync, release changes, or provider calls ran.
+
+Physical sleep, physical lock, native review interaction, integrated app lifecycle acceptance, and final v12 trend integration remain COULD NOT RUN under this worker's scope. Headless event and Store tests do not close those gates. The coordinator must integrate the lifecycle hooks before native acceptance. Independent parent review remains pending. The candidate is not claimed as BPRO-405 acceptance.
