@@ -154,7 +154,7 @@ private enum MCPTool: String, CaseIterable {
         case .getBlockStatus:
             (text, fields, required, readOnly) = ("Read current blocker policy, rules, focus hours, today's hits and browser coverage.", [:], [], true)
         case .addBlockRule:
-            (text, fields, required, readOnly) = ("Tighten blocking by adding or re-enabling a domain or app rule. Repeats return the covering rule. Never removes, disables or grants exceptions.", ["kind": .object(["type": "string", "enum": ["domain", "app"]]), "value": stringField], ["kind", "value"], false)
+            (text, fields, required, readOnly) = ("Tighten blocking by adding or re-enabling a domain or app rule. Omit kind to let Three decide: a .app path, an installed app's bundle ID, or reverse-DNS like com.apple.Music is an app; anything else, like app.slack.com, is a domain. Repeats return the covering rule. Never removes, disables or grants exceptions.", ["kind": .object(["type": "string", "enum": ["domain", "app"]]), "value": stringField], ["value"], false)
         case .setTaskStrict:
             (text, fields, required, readOnly) = ("Mark a live task strict. One-way and safe to repeat. No false or disable parameter exists.", ["id": idField], ["id"], false)
         }
@@ -296,8 +296,13 @@ private struct ThreeMCP: Sendable {
                                           through: a.string("to") == nil ? nil : a.day("to")))
         case .getBlockStatus: return try result(BlockStatusJSON(store.blockStatus(), now: Date()))
         case .addBlockRule:
-            let kind = try a.requiredString("kind"), value = try a.requiredString("value")
-            let target: BlockTarget = kind == "domain" ? .domain(try BlockDomain(parsing: value)) : .app(try AppBundleID(parsing: value))
+            let value = try a.requiredString("value")
+            let target: BlockTarget = switch a.string("kind") {
+            case nil: try BlockTarget(classifying: value, isInstalledApp: isInstalledApp)
+            case "domain": .domain(try BlockDomain(parsing: value))
+            case "app": try BlockTarget(app: value)
+            case _?: throw ThreeError.invalid("Block rule kind must be domain or app.")
+            }
             _ = try store.addBlockRule(target)
             return try result(BlockStatusJSON(store.blockStatus(), now: Date()))
         case .setTaskStrict: try store.setTaskStrict(a.requiredString("id"))

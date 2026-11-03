@@ -1,3 +1,4 @@
+import AppKit
 import ArgumentParser
 import Foundation
 import ThreeCore
@@ -36,19 +37,27 @@ struct BlockAdd: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "add",
         abstract: "Block sites or apps. Presets: x, reddit, youtube.",
-        discussion: "three block add reddit news.ycombinator.com  ·  three block add --app com.tinyspeck.slackmacgap\nA site covers its subdomains. Paths such as youtube.com/shorts aren't supported."
+        discussion: """
+        three block add reddit news.ycombinator.com com.tinyspeck.slackmacgap /Applications/Music.app
+        Each name is an app when it's a .app path, an installed app's bundle identifier, or reverse-DNS such as \
+        com.apple.Music (three or more parts, starting with com, org, net, io, edu, gov, app, dev, co or me, and not \
+        ending in a common web ending such as .com). Anything else is a site, so app.slack.com stays a site. \
+        Use --app or --site when Three guesses wrong.
+        A site covers its subdomains. Paths such as youtube.com/shorts aren't supported.
+        """
     )
-    @Argument(help: "x, reddit, youtube, or a site such as example.com.") var sites: [String] = []
-    @Option(name: .customLong("app"), help: "An app's bundle identifier. Repeat for more.") var apps: [String] = []
+    @Argument(help: "x, reddit, youtube, a site such as example.com, or an app such as com.apple.Music.") var names: [String] = []
+    @Option(name: .customLong("app"), help: "Always an app: a bundle identifier or .app path. Repeat for more.") var apps: [String] = []
+    @Option(name: .customLong("site"), help: "Always a site, even if it looks like a bundle identifier. Repeat for more.") var sites: [String] = []
 
     func run() throws {
-        guard !sites.isEmpty || !apps.isEmpty else {
-            throw ValidationError("Name a site, a preset (x, reddit, youtube) or --app <bundle id>.")
+        guard !names.isEmpty || !apps.isEmpty || !sites.isEmpty else {
+            throw ValidationError("Name a site, an app, or a preset (x, reddit, youtube).")
         }
-        let targets = try sites.flatMap { site -> [BlockTarget] in
-            if let preset = BlockPreset(rawValue: site.lowercased()) { return preset.domains.map(BlockTarget.domain) }
-            return [.domain(try BlockDomain(parsing: site))]
-        } + apps.map { .app(try AppBundleID(parsing: $0)) }
+        let targets = try names.flatMap { name -> [BlockTarget] in
+            if let preset = BlockPreset(rawValue: name.lowercased()) { return preset.domains.map(BlockTarget.domain) }
+            return [try BlockTarget(classifying: name, isInstalledApp: isInstalledApp)]
+        } + sites.map { .domain(try BlockDomain(parsing: $0)) } + apps.map(BlockTarget.init(app:))
         let s = try store()
         let rules = try s.addBlockRules(targets)
         for (target, rule) in zip(targets, rules) where rule.target != target {
@@ -56,6 +65,11 @@ struct BlockAdd: ParsableCommand {
         }
         printBlockStatus(try s.blockStatus())
     }
+}
+
+/// LaunchServices knows every app on this Mac by bundle identifier, ignoring case.
+func isInstalledApp(_ bundleID: String) -> Bool {
+    NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) != nil
 }
 
 struct BlockHours: ParsableCommand {

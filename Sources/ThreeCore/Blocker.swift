@@ -158,6 +158,62 @@ public enum BlockTarget: Hashable, Sendable {
         }
     }
 
+    /// Reads typed text as an app or a site, the one rule the CLI, MCP and Settings share. In order:
+    /// 1. A path to a `.app` bundle (starting with `/`, `~` or `.`) is that app's bundle identifier.
+    /// 2. Text with a scheme or a path is a site, so `youtube.com/shorts` keeps its suggestion.
+    /// 3. A bundle identifier of an installed app (`isInstalledApp`, LaunchServices in the callers) is an app.
+    /// 4. Reverse-DNS: three or more labels, the first a TLD (`com.apple.Music`) and the last not a common TLD
+    ///    (`app.slack.com` stays a site). `music` and `news` are real gTLDs, so the last-label set stays small.
+    /// 5. Text that is no valid host but a valid bundle identifier (`com.foo.my_app`) is an app.
+    /// Everything else is a site. Callers offer explicit app and site overrides for the cases this misreads.
+    public init(classifying input: String, isInstalledApp: (String) -> Bool = { _ in false }) throws {
+        let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        if Self.appBundleURL(text) != nil {
+            self = try BlockTarget(app: text)
+            return
+        }
+        if text.contains("/") || text.contains(":") {
+            self = .domain(try BlockDomain(parsing: text))
+            return
+        }
+        let labels = text.lowercased().split(separator: ".", omittingEmptySubsequences: false).map(String.init)
+        if labels.count >= 2, isInstalledApp(text) || (labels.count >= 3 && Self.reverseDNSRoots.contains(labels[0])
+                                                       && !Self.siteEndings.contains(labels[labels.count - 1])) {
+            self = .app(try AppBundleID(parsing: text))
+            return
+        }
+        do {
+            self = .domain(try BlockDomain(parsing: text))
+        } catch BlockError.invalidDomain(.malformed) {
+            guard let app = try? AppBundleID(parsing: text) else { throw BlockError.invalidDomain(.malformed) }
+            self = .app(app)
+        }
+    }
+
+    /// An app, whatever the text looks like: a bundle identifier, or a `.app` path read for its identifier.
+    public init(app input: String) throws {
+        let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = Self.appBundleURL(text) else {
+            self = .app(try AppBundleID(parsing: text))
+            return
+        }
+        guard let id = Bundle(url: url)?.bundleIdentifier else { throw BlockError.invalidApp("Can't read an app at \(text).") }
+        self = .app(try AppBundleID(parsing: id))
+    }
+
+    /// Only text starting like a path counts, so the site linear.app stays a site.
+    private static func appBundleURL(_ text: String) -> URL? {
+        var path = text
+        if path.hasSuffix("/") { path.removeLast() }
+        guard ["/", "~", "."].contains(where: { path.hasPrefix($0) }), path.lowercased().hasSuffix(".app") else { return nil }
+        return URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
+    }
+
+    /// First labels that mark a reverse-DNS bundle identifier.
+    static let reverseDNSRoots: Set<String> = ["com", "org", "net", "io", "edu", "gov", "app", "dev", "co", "me"]
+    /// Last labels that mark a host even when the first label is a root: `app.slack.com`, `dev.example.io`.
+    static let siteEndings: Set<String> = ["com", "org", "net", "io", "edu", "gov", "app", "dev", "co", "me", "ai", "so", "uk", "de"]
+
     /// Rows are re-parsed on read, so a hand-edited database can't smuggle in a malformed or protected target.
     init?(kind: String, value: String) {
         switch kind {
