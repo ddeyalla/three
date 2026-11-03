@@ -3,21 +3,22 @@ import SwiftUI
 import ThreeCore
 import UniformTypeIdentifiers
 
-/// Settings → Blocking: what's blocked, when, and how Chrome is connected. Adding is always allowed; removing waits
-/// until blocking is off, and the Store refuses it anyway if blocking starts between showing and clicking.
+/// Settings → Blocking, built for the common case: one list of what's blocked, Chrome as one status row, and the
+/// rest (focus hours, removing the Chrome connection, the full coverage list) under Advanced. Adding is always
+/// allowed; removing waits until blocking is off, and the Store refuses it anyway if blocking starts in between.
 struct BlockingSettings: View {
     @Environment(AppModel.self) private var model
     @State private var site = ""
-    @State private var siteNote: SiteNote?
-    @State private var appNote: String?
+    @State private var listNote: ListNote?
     @State private var hoursNote: String?
     @State private var chromeNote: String?
     @State private var editing: HoursEditor?
     @State private var settingUpChrome = false
     @State private var confirmingRemoval = false
+    @State private var showingAdvanced = false
     @FocusState private var siteFocused: Bool
 
-    private struct SiteNote: Equatable {
+    private struct ListNote: Equatable {
         var message: String
         var suggestion: BlockDomain?
         var isProblem = true
@@ -32,9 +33,13 @@ struct BlockingSettings: View {
     }
 
     var body: some View {
+        let setup = ChromeSetup.forThisApp
+        let link = ChromeLink(manifest: setup.manifestStatus(), launcher: setup.launcher.path, browsers: state.status.browsers,
+                              chromeRunning: !NSRunningApplication.runningApplications(withBundleIdentifier: "com.google.Chrome").isEmpty,
+                              now: state.now)
         Form {
             Section {
-                LabeledContent("Blocking") {
+                LabeledContent("Block during focus") {
                     Text(state.value).monospacedDigit()
                 }
                 Text(state.detail)
@@ -42,19 +47,19 @@ struct BlockingSettings: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            websites
-            apps
-            hours
-            chrome
-            Section("Not covered") {
-                Text("Safari, Firefox and other browsers, Chrome profiles without the extension, Guest and Incognito windows, videos embedded in other sites, and apps that show web pages. To hide Safari during focus, add it under Apps.")
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            blocked
+            chrome(link)
+            advanced(link)
         }
         .formStyle(.grouped)
         .sheet(item: $editing) { FocusHoursSheet(editor: $0) }
         .sheet(isPresented: $settingUpChrome) { ChromeSetupSheet() }
+        .confirmationDialog("Remove the Chrome connection?", isPresented: $confirmingRemoval) {
+            Button("Remove", role: .destructive) { removeConnection(setup) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Chrome will stop blocking sites until you set it up again.")
+        }
         .onAppear(perform: claimChromeSetup)
         .onChange(of: model.chromeSetupRequested) { claimChromeSetup() }
     }
@@ -67,46 +72,73 @@ struct BlockingSettings: View {
 
     private var lockFooter: Text? {
         guard locked, let until = state.policy.until else { return nil }
-        return Text("You can add rules now. Removing them waits until blocking ends at \(Format.until(until, now: state.now)).")
+        return Text("You can add now. Removing waits until blocking ends at \(Format.until(until, now: state.now)).")
     }
 
-    // MARK: Websites
+    // MARK: Blocked list
 
     private var siteRules: [BlockRule] { state.status.rules.filter(\.isSite) }
+    private var appRules: [BlockRule] { state.status.rules.filter { !$0.isSite } }
 
-    private var websites: some View {
-        Section {
-            ForEach(siteRules) { rule in
-                RuleRow(rule: rule, detail: siteDetail(rule), locked: locked, lockHelp: lockHelp) {
-                    siteNote = remove(rule).map { SiteNote(message: $0) }
+    /// Every rule, sites then apps. A preset's domains (reddit.com and redd.it) share one row named for the preset;
+    /// a rule that's off keeps its own row so its state stays visible.
+    private var items: [BlockedItem] {
+        var items: [BlockedItem] = []
+        for rule in siteRules {
+            guard case .domain(let d) = rule.target else { continue }
+            if !rule.enabled {
+                items.append(BlockedItem(rules: [rule], title: d.rawValue, detail: "Off"))
+            } else if d.label != d.rawValue {
+                if let i = items.firstIndex(where: { $0.title == d.label && $0.rules.allSatisfy(\.enabled) }) {
+                    items[i].rules.append(rule)
+                    items[i].detail = items[i].rules.map(\.name).joined(separator: ", ")
+                } else {
+                    items.append(BlockedItem(rules: [rule], title: d.label, detail: d.rawValue))
                 }
+            } else {
+                items.append(BlockedItem(rules: [rule], title: d.rawValue, detail: nil))
             }
-            let suggested = BlockPreset.allCases.filter { preset in
-                !preset.domains.allSatisfy { d in siteRules.contains { $0.enabled && $0.domain?.covers(d) == true } }
+        }
+        for rule in appRules {
+            items.append(BlockedItem(rules: [rule], title: rule.name, detail: appDetail(rule)))
+        }
+        return items
+    }
+
+    /// Presets with none of their sites on the list yet.
+    private var suggested: [BlockPreset] {
+        BlockPreset.allCases.filter { preset in
+            !preset.domains.contains { d in siteRules.contains { $0.enabled && $0.domain?.covers(d) == true } }
+        }
+    }
+
+    private var blocked: some View {
+        Section {
+            ForEach(items) { item in
+                BlockedRow(item: item, locked: locked, lockHelp: lockHelp) { listNote = remove(item.rules).map { ListNote(message: $0) } }
             }
-            if !suggested.isEmpty {
-                LabeledContent("Suggested") {
-                    HStack(spacing: Space.sm) {
-                        ForEach(suggested, id: \.self) { preset in
-                            Button(preset.name) { addPreset(preset) }
-                                .help("Adds \(preset.domains.map(\.rawValue).joined(separator: " and "))")
-                        }
+            HStack(spacing: Space.sm) {
+                TextField("Website", text: $site, prompt: Text("Add a website, like example.com"))
+                    .labelsHidden()
+                    .autocorrectionDisabled()
+                    .focused($siteFocused)
+                    .onSubmit { addSite(site) }
+                    .onChange(of: site) { listNote = nil }
+                Button("Add") { addSite(site) }
+                    .disabled(site.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            HStack(spacing: Space.sm) {
+                Button("Add App…", action: chooseApps)
+                if !suggested.isEmpty {
+                    Spacer(minLength: Space.sm)
+                    Text("Suggested").foregroundStyle(.secondary)
+                    ForEach(suggested, id: \.self) { preset in
+                        Button(preset.name) { addPreset(preset) }
+                            .help("Adds \(preset.domains.map(\.rawValue).joined(separator: " and "))")
                     }
                 }
             }
-            LabeledContent("Add a website") {
-                HStack(spacing: Space.sm) {
-                    TextField("Website", text: $site, prompt: Text("example.com"))
-                        .labelsHidden()
-                        .autocorrectionDisabled()
-                        .focused($siteFocused)
-                        .onSubmit { addSite(site) }
-                        .onChange(of: site) { siteNote = nil }
-                    Button("Add") { addSite(site) }
-                        .disabled(site.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
-            if let note = siteNote {
+            if let note = listNote {
                 HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
                     if note.isProblem { Image(systemName: "exclamationmark.circle.fill").foregroundStyle(Theme.overrun) }
                     Text(note.message).fixedSize(horizontal: false, vertical: true)
@@ -117,84 +149,10 @@ struct BlockingSettings: View {
                 }
             }
         } header: {
-            Text("Websites")
+            Text("Blocked")
         } footer: {
             VStack(alignment: .leading, spacing: Space.xs) {
-                Text("A website includes its subdomains, so youtube.com also covers music.youtube.com. Blocked in Chrome profiles with the Three extension, even while Three is closed.")
-                lockFooter
-            }
-            .foregroundStyle(.secondary)
-        }
-    }
-
-    private func siteDetail(_ rule: BlockRule) -> String? {
-        guard case .domain(let d) = rule.target else { return nil }
-        if !rule.enabled { return "Off" }
-        return d.label == d.rawValue ? nil : d.label
-    }
-
-    private func addPreset(_ preset: BlockPreset) {
-        do {
-            try model.store.addBlockPreset(preset)
-            siteNote = nil
-        } catch {
-            siteNote = SiteNote(message: error.localizedDescription)
-        }
-        model.refreshBlocking()
-    }
-
-    private func addSite(_ text: String) {
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        do {
-            add(try BlockDomain(parsing: text))
-        } catch BlockError.invalidDomain(.pathRule(let suggestion)) {
-            siteNote = SiteNote(message: "Blocking part of a site comes later.", suggestion: suggestion)
-        } catch {
-            siteNote = SiteNote(message: error.localizedDescription)
-        }
-    }
-
-    /// The Store hands back the rule that now covers the site, so a rule that existed before is a duplicate.
-    private func add(_ domain: BlockDomain) {
-        do {
-            let before = Set(try model.store.blockStatus().rules.filter(\.enabled).map(\.id))
-            let rule = try model.store.addBlockRule(.domain(domain))
-            if before.contains(rule.id) {
-                siteNote = SiteNote(message: rule.target == .domain(domain)
-                                    ? "\(domain) is already on your list."
-                                    : "\(domain) is already covered by \(rule.target.value).", isProblem: false)
-            } else {
-                site = ""
-                siteNote = nil
-                siteFocused = true
-            }
-        } catch {
-            siteNote = SiteNote(message: error.localizedDescription)
-        }
-        model.refreshBlocking()
-    }
-
-    // MARK: Apps
-
-    private var appRules: [BlockRule] { state.status.rules.filter { !$0.isSite } }
-
-    private var apps: some View {
-        Section {
-            ForEach(appRules) { rule in
-                RuleRow(rule: rule, detail: appDetail(rule), locked: locked, lockHelp: lockHelp) { appNote = remove(rule) }
-            }
-            Button("Choose App…", action: chooseApps)
-            if let appNote {
-                HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
-                    Image(systemName: "exclamationmark.circle.fill").foregroundStyle(Theme.overrun)
-                    Text(appNote).fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        } header: {
-            Text("Apps")
-        } footer: {
-            VStack(alignment: .leading, spacing: Space.xs) {
-                Text("Blocked apps are hidden, never quit, so nothing in them is lost. Hiding works only while Three is open.")
+                Text("A website includes its subdomains. Apps are hidden, never quit, while Three is open.")
                 lockFooter
             }
             .foregroundStyle(.secondary)
@@ -207,6 +165,47 @@ struct BlockingSettings: View {
         if InstalledApp(id) == nil { return "Not installed" }
         if id.rawValue.lowercased().hasPrefix("com.google.chrome") { return "Hides all of Chrome during focus, including Three's block page" }
         return nil
+    }
+
+    private func addPreset(_ preset: BlockPreset) {
+        do {
+            try model.store.addBlockPreset(preset)
+            listNote = nil
+        } catch {
+            listNote = ListNote(message: error.localizedDescription)
+        }
+        model.refreshBlocking()
+    }
+
+    private func addSite(_ text: String) {
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        do {
+            add(try BlockDomain(parsing: text))
+        } catch BlockError.invalidDomain(.pathRule(let suggestion)) {
+            listNote = ListNote(message: "Blocking part of a site comes later.", suggestion: suggestion)
+        } catch {
+            listNote = ListNote(message: error.localizedDescription)
+        }
+    }
+
+    /// The Store hands back the rule that now covers the site, so a rule that existed before is a duplicate.
+    private func add(_ domain: BlockDomain) {
+        do {
+            let before = Set(try model.store.blockStatus().rules.filter(\.enabled).map(\.id))
+            let rule = try model.store.addBlockRule(.domain(domain))
+            if before.contains(rule.id) {
+                listNote = ListNote(message: rule.target == .domain(domain)
+                                    ? "\(domain) is already on your list."
+                                    : "\(domain) is already covered by \(rule.target.value).", isProblem: false)
+            } else {
+                site = ""
+                listNote = nil
+                siteFocused = true
+            }
+        } catch {
+            listNote = ListNote(message: error.localizedDescription)
+        }
+        model.refreshBlocking()
     }
 
     private func chooseApps() {
@@ -239,20 +238,88 @@ struct BlockingSettings: View {
                 notes.append(error.localizedDescription)
             }
         }
-        appNote = notes.isEmpty ? nil : notes.joined(separator: " ")
+        listNote = notes.isEmpty ? nil : ListNote(message: notes.joined(separator: " "))
         model.refreshBlocking()
     }
 
-    // MARK: Removing
-
-    /// The Store's refusal, if blocking started since the button was drawn.
-    private func remove(_ rule: BlockRule) -> String? {
+    /// Removes each rule in turn and stops at the Store's first refusal (blocking started since the button was drawn).
+    private func remove(_ rules: [BlockRule]) -> String? {
         defer { model.refreshBlocking() }
         do {
-            try model.store.removeBlockRule(rule.id)
+            for rule in rules { try model.store.removeBlockRule(rule.id) }
             return nil
         } catch {
             return error.localizedDescription
+        }
+    }
+
+    // MARK: Chrome
+
+    /// One row: where Chrome stands, and the single thing to do about it when it can't block yet.
+    private func chrome(_ link: ChromeLink) -> some View {
+        Section {
+            LabeledContent("Chrome") {
+                HStack(spacing: Space.sm) {
+                    Text(link.value).foregroundStyle(.secondary)
+                    if link.action == .setUp {
+                        Button("Set Up…") { settingUpChrome = true }
+                    }
+                }
+            }
+            if let detail = link.detail {
+                Text(detail)
+                    .font(Typo.meta)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } footer: {
+            Text("Websites are blocked in Chrome only. To hide Safari or another browser during focus, add it as an app.")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: Advanced
+
+    /// A row that opens the rare settings as ordinary sections below it.
+    @ViewBuilder private func advanced(_ link: ChromeLink) -> some View {
+        Section {
+            Button { showingAdvanced.toggle() } label: {
+                HStack(spacing: Space.sm) {
+                    Image(systemName: "chevron.right")
+                        .rotationEffect(.degrees(showingAdvanced ? 90 : 0))
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Text("Advanced")
+                    Spacer(minLength: Space.sm)
+                    if !showingAdvanced, !state.status.windows.isEmpty {
+                        Text("Focus hours set").foregroundStyle(.secondary)
+                    }
+                }
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(showingAdvanced ? "Expanded" : "Collapsed")
+        }
+        if showingAdvanced {
+            hours
+            Section {
+                if link.action == .remove {
+                    LabeledContent("Chrome connection") {
+                        Button("Remove…") { confirmingRemoval = true }
+                            .disabled(locked)
+                            .help(lockHelp ?? "Stop Chrome from asking Three what to block")
+                    }
+                }
+                if let chromeNote { problem(chromeNote) }
+                LabeledContent("Not covered") {
+                    Text("Safari, Firefox and other browsers, Chrome profiles without the extension, Guest and Incognito windows, videos embedded in other sites, and apps that show web pages.")
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            } footer: {
+                Text("The extension checks addresses on your Mac. Three saves only which rule matched and when, never the address.")
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -287,64 +354,19 @@ struct BlockingSettings: View {
                 }
             }
             Button("Add Focus Hours…") { editing = HoursEditor(group: nil) }
-            if let hoursNote {
-                HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
-                    Image(systemName: "exclamationmark.circle.fill").foregroundStyle(Theme.overrun)
-                    Text(hoursNote).fixedSize(horizontal: false, vertical: true)
-                }
-            }
+            if let hoursNote { problem(hoursNote) }
         } header: {
             Text("Focus hours")
         } footer: {
-            Text("Blocking also stays on between sessions and during breaks inside these hours. Times follow your Mac's time zone.")
+            Text("Blocking also stays on at these times, between sessions and during breaks. Times follow your Mac's time zone.")
                 .foregroundStyle(.secondary)
         }
     }
 
-    // MARK: Chrome
-
-    private var chrome: some View {
-        let setup = ChromeSetup.forThisApp
-        let link = ChromeLink(manifest: setup.manifestStatus(), launcher: setup.launcher.path, browsers: state.status.browsers,
-                              chromeRunning: !NSRunningApplication.runningApplications(withBundleIdentifier: "com.google.Chrome").isEmpty,
-                              now: state.now)
-        return Section {
-            LabeledContent("Connection") {
-                HStack(spacing: Space.sm) {
-                    Text(link.value).foregroundStyle(.secondary)
-                    switch link.action {
-                    case .setUp: Button("Set Up Chrome…") { settingUpChrome = true }
-                    case .remove:
-                        Button("Remove Connection…") { confirmingRemoval = true }
-                            .disabled(locked)
-                            .help(lockHelp ?? "Stop Chrome from asking Three what to block")
-                    case .none: EmptyView()
-                    }
-                }
-            }
-            if let detail = link.detail {
-                Text(detail)
-                    .font(Typo.meta)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if let chromeNote {
-                HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
-                    Image(systemName: "exclamationmark.circle.fill").foregroundStyle(Theme.overrun)
-                    Text(chromeNote).fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        } header: {
-            Text("Chrome")
-        } footer: {
-            Text("The extension checks addresses on your Mac. Three saves only which rule matched and when, never the address.")
-                .foregroundStyle(.secondary)
-        }
-        .confirmationDialog("Remove the Chrome connection?", isPresented: $confirmingRemoval) {
-            Button("Remove", role: .destructive) { removeConnection(setup) }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Chrome will stop blocking sites until you set it up again.")
+    private func problem(_ message: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
+            Image(systemName: "exclamationmark.circle.fill").foregroundStyle(Theme.overrun)
+            Text(message).fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -354,14 +376,22 @@ struct BlockingSettings: View {
             chromeNote = nil
         } catch {
             chromeNote = error.localizedDescription
+            showingAdvanced = true
         }
         model.refreshBlocking()
     }
 }
 
-private struct RuleRow: View {
-    let rule: BlockRule
-    let detail: String?
+/// One row of the blocked list: a single rule, or a preset's sites together.
+private struct BlockedItem: Identifiable {
+    var rules: [BlockRule]
+    var title: String
+    var detail: String?
+    var id: String { rules.map(\.id).joined(separator: "+") }
+}
+
+private struct BlockedRow: View {
+    let item: BlockedItem
     let locked: Bool
     let lockHelp: String?
     let remove: () -> Void
@@ -372,23 +402,23 @@ private struct RuleRow: View {
                 .frame(width: 16, height: 16)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: Space.hairline) {
-                Text(rule.name)
+                Text(item.title)
                     .lineLimit(1)
-                if let detail {
+                if let detail = item.detail {
                     Text(detail)
                         .font(Typo.meta)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
             }
-            .help(rule.bundleID?.rawValue ?? "")
+            .help(item.rules.first?.bundleID?.rawValue ?? "")
             Spacer(minLength: Space.sm)
-            RemoveButton(name: rule.name, locked: locked, lockHelp: lockHelp, action: remove)
+            RemoveButton(name: item.title, locked: locked, lockHelp: lockHelp, action: remove)
         }
     }
 
     @ViewBuilder private var icon: some View {
-        if let id = rule.bundleID {
+        if let id = item.rules.first?.bundleID {
             if let app = InstalledApp(id) {
                 Image(nsImage: app.icon).resizable().scaledToFit()
             } else {
@@ -559,11 +589,12 @@ private struct ChromeSetupSheet: View {
         VStack(alignment: .leading, spacing: Space.xl) {
             Text("Set up Chrome")
                 .font(Typo.heading)
-            step(1, "Let Chrome talk to Three") {
-                Text("Three adds two things on this Mac:")
+            step(1, "Connect Three to Chrome") {
+                Text("Three writes a copy of the extension and a file that lets only it ask Three what to block:")
                     .foregroundStyle(.secondary)
-                bullet("A connection file Chrome reads, so only the Three extension can ask Three what to block", path: setup.manifestURL.path)
-                bullet("A copy of the extension for Chrome to load", path: setup.extensionFolder.path)
+                    .fixedSize(horizontal: false, vertical: true)
+                bullet(path: setup.manifestURL.path)
+                bullet(path: setup.extensionFolder.path)
                 DisclosureGroup("Show connection file") {
                     Text((try? setup.manifestData()).flatMap { String(data: $0, encoding: .utf8) } ?? "")
                         .font(Typo.code)
@@ -584,7 +615,7 @@ private struct ChromeSetupSheet: View {
                     }
                 }
             }
-            step(2, "Load the extension in each Chrome profile") {
+            step(2, "Load the extension in Chrome") {
                 Text("In Chrome, open chrome://extensions, turn on Developer mode, click Load unpacked and choose the extension folder. Repeat in every profile you use for work.")
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -597,12 +628,12 @@ private struct ChromeSetupSheet: View {
                     Button("Show Folder in Finder") { NSWorkspace.shared.activateFileViewerSelecting([setup.extensionFolder]) }
                         .disabled(!FileManager.default.fileExists(atPath: setup.extensionFolder.path))
                 }
-                Text("Chrome warns that the extension can read and change data on all websites. That's how it stops a blocked site in any tab. It checks each address on your Mac and tells Three only which rule matched. Guest and Incognito windows aren't covered.")
+                Text("Chrome warns that the extension can read and change data on all websites. That's how it stops a blocked site; addresses never leave your Mac.")
                     .font(Typo.meta)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            step(3, "Check the connection") {
+            step(3, "Wait for Chrome to connect") {
                 if link.action == .remove {
                     Label(link.value, systemImage: "checkmark.circle.fill")
                 } else {
@@ -641,17 +672,12 @@ private struct ChromeSetupSheet: View {
         }
     }
 
-    private func bullet(_ text: String, path: String) -> some View {
-        VStack(alignment: .leading, spacing: Space.hairline) {
-            Text(text)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Text(path)
-                .font(Typo.code)
-                .textSelection(.enabled)
-                .lineLimit(2)
-                .truncationMode(.middle)
-        }
+    private func bullet(path: String) -> some View {
+        Text(path)
+            .font(Typo.code)
+            .textSelection(.enabled)
+            .lineLimit(2)
+            .truncationMode(.middle)
     }
 
     private func install(_ setup: ChromeSetup) {
