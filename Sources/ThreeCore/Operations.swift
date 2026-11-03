@@ -158,9 +158,26 @@ extension Store {
             throw ThreeError.noSuchTask(id)
         }
         if let planId = task.dayPlanId, let plan = try DayPlan.fetchOne(db, key: planId) {
+            if plan.deletedAt == nil, plan.status == .closed {
+                throw ThreeError.invalid("\(plan.day) is closed, so its tasks can't change. To keep working on this one, carry it to an open day and update the copy.")
+            }
             try requireEditable(plan)
         }
         return task
+    }
+
+    /// A live task on any day, or in the inbox, by its id or a unique id prefix (case-insensitive).
+    public func task(matching ref: String) throws -> TaskRow {
+        let prefix = ref.trimmingCharacters(in: .whitespaces).uppercased()
+        guard !prefix.isEmpty else { throw ThreeError.noSuchTask(ref) }
+        let pattern = prefix.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "%", with: "\\%").replacingOccurrences(of: "_", with: "\\_") + "%"
+        return try db.read { db in
+            let matches = try FocusTask.fetchAll(db, sql: "SELECT * FROM task WHERE deletedAt IS NULL AND upper(id) LIKE ? ESCAPE '\\' LIMIT 2",
+                                                 arguments: [pattern])
+            guard matches.count == 1 else { throw ThreeError.noSuchTask(ref) }
+            return try rows(for: matches, db)[0]
+        }
     }
 
     func liveTasks(_ planId: String?, _ db: Database) throws -> [FocusTask] {
