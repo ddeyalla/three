@@ -52,3 +52,13 @@ Executed again against the combined product at `dbba9ae`:
 The new immutable release copy is `build/verification/non-calendar/frozen-dbba9ae/Three.app`. `perf-integrated-release-identity.json` binds it to the integrated source. ThreeApp SHA-256 is `d3ff4c1322fdaf02f3614c96e030b0107067cebb800289aff38ee9af8ee01d56`; CLI SHA-256 is `e2b864559d7e50a68dbeb194d692aee1751fb61834d9c8ac1393aea4ec52f8a2`. The copy's hashes match and strict signing passes.
 
 The currently running reviewer and Terra retain their original frozen inputs. Their results cannot be relabelled as verification of this later product change. A fresh bounded review of event-date reuse remains required after the sole reviewer slot is free. The original supervisor failure above remains recorded; these checks did not rerun it or establish its cause.
+
+## Independent recovery and lifecycle verdict
+
+A fresh Codex Sol 6.1 High reviewer passed the scoped `75fc9aa` and `a305ba9` review at `288b064`. The coordinator read its report at `/Users/divyanshudv/.t3/worktrees/adhd/t3-334c5383/.audit/recovery-lifecycle-review/report.md`. No new verified correctness finding or product correction was requested.
+
+The reviewer independently compiled the current Core and 34 App sources without the UI entry point. Forty-one focused tests passed, including a real packaged-peer Trim signal reaching AppModel, retained reflection draft state, notification deadline refresh, ordered recovery retry, and stale-action guards. Frozen executable hashes, strict signing and plist checks passed. Packaged recovery and the exact eight scheduled-tool contract passed. These are headless and protocol results, not native acceptance.
+
+Eight additional supervisor cases passed under the original bounds, with final rows and process cleanup retained. The original concurrent failure remains intermittent and unlocalized. The reviewer traced cleanup and claim recovery but did not reproduce a concrete defect. Neither contention nor delayed group disappearance is established as its cause. No assertion, timeout, or product behavior changed.
+
+The reviewer left only scratch audit artifacts and no surviving owned processes. Its task was stopped after receipt. The later Stats optimization is excluded from this verdict and receives a separate fresh review. Terra remains the sole native QA owner on the frozen `a305ba9` release.
