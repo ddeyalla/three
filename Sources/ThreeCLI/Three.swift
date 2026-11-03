@@ -4,14 +4,14 @@ import Foundation
 import ThreeCore
 
 @main
-struct Three: ParsableCommand {
+struct Three: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "three",
         abstract: "Plan three focused tasks a day and run them on a timer.",
         subcommands: [Today.self, Status.self, Add.self, Plan.self, Commit.self, Start.self, Pause.self,
                       Resume.self, Extend.self, Stop.self, Done.self, Drop.self, Tomorrow.self, Capture.self, Inbox.self,
                       Schedule.self, Upcoming.self, Logbook.self, Steps.self, Tags.self, Categories.self, Settings.self,
-                      Block.self, NativeHost.self]
+                      Block.self, NativeHost.self, MCPCommand.self]
     )
 }
 
@@ -25,14 +25,18 @@ struct DayOption: ParsableArguments {
     @Option(help: "today, tomorrow, yesterday, or yyyy-MM-dd.") var date = "today"
 
     func day() throws -> DayKey {
-        switch date {
-        case "today": return .today
-        case "tomorrow": return DayKey.today.adding(days: 1)
-        case "yesterday": return DayKey.today.adding(days: -1)
-        default:
-            guard let d = DayKey(date) else { throw ValidationError("Use today, tomorrow, yesterday or yyyy-MM-dd.") }
-            return d
-        }
+        try parsePlanDay(date)
+    }
+}
+
+func parsePlanDay(_ raw: String) throws -> DayKey {
+    switch raw {
+    case "today": return .today
+    case "tomorrow": return DayKey.today.adding(days: 1)
+    case "yesterday": return DayKey.today.adding(days: -1)
+    default:
+        guard let day = DayKey(raw) else { throw ThreeError.invalid("Use today, tomorrow, yesterday or a valid yyyy-MM-dd date.") }
+        return day
     }
 }
 
@@ -80,6 +84,8 @@ func ensureAppRunning() {
     let open = Process()
     open.executableURL = URL(fileURLWithPath: "/usr/bin/open")
     open.arguments = ["-g", "-b", ThreeVersion.bundleID]
+    open.standardOutput = FileHandle.standardError
+    open.standardError = FileHandle.standardError
     try? open.run()
     open.waitUntilExit()
 }
