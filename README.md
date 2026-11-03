@@ -91,7 +91,7 @@ three block connect-chrome                        # the same Chrome setup as Set
 
 `three block` only adds. Remove rules and change focus hours in the app, while blocking is off.
 
-To let an agent run your day, open **Settings → Connect** and copy the instructions into your `CLAUDE.md` or `AGENTS.md`. An MCP server is planned for v0.4.
+To let an agent run your day, open **Settings → Connect** and copy the instructions into your `CLAUDE.md` or `AGENTS.md`. The built, unreleased v0.4 adds `three mcp`, native draft review, and opt-in scheduled planning. See the [MCP tools](docs/MCP.md), [draft review](docs/planning.md), and [scheduled planning](docs/scheduled-planning.md) guides.
 
 ## Develop
 
@@ -136,7 +136,7 @@ scripts/shot.sh <pid> build/today.png             # screenshot that window (need
 | v0.1 | Core loop: plan, dial timer, reflection, breaks, timeline, CLI | Done |
 | v0.2 | Plan and capture: inbox, upcoming, quick add, steps, categories, settings, tags, three panes | Done |
 | v0.3 | Site and app blocker during focus: Chrome and apps | Built, unreleased |
-| v0.4 | MCP server and AI planning | |
+| v0.4 | MCP server and AI planning | Built, unreleased |
 | v0.5 | Calendar sync | |
 | v0.6 | Session record and trends | |
 | v1.0 | Polish | |

@@ -8,10 +8,10 @@ Two designs were considered before implementation.
 
 | Design | Ownership and consequences |
 | --- | --- |
-| Native app with SQLite claims | Uses AppModel's existing tick and wake notifications. The app owns process execution, Settings, and notifications. SQLite coordinates app instances, Test, and MCP. No extra service or scheduler is installed. |
+| Native app with SQLite claims | Uses AppModel's existing tick and wake notifications. The app owns process execution, Settings, and notifications. SQLite coordinates app instances, Test, and MCP. The bundled helper supervises each command. No extra service or scheduler is installed. |
 | A launchd job invoking a separate runner | Can run without the app, but introduces installation, service lifetime, permissions, and separate notification coordination. It duplicates the app's existing wake path. |
 
-The native app design fits PRODUCT section 10. `PlanningSettings` uses the existing preference table under key `planning`. Migration `v9-scheduled-planning` adds `planningRun`. Existing timer preferences and plans remain unchanged.
+The native app design fits PRODUCT section 10. `PlanningSettings` uses the existing preference table under key `planning`. Migration `v9-scheduled-planning` adds `planningRun`. Migration `v10-planning-supervisor` records its helper owner. Existing timer preferences and plans remain unchanged.
 
 The implementation uses three verifiable units. First, prove the claim, restricted draft transaction, and bounded runner against scratch databases. Second, connect the existing app loop and Settings to those operations. Third, prove the packaged MCP path and native Test controls. Independent integration review belongs to the parent task.
 
@@ -20,8 +20,8 @@ The implementation uses three verifiable units. First, prove the claim, restrict
 1. Open Settings, then Planning.
 2. Set the local time in `HH:mm` format.
 3. Keep the Codex default or enter a command you trust.
-4. Click Save.
-5. Click Test to run immediately, or enable Scheduled planning for future automatic admission.
+4. Set Scheduled planning as desired, then click Save. The switch, time, and command save together.
+5. Click Test to save the complete form and run immediately, including when automatic scheduling is off.
 6. Inspect Last run, stdout, stderr, and any error. Review a successful draft in Today and press Commit yourself.
 
 Test also works while automatic scheduling is off. It uses the same claim and limits. It can explicitly retry a failed, timed-out, cancelled, or interrupted attempt when no plan or active run exists. Test preserves existing work, including empty draft, committed, closed, and deleted plan records. It does not start a timer.
@@ -44,7 +44,7 @@ The installed `codex exec --help` confirms these flags. Fixture commands prove t
 
 ## Run contract
 
-Each run retains its UUID, local target date, trigger, command, status, start, deadline, finish, process group, exit status, stdout, stderr, error, draft plan ID, and notification claim. Run timestamps use numeric SQLite encoding so deadline comparisons retain their precision.
+Each run retains its UUID, local target date, trigger, command, status, start, deadline, finish, process group, exit status, stdout, stderr, error, draft plan ID, and notification claim. Attempt insertion order determines Last run, so clock rollback cannot hide a newer result. Run timestamps use numeric SQLite encoding so deadline comparisons retain their precision.
 
 - Scheduled admission checks only the current local day. An app opened after planning time catches up once. It never replays a backlog of missed dates.
 - Any prior attempt consumes automatic admission for that date. Failures are not retried each tick. Test is an explicit retry.
@@ -55,15 +55,15 @@ Each run retains its UUID, local target date, trigger, command, status, start, d
 - Exit zero is successful only when the run's own draft still exists for review. Exit zero without a draft is a visible failure. A draft left by a failed command remains available for human review and is never silently removed.
 - Each output stream retains its first 65,536 bytes. The runner continues draining both streams after the cap. Invalid UTF-8 displays replacement characters. Settings identifies truncated output.
 - A continuous clock and the stored deadline bound execution to ten minutes. A local day change or backward clock jump before the run's start cancels the owned command. Work already saved remains for review.
-- Native process spawning creates a new process group and suspends the child until SQLite records its ownership. Cleanup kills that owned group, including ordinary descendants. The unreaped leader prevents PID reuse until cleanup. Settings Cancel and normal app quit use the same cancellation path.
+- Native process spawning creates a new process group and suspends the child until SQLite records its ownership. Cleanup kills that owned group, including ordinary descendants. The unreaped leader prevents PID reuse until cleanup. The helper owns this loop and the final database result. The app keeps a control pipe open. Settings Cancel, normal app quit, or sudden GUI death closes the pipe, and the helper cancels its owned command group.
 
 ## Restart and uncertain state
 
-The app never signals a PID recovered from SQLite. If the recorded process group is gone, the run becomes `interrupted`. It is not automatically retried. Existing drafts remain available, and Test still refuses to replace them.
+The app never signals a PID recovered from SQLite. A live supervisor retains ownership even after its command group is gone, until it writes the final result. If the supervisor and recorded command group are both gone, the run becomes `interrupted`. It is not automatically retried. Existing drafts remain available, and Test still refuses to replace them.
 
 If a recorded group still exists, or an app crash happened between claim and recording its group, the claim stays `running` and blocks every new planning command. Settings explains that process ownership is unresolved. A reused group ID may conservatively keep the claim blocked. An operator must establish that the old command and its descendants are gone before repairing such a row. There is no automatic unlock or unsafe force-retry button.
 
-The deadline is enforced by the running app. Forced app termination, power loss, or an app crash can interrupt its supervisor. A surviving command may continue until it exits or an operator stops it. The durable claim prevents another command from overlapping that unknown outcome. No launchd watchdog is installed. This is a deliberate availability limit of app-owned execution, not a guarantee that arbitrary external actions stop after an app crash.
+The bundled helper enforces the deadline independently of the GUI. GUI death also cancels the command through control-pipe EOF. Killing the helper itself or a machine failure can interrupt supervision. An uncertain outcome retains the durable claim and blocks further commands. No launchd watchdog is installed, and recovered PIDs are never signalled.
 
 ## Scheduled MCP policy
 
@@ -90,6 +90,7 @@ Run these commands from the prepared worktree:
 ./scripts/bundle.sh
 python3 scripts/test-mcp.py --binary build/Three.app/Contents/Helpers/three
 python3 scripts/test-scheduled-planning.py --app build/Three.app
+python3 scripts/test-planning-supervisor.py --binary build/Three.app/Contents/Helpers/three
 make test
 CONFIG=release ./scripts/bundle.sh
 codesign --verify --deep --strict build/Three.app

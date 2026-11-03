@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `three mcp` exposes shared planning, task, timer, category, history, and tightening-only blocker operations over stdio. Calendar and free-time tools remain unavailable before v0.5.
+- Agent drafts show their source, count, and duration. Review, edit, reorder, drop, and commit in Today. Earlier unfinished tasks can be accepted or dismissed deliberately while retaining steps, tags, and history.
+- Settings includes copyable MCP connection entries, canonical planning guidance, and opt-in scheduled local planning with Test, output, errors, one daily catch-up, and draft-only agent access. The bundled helper bounds and cancels commands independently of the app.
+- Shared lifecycle guards protect closed and carried work. Legacy date spellings upgrade without losing task or session links.
+
 - Three has a retriever app icon with a transparent outer border and native macOS icon sizes.
 - Blocker race fixes: connection removal holds the Store's writer lock, delayed panels cancel when protection ends, and the unblock wait uses elapsed time rather than the Mac's clock. Failed app hides now appear in coverage, Back to work rechecks its destination, and midnight-to-midnight focus hours stay editable as full days.
 - **Blocking during focus.** Settings has a Blocking tab for websites, apps, weekly focus hours and the Chrome connection. It starts empty; X, Reddit and YouTube are one-click suggestions that add their domains as ordinary rows (X adds x.com and twitter.com, not t.co). Blocking is on during every focus session, for at most 15 minutes of a paused or overrunning one, and during focus hours, which may run past midnight but can't cover the whole week.
