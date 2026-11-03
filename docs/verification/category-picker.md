@@ -30,6 +30,8 @@ Native verification used `com.deyalla.three.categoryqa` with its own database un
 
 Artifacts include `baseline-tests.log`, `final-tests.log`, `build.log`, `signing.log`, `category-popover.png` and `native-results.json` under `build/category-picker/`.
 
+Three Manual Test was updated from product commit `7667c84` and reopened on its existing database. Its logical SQLite fingerprint matched before and after replacement. The prior signed app and a database backup remain under `build/category-picker/`. The user's empty entry and Admin category choice were restored. The installed Three process retained PID 92331 and its original start time. `updated-manual.json` records the receipt.
+
 The isolated focus session ended. No authenticated model command ran. macOS 26, VoiceOver, native menu-bar interaction and minimum-width dragging are not accepted by these checks. The attempted pane drags did not resize the native split view. BPRO-396 retains its existing release gates.
 
 Exploration, design, implementation and review ran sequentially in-thread under the user's AGENTS.md. No delegates or independent model review ran. No PR or push was requested.
