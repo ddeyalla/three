@@ -93,6 +93,14 @@ Mutations are not globally replay-safe. Repeating `add_task` creates another tas
 
 ## Results and resources
 
+### Scheduled planning channel
+
+The app's local planning runner supplies `THREE_PLANNING_RUN`, `THREE_PLANNING_DATE`, and an absolute `THREE_DB` to its MCP helper. A partial or malformed environment fails startup. The run must exist, remain active, and match today's local target date and deadline.
+
+This mode lists only read tools and `plan_day`. It refuses all other mutation names even when called directly. `plan_day` requires the exact target date, at least one task, and `commit=false`. It creates one new draft with source `routine`. Existing plans, running timers, a prior draft write, expiry, or a completed claim refuse the write atomically. No commit or timer tool is exposed in this mode.
+
+The normal MCP channel retains the manual tools listed above. The configured shell command is trusted and can invoke other programs or channels. This protocol restriction does not sandbox its external actions. See [Scheduled planning](scheduled-planning.md) for settings, limits, crash recovery, and fixture verification.
+
 Successful tool results contain one text content item with JSON and `isError=false`. Output object keys use the Store's existing camelCase names. Input tool fields use snake_case as listed above.
 
 A day object contains `date`, `plan`, `tasks`, `sessions`, `running`, `runningTask`, `takenAt`, and `plannedMinutes`. Optional nil properties are omitted. Each task row contains its complete `task` and `category` records, `focusedSeconds`, `steps`, and `tags`. `plan.source` and `task.createdBy` preserve provenance. Dropped and carried rows remain available in these reads.

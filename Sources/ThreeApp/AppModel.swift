@@ -75,6 +75,11 @@ final class AppModel {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
         // A notification left from before a relaunch may be stale; reconcile schedules a fresh one if needed.
         if let running { UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [running.id]) }
+        let currentTimerID = running?.id
+        UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
+            let staleTimers = requests.map(\.identifier).filter { UUID(uuidString: $0) != nil && $0 != currentTimerID }
+            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: staleTimers)
+        }
         reconcile()
         // A new time zone, a changed clock or a wake can move every focus-hours boundary at once.
         let local = NotificationCenter.default, workspace = NSWorkspace.shared.notificationCenter

@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import Testing
 import ThreeCore
@@ -67,5 +68,32 @@ struct ScheduledPlanningAppTests {
         planning.save(settings)
         #expect(planning.error != nil)
         #expect(try reopened.planningSettings().localTime == "14:45")
+    }
+
+    @Test func shutdownCancelsAnAlreadyRunningOwnedProcessGroup() async throws {
+        let store = try store()
+        let fifo = URL(fileURLWithPath: store.db.path).deletingLastPathComponent().appendingPathComponent("ready.fifo")
+        #expect(mkfifo(fifo.path, 0o600) == 0)
+        let descriptor = open(fifo.path, O_RDONLY | O_NONBLOCK)
+        #expect(descriptor >= 0)
+        defer { close(descriptor) }
+        var settings = PlanningSettings()
+        settings.command = "printf ready > '\(fifo.path)'; /bin/sleep 60"
+        try store.setPlanningSettings(settings)
+        let planning = try PlanningController(store: store, deliverNotice: { _ in })
+        planning.check(now: Date(), test: true)
+        let ready = await Task.detached {
+            var event = pollfd(fd: descriptor, events: Int16(POLLIN), revents: 0)
+            guard poll(&event, 1, 3000) > 0 else { return false }
+            var bytes = [UInt8](repeating: 0, count: 5)
+            return read(descriptor, &bytes, 5) == 5 && String(decoding: bytes, as: UTF8.self) == "ready"
+        }.value
+        // Always clean up, including when readiness fails.
+        await planning.shutdown()
+        #expect(ready)
+        #expect(planning.lastRun?.status == .cancelled)
+        let group = try #require(planning.lastRun?.processGroup)
+        #expect(kill(-group, 0) == -1 && errno == ESRCH)
+        #expect(try store.activePlanningRun() == nil)
     }
 }

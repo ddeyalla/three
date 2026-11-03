@@ -79,7 +79,7 @@ struct ScheduledPlanningTests {
 
     @Test func recoveryReleasesOnlyProvenGoneGroupsAndKeepsCapturedOutput() throws {
         let store = try store()
-        try enabled(store)
+        try enabled(store, command: "printf recovered-output")
         let run = try #require(try store.claimPlanningRun(trigger: .test))
         let directory = URL(fileURLWithPath: store.db.path).deletingLastPathComponent()
         let result = PlanningCommand().execute(run: run, shell: "/bin/zsh", directory: directory,
@@ -87,9 +87,11 @@ struct ScheduledPlanningTests {
             try store.recordPlanningProcess(run.id, group: $0)
         }
         #expect(result.cleanupConfirmed)
-        // The child exited, but its caller crashed before it could finish the durable run.
+        try store.finishPlanningRun(run.id, result: .init(status: .succeeded, stdout: result.stdout, cleanupConfirmed: false))
+        #expect(try store.activePlanningRun()?.id == run.id)
         try store.recoverPlanningRun()
         #expect(try store.planningRun(run.id)?.status == .interrupted)
+        #expect(try store.planningRun(run.id)?.stdout == "recovered-output")
         #expect(try store.claimPlanningRun(trigger: .scheduled) == nil)
         #expect(try store.claimPlanningRun(trigger: .test) != nil)
     }
