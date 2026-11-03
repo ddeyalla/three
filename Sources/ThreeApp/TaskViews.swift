@@ -1,51 +1,56 @@
 import SwiftUI
 import ThreeCore
 
-/// One task as a glass card: completion circle, title, a quiet detail line, and its steps when open.
-struct TaskCard<Trailing: View>: View {
+/// One task as a glass card. The top row is the completion circle, the title and what trails it (duration, then
+/// the ellipsis menu); the row under it holds category, tags and step count, aligned with the title. Open, it adds
+/// steps, tags and notes.
+struct TaskCard<Trailing: View, Actions: View>: View {
     @Environment(AppModel.self) private var model
     let row: TaskRow
     var running = false
     var selected = false
     /// Shows steps and notes in place.
     var expanded = false
-    /// Runs when the title row is clicked. Steps and notes below it stay clickable on their own.
+    /// Runs when the card's header is clicked anywhere but the title, the buttons and the pickers in it.
     var onTap: () -> Void = {}
-    /// Set on an ordered list: the title row becomes a drag handle and VoiceOver gets the moves.
+    /// Set on an ordered list: the header becomes a drag handle and VoiceOver gets the moves.
     var reorder: CardReorder?
+    /// Clicking the title, or Rename in the menus, turns the title into a field.
+    var canRename = true
+    /// The ellipsis menu at the end of the top row. The same items are always on the context menu.
+    var showsMenuButton = true
     @ViewBuilder var trailing: Trailing
+    @ViewBuilder var actions: Actions
+
+    @State private var renaming = false
+    @State private var draft = ""
+    @State private var hoveringTitle = false
+    @FocusState private var titleFocused: Bool
 
     private var isClosed: Bool { !row.task.status.isOpen }
     private var isTravelling: Bool { reorder?.dragging.wrappedValue == row.id }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.sm) {
-            HStack(spacing: Space.md) {
-                CompletionButton(row: row)
-                VStack(alignment: .leading, spacing: Space.hairline) {
-                    Button(action: onTap) {
-                        Text(row.task.title)
+            VStack(alignment: .leading, spacing: Space.xs) {
+                HStack(spacing: Space.md) {
+                    CompletionButton(row: row)
+                    title
+                    Spacer(minLength: 0)
+                    HStack(spacing: Space.sm) {
+                        trailing
                             .font(Typo.body)
-                            .foregroundStyle(isClosed ? .secondary : .primary)
-                            .lineLimit(1)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(.rect)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                        if showsMenuButton { menuButton }
                     }
-                    .buttonStyle(.plain)
-                    .help(row.task.title)
-                    .accessibilityLabel(row.task.title)
-                    .accessibilityValue(expanded ? "Details expanded" : "Details collapsed")
-                    .accessibilityActions {
-                        if let up = reorder?.moveUp { Button("Move Up", action: up) }
-                        if let down = reorder?.moveDown { Button("Move Down", action: down) }
-                    }
-                    TaskDetailLine(row: row, editableCategory: row.task.status != .carried)
                 }
-                trailing
-                    .font(Typo.body)
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
+                TaskDetailLine(row: row, editableCategory: row.task.status != .carried)
+                    .padding(.leading, Space.xl + Space.md)
             }
+            .contentShape(.rect)
+            // Clicking the card around the field saves, since glass and text don't take focus from it.
+            .onTapGesture { renaming ? commitRename() : onTap() }
             .modifier(CardDragSource(row: row, reorder: reorder) { dragPreview })
             if let reference = row.task.linearRef {
                 Group {
@@ -75,8 +80,95 @@ struct TaskCard<Trailing: View>: View {
         .padding(.vertical, Space.sm)
         .contentShape(.rect(cornerRadius: Radius.card))
         .glassEffect(glass, in: .rect(cornerRadius: Radius.card))
+        .contextMenu { menuItems }
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(selected || running ? .isSelected : [])
+    }
+
+    /// The title as text, or as a field while renaming. Both sit on the same inset so nothing shifts between them;
+    /// the negative leading padding keeps the glyphs aligned with the row underneath.
+    @ViewBuilder private var title: some View {
+        Group {
+            if renaming {
+                TextField("Title", text: $draft)
+                    .textFieldStyle(.plain)
+                    .focused($titleFocused)
+                    // After the click or menu that started it settles; claimed at once, focus can bounce back.
+                    .onAppear { DispatchQueue.main.async { titleFocused = true } }
+                    .onSubmit(commitRename)
+                    .onExitCommand { renaming = false }
+                    .onChange(of: titleFocused) { if !titleFocused && renaming { commitRename() } }
+                    // Switching lists mid-edit keeps what was typed.
+                    .onDisappear(perform: commitRename)
+                    .focusedValue(\.todayFocus, .entry)
+                    .accessibilityLabel("Task title")
+            } else {
+                Text(row.task.title)
+                    .foregroundStyle(isClosed ? .secondary : .primary)
+                    .lineLimit(1)
+            }
+        }
+        .font(Typo.body)
+        .padding(.horizontal, Space.xs)
+        .padding(.vertical, Space.hairline)
+        .frame(maxWidth: renaming ? .infinity : nil, alignment: .leading)
+        .background(titleFill, in: .rect(cornerRadius: Radius.block))
+        .padding(.leading, -Space.xs)
+        .contentShape(.rect)
+        .onHover { hoveringTitle = $0 }
+        .pointerStyle(canRename && !renaming ? .horizontalText : nil)
+        // Off while renaming, so clicks inside the field place the cursor instead of starting over.
+        .gesture(TapGesture().onEnded { canRename ? beginRename() : onTap() }, including: renaming ? .subviews : .all)
+        .help(renaming ? "" : row.task.title)
+        .accessibilityAddTraits(renaming ? [] : .isButton)
+        .accessibilityValue(renaming ? "" : expanded ? "Details expanded" : "Details collapsed")
+        .accessibilityAction(named: expanded ? "Collapse" : "Expand", onTap)
+        .accessibilityActions {
+            if canRename { Button("Rename", action: beginRename) }
+            if let up = reorder?.moveUp { Button("Move Up", action: up) }
+            if let down = reorder?.moveDown { Button("Move Down", action: down) }
+        }
+    }
+
+    /// Instant, no animation: the title is hovered constantly.
+    private var titleFill: Color {
+        if renaming { return Theme.rowFill }
+        return hoveringTitle && canRename ? Theme.rowHover : .clear
+    }
+
+    private var menuButton: some View {
+        Menu { menuItems } label: {
+            Image(systemName: "ellipsis")
+                .font(Typo.body)
+                .foregroundStyle(.secondary)
+                .frame(width: Space.xl, height: Space.xl)
+                .contentShape(.rect)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("More")
+        .accessibilityLabel("Actions for \(row.task.title)")
+    }
+
+    @ViewBuilder private var menuItems: some View {
+        Button("Rename", action: beginRename).disabled(!canRename)
+        actions
+    }
+
+    private func beginRename() {
+        guard canRename else { return }
+        draft = row.task.title
+        renaming = true
+    }
+
+    /// Return or clicking away saves; an empty or unchanged title leaves the task as it was.
+    private func commitRename() {
+        guard renaming else { return }
+        renaming = false
+        let title = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty, title != row.task.title else { return }
+        model.perform { try model.store.updateTask(row.id, title: title) }
     }
 
     /// The collapsed title row, even when the card is open.
@@ -514,6 +606,8 @@ struct ScheduleMenuItems: View {
 struct TaskMenuItems: View {
     @Environment(AppModel.self) private var model
     let row: TaskRow
+    /// Opens the editor for a block length the presets don't cover.
+    var customBlock: (() -> Void)?
 
     var body: some View {
         if model.isTodayClosed, model.day(of: row.id) == model.snapshot.day {
@@ -527,6 +621,10 @@ struct TaskMenuItems: View {
         Menu("Block") {
             ForEach([15, 25, 30, 45, 60, 90, 120, 180, 240], id: \.self) { m in
                 Button(Format.duration(TimeInterval(m * 60))) { model.perform { try model.store.updateTask(row.id, blockMinutes: m) } }
+            }
+            if let customBlock {
+                Divider()
+                Button("Custom…", action: customBlock)
             }
         }
         Menu("Category") {
