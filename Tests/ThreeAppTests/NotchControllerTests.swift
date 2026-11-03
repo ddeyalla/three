@@ -11,18 +11,18 @@ struct NotchControllerTests {
         try body(Store(url: directory.appendingPathComponent("db.sqlite")))
     }
 
-    @Test func preferenceDefaultsOffAndPersistsOnlyInInjectedDomain() {
+    @Test func preferenceDefaultsOnAndPersistsOnlyInInjectedDomain() {
         let name = "ThreeNotchTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name)!
         defer { defaults.removePersistentDomain(forName: name) }
         let preference = NotchPreference(defaults: defaults)
-        #expect(!preference.isEnabled)
-        preference.isEnabled = true
-        #expect(NotchPreference(defaults: defaults).isEnabled)
+        #expect(preference.isEnabled)
         preference.isEnabled = false
         #expect(!NotchPreference(defaults: defaults).isEnabled)
+        preference.isEnabled = true
+        #expect(NotchPreference(defaults: defaults).isEnabled)
         defaults.set("invalid", forKey: NotchPreference.key)
-        #expect(!NotchPreference(defaults: defaults).isEnabled)
+        #expect(NotchPreference(defaults: defaults).isEnabled)
     }
 
     @Test func escapeStaysDismissedAcrossRefreshAndNewSessionCanPresent() throws {

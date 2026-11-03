@@ -14,17 +14,43 @@ struct NotchScreen: Equatable {
     let auxiliaryRight: CGRect
 }
 
+/// Sizes of the Dynamic-Island-style surface. The collapsed shape is the hardware notch plus a
+/// narrow wing either side; hovering grows it downward into the expanded controls.
+struct NotchLayout: Equatable {
+    /// Width of each wing beside the camera housing. Narrow enough to leave status items alone.
+    static let wingWidth: CGFloat = 64
+    /// Concave flare where the shape meets the top edge, so it reads as part of the bezel.
+    static let ear: CGFloat = 6
+    static let expandedWidth: CGFloat = 400
+    static let expandedBodyHeight: CGFloat = 96
+
+    let notchWidth: CGFloat
+    let notchHeight: CGFloat
+
+    /// Visible body (excluding the ears) when collapsed.
+    var collapsedSize: CGSize { CGSize(width: notchWidth + Self.wingWidth * 2, height: notchHeight) }
+    var expandedSize: CGSize {
+        CGSize(width: max(Self.expandedWidth, collapsedSize.width), height: notchHeight + Self.expandedBodyHeight)
+    }
+    /// Panel size: the expanded shape plus its ears. The panel never moves or resizes; only the shape does.
+    var panelSize: CGSize { CGSize(width: expandedSize.width + Self.ear * 2, height: expandedSize.height) }
+}
+
 struct NotchPlacement: Equatable {
     let screenID: UInt32
     let screenName: String
+    let layout: NotchLayout
+    /// Panel frame in global coordinates, top edge flush with the top of the display.
     let frame: CGRect
+    /// The collapsed shape (notch plus wings) in global coordinates; hovering here expands.
+    let collapsedRect: CGRect
+    /// The expanded shape in global coordinates; leaving it collapses.
+    var expandedRect: CGRect { frame.insetBy(dx: NotchLayout.ear, dy: 0) }
 }
 
 enum NotchGeometry {
-    static let panelSize = CGSize(width: 360, height: 144)
-
     static func placement(screens: [NotchScreen]) -> NotchPlacement? {
-        let candidates = screens.compactMap { screen -> (NotchScreen, CGRect)? in
+        let candidates = screens.compactMap { screen -> NotchPlacement? in
             let rectangles = [screen.frame, screen.visibleFrame, screen.auxiliaryLeft, screen.auxiliaryRight]
             guard rectangles.allSatisfy({ rect in
                 [rect.minX, rect.minY, rect.width, rect.height].allSatisfy(\.isFinite)
@@ -34,24 +60,41 @@ enum NotchGeometry {
                 screen.frame.contains(screen.auxiliaryLeft), screen.frame.contains(screen.auxiliaryRight),
                 screen.auxiliaryLeft.maxX < screen.auxiliaryRight.minX else { return nil }
 
-            let safeTop = screen.frame.maxY - screen.safeTop
-            guard screen.auxiliaryLeft.minY >= safeTop, screen.auxiliaryRight.minY >= safeTop else { return nil }
-            let area = screen.visibleFrame.intersection(CGRect(
-                x: screen.frame.minX, y: screen.frame.minY,
-                width: screen.frame.width, height: screen.frame.height - screen.safeTop))
-            let inset = Space.sm
-            guard area.width >= panelSize.width + inset * 2,
-                  area.height >= panelSize.height + inset * 2 else { return nil }
-            let cameraCenter = (screen.auxiliaryLeft.maxX + screen.auxiliaryRight.minX) / 2
-            let x = min(max(cameraCenter - panelSize.width / 2, area.minX + inset),
-                        area.maxX - panelSize.width - inset)
-            let frame = CGRect(x: x, y: area.maxY - inset - panelSize.height,
-                               width: panelSize.width, height: panelSize.height)
-            return (screen, frame)
+            let top = screen.frame.maxY
+            guard screen.auxiliaryLeft.minY >= top - screen.safeTop,
+                  screen.auxiliaryRight.minY >= top - screen.safeTop else { return nil }
+            let layout = NotchLayout(notchWidth: screen.auxiliaryRight.minX - screen.auxiliaryLeft.maxX,
+                                     notchHeight: screen.safeTop)
+            // Wings (and their ears) must sit inside the menu-bar areas either side of the camera.
+            let reach = NotchLayout.wingWidth + NotchLayout.ear
+            guard screen.auxiliaryLeft.width >= reach, screen.auxiliaryRight.width >= reach else { return nil }
+            let panel = layout.panelSize
+            guard screen.frame.width >= panel.width, screen.frame.height >= panel.height * 2 else { return nil }
+
+            let center = (screen.auxiliaryLeft.maxX + screen.auxiliaryRight.minX) / 2
+            let x = min(max(center - panel.width / 2, screen.frame.minX), screen.frame.maxX - panel.width)
+            let frame = CGRect(x: x, y: top - panel.height, width: panel.width, height: panel.height)
+            let collapsed = layout.collapsedSize
+            let collapsedRect = CGRect(x: center - collapsed.width / 2, y: top - collapsed.height,
+                                       width: collapsed.width, height: collapsed.height)
+            return NotchPlacement(screenID: screen.id, screenName: screen.name, layout: layout,
+                                  frame: frame, collapsedRect: collapsedRect)
         }
-        let selected = candidates.first { $0.0.isBuiltIn }
+        return candidates.first { candidate in screens.contains { $0.id == candidate.screenID && $0.isBuiltIn } }
             ?? candidates.first
-        return selected.map { NotchPlacement(screenID: $0.0.id, screenName: $0.0.name, frame: $0.1) }
+    }
+
+    /// Whether the surface should be expanded for a pointer at `mouse` (global coordinates).
+    /// Expands on entering the collapsed shape; stays open until the pointer leaves the expanded one.
+    /// `pinned` (opened from the menu or Settings, pointer elsewhere) stays open until the pointer has
+    /// visited the surface once, or the user clicks elsewhere or presses Esc.
+    static func wantsExpanded(mouse: CGPoint, expanded: Bool, pinned: Bool = false,
+                              placement: NotchPlacement) -> Bool {
+        if expanded, pinned { return true }
+        // The top screen row reports y == maxY, so grow the rects upward by a point.
+        let rect = expanded ? placement.expandedRect.insetBy(dx: -Space.xs, dy: 0)
+            : placement.collapsedRect
+        return CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height + 1).contains(mouse)
     }
 }
 
@@ -102,15 +145,24 @@ final class NotchPreference {
         didSet { defaults.set(isEnabled, forKey: Self.key) }
     }
 
+    /// On by default: on a notched Mac it should just work. Settings can turn it off.
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        isEnabled = defaults.object(forKey: Self.key) as? Bool ?? false
+        isEnabled = defaults.object(forKey: Self.key) as? Bool ?? true
     }
+}
+
+/// Hover state shared between the controller (which tracks the pointer) and the view (which animates).
+@MainActor @Observable
+final class NotchSurface {
+    var isExpanded = false
+    var layout = NotchLayout(notchWidth: 185, notchHeight: 32)
 }
 
 @MainActor @Observable
 final class NotchController {
     let preference: NotchPreference
+    let surface = NotchSurface()
     private(set) var placement: NotchPlacement?
     private(set) var isVisible = false
     @ObservationIgnored private unowned let model: AppModel
@@ -118,14 +170,16 @@ final class NotchController {
     @ObservationIgnored private var panel: NotchPanel?
     @ObservationIgnored private var presentation = NotchPresentation()
     @ObservationIgnored private var observers: [(NotificationCenter, NSObjectProtocol)] = []
+    @ObservationIgnored private var mouseMonitors: [Any] = []
+    @ObservationIgnored private var pinned = false
     @ObservationIgnored private var observing = false
     @ObservationIgnored private var generation = 0
 
     var availabilityText: String {
         guard let placement else {
-            return "No supported notched display. Use Three’s menu-bar controls."
+            return "No notched display right now. Use Three’s menu-bar controls."
         }
-        return "Available on \(placement.screenName). Shows during focus blocks. Escape hides it for this block."
+        return "Lives in the notch on \(placement.screenName) during focus blocks. Hover it for controls; Esc hides it for this block."
     }
 
     init(model: AppModel, defaults: UserDefaults = .standard, openMain: @escaping () -> Void) {
@@ -171,10 +225,14 @@ final class NotchController {
         hide()
     }
 
+    /// Menu and Settings entry point: reveal after Esc and open the controls for keyboard use.
     func showControls() {
         presentation.reveal()
         reconcile()
-        if isVisible { panel?.makeKeyAndOrderFront(nil) }
+        guard isVisible else { return }
+        setExpanded(true)
+        pinned = true
+        panel?.makeKeyAndOrderFront(nil)
     }
 
     func dismiss() {
@@ -215,34 +273,87 @@ final class NotchController {
         }
         let panel = self.panel ?? makePanel()
         self.panel = panel
-        panel.setFrame(placement.frame, display: true)
+        if surface.layout != placement.layout { surface.layout = placement.layout }
+        if panel.frame != placement.frame { panel.setFrame(placement.frame, display: true) }
         if !panel.isVisible || !panel.isOnActiveSpace { panel.orderFrontRegardless() }
         isVisible = true
+        installMouseMonitors()
+        track(NSEvent.mouseLocation)
     }
 
     private func hide() {
+        removeMouseMonitors()
+        setExpanded(false, animated: false)
         panel?.orderOut(nil)
         isVisible = false
+    }
+
+    // MARK: Hover
+
+    /// Global monitors see the pointer over other apps; local ones see it over our own panel.
+    /// Pointer-move monitoring needs no Accessibility permission.
+    private func installMouseMonitors() {
+        guard mouseMonitors.isEmpty else { return }
+        let moves: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged]
+        if let global = NSEvent.addGlobalMonitorForEvents(matching: moves, handler: { [weak self] _ in
+            MainActor.assumeIsolated { self?.track(NSEvent.mouseLocation) }
+        }) { mouseMonitors.append(global) }
+        if let local = NSEvent.addLocalMonitorForEvents(matching: moves, handler: { [weak self] event in
+            MainActor.assumeIsolated { self?.track(NSEvent.mouseLocation) }
+            return event
+        }) { mouseMonitors.append(local) }
+        // A click anywhere else collapses, like the Dynamic Island.
+        if let click = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown], handler: { [weak self] _ in
+            MainActor.assumeIsolated { self?.setExpanded(false) }
+        }) { mouseMonitors.append(click) }
+    }
+
+    private func removeMouseMonitors() {
+        mouseMonitors.forEach(NSEvent.removeMonitor)
+        mouseMonitors = []
+    }
+
+    private func track(_ mouse: CGPoint) {
+        guard isVisible, let placement else { return }
+        if pinned, NotchGeometry.wantsExpanded(mouse: mouse, expanded: true, placement: placement) { pinned = false }
+        let wanted = NotchGeometry.wantsExpanded(mouse: mouse, expanded: surface.isExpanded, pinned: pinned,
+                                                 placement: placement)
+        if wanted != surface.isExpanded { setExpanded(wanted) }
+    }
+
+    private func setExpanded(_ expanded: Bool, animated: Bool = true) {
+        // Collapsed, the transparent panel must not swallow clicks meant for the menu bar or apps below.
+        panel?.ignoresMouseEvents = !expanded
+        if !expanded { pinned = false }
+        guard surface.isExpanded != expanded else { return }
+        if !expanded, panel?.isKeyWindow == true { panel?.resignKey() }
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let animation: Animation? = !animated ? nil
+            : reduceMotion ? nil
+            : expanded ? .spring(duration: 0.34, bounce: 0.18) : .spring(duration: 0.24, bounce: 0)
+        withAnimation(animation) { surface.isExpanded = expanded }
     }
 
     private func makePanel() -> NotchPanel {
         let panel = NotchPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel],
                                backing: .buffered, defer: false)
         panel.title = "Three Focus Controls"
-        panel.level = .floating
+        // Above the menu bar (24) and status items (25), like other notch apps.
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue + 3)
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        panel.hasShadow = true
+        panel.hasShadow = false
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        panel.isMovable = false
+        panel.ignoresMouseEvents = true
+        panel.acceptsMouseMovedEvents = true
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         panel.dismiss = { [weak self] in self?.dismiss() }
-        let host = NotchHostingView(rootView: NotchView(commands: commands, dismiss: { [weak self] in self?.dismiss() })
+        let host = NotchHostingView(rootView: NotchView(commands: commands, surface: surface,
+                                                        dismiss: { [weak self] in self?.dismiss() })
             .environment(model))
-        host.wantsLayer = true
-        host.layer?.cornerRadius = Radius.panel
-        host.layer?.cornerCurve = .continuous
-        host.layer?.masksToBounds = true
+        host.sizingOptions = []
         panel.contentView = host
         return panel
     }
@@ -253,6 +364,8 @@ private final class NotchPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
     override func cancelOperation(_ sender: Any?) { dismiss?() }
+    /// AppKit pushes windows below the menu bar; the notch surface belongs on the top edge.
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
 }
 
 private final class NotchHostingView<Content: View>: NSHostingView<Content> {
