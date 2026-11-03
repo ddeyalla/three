@@ -125,6 +125,33 @@ func historyReportUsesCalendarDaysAcrossDST(dayString: String, startString: Stri
     #expect(pacific.totals.focusSeconds == utc.totals.focusSeconds)
 }
 
+@Test(arguments: [
+    ("America/Sao_Paulo", "2018-11-04", "2018-11-05", 2),
+    ("Pacific/Apia", "2011-12-29", "2011-12-31", 3),
+    ("Pacific/Apia", "2011-12-30", "2011-12-30", 1),
+])
+func historyReportRetainsCivilDatesWhenTheTimeZoneMovesMidnight(zone: String, first: String, last: String, count: Int) throws {
+    let store = try historyStore()
+    let report = try store.historyReport(from: DayKey(first)!, through: DayKey(last)!, calendar: historyCalendar(zone))
+    #expect(report.days.count == count)
+    #expect(report.days.first?.day.rawValue == first)
+    #expect(report.days.last?.day.rawValue == last)
+    if first == "2011-12-30" {
+        let range = try HistoryRange(from: DayKey(first)!, through: DayKey(last)!, calendar: historyCalendar(zone))
+        #expect(range.start == range.end)
+        let start = historyDate("2011-12-30T12:00:00Z")
+        try store.db.write { db in
+            try Session(id: "next-local-day", taskId: nil, kind: .focus, plannedSeconds: 1800,
+                        startedAt: start, pausedAt: nil, pausedSeconds: 0, endedAt: start.addingTimeInterval(600),
+                        endReason: .stopped, outcome: nil, focusRating: nil, note: nil, updatedAt: start).insert(db)
+        }
+        let skipped = try store.historyReport(from: DayKey(first)!, through: DayKey(last)!, calendar: historyCalendar(zone))
+        let next = try store.historyReport(from: DayKey("2011-12-31")!, through: DayKey("2011-12-31")!, calendar: historyCalendar(zone))
+        #expect(skipped.totals.focusSeconds == 0)
+        #expect(next.totals.focusSeconds == 600)
+    }
+}
+
 @Test func historyReportKeepsCarryCopiesSeparateAndLabelsMutablePlansDerived() throws {
     let store = try historyStore()
     let first = DayKey("2026-11-02")!, last = DayKey("2026-11-03")!

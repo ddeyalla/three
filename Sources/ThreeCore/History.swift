@@ -102,24 +102,32 @@ struct HistoryRange {
     init(from: DayKey, through: DayKey, calendar: Calendar = .current) throws {
         var local = Calendar(identifier: .gregorian)
         local.timeZone = calendar.timeZone
+        var civil = Calendar(identifier: .gregorian)
+        civil.timeZone = TimeZone(secondsFromGMT: 0)!
         let formatter = DateFormatter()
-        formatter.calendar = local
+        formatter.calendar = civil
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = local.timeZone
+        formatter.timeZone = civil.timeZone
         formatter.dateFormat = "yyyy-MM-dd"
         formatter.isLenient = false
+        func localStart(_ date: Date) -> Date? {
+            var components = civil.dateComponents([.year, .month, .day], from: date)
+            components.hour = 12
+            return local.date(from: components).map { local.startOfDay(for: $0) }
+        }
         guard from <= through,
-              let start = formatter.date(from: from.rawValue),
+              let first = formatter.date(from: from.rawValue),
               let last = formatter.date(from: through.rawValue),
-              let distance = local.dateComponents([.day], from: start, to: last).day,
+              let distance = civil.dateComponents([.day], from: first, to: last).day,
               (0..<366).contains(distance),
-              let end = local.date(byAdding: .day, value: 1, to: last) else {
+              let next = civil.date(byAdding: .day, value: 1, to: last),
+              let start = localStart(first), let end = localStart(next) else {
             throw ThreeError.invalid("History needs an ordered range of at most 366 days.")
         }
         self.calendar = local
         self.start = start
         self.end = end
-        days = (0...distance).map { DayKey(local.date(byAdding: .day, value: $0, to: start)!, calendar: local) }
+        days = (0...distance).map { DayKey(civil.date(byAdding: .day, value: $0, to: first)!, calendar: civil) }
     }
 }
 
