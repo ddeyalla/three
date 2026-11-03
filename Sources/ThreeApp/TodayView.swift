@@ -310,7 +310,7 @@ struct TodayList: View {
     private nonisolated static let space = "today-list"
 
     var body: some View {
-        PaneList(subtitle: summary) {
+        PaneList(subtitle: { TodaySummary() }) {
             let snap = model.snapshot
             if snap.plan?.status == .draft, !snap.tasks.isEmpty {
                 Button("Commit") { model.perform { try model.store.commit(day: snap.day) } }
@@ -322,11 +322,6 @@ struct TodayList: View {
             list
         }
         .focusedSceneValue(\.todayList, true)
-    }
-
-    private var summary: String {
-        let date = model.snapshot.day.startDate.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
-        return ([date] + model.dayProgress).joined(separator: " · ")
     }
 
     private var list: some View {
@@ -417,6 +412,15 @@ struct TodayList: View {
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
         }
+    }
+}
+
+private struct TodaySummary: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let date = model.snapshot.day.startDate.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
+        Text(([date] + model.dayProgress).joined(separator: " · "))
     }
 }
 

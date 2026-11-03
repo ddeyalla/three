@@ -2,8 +2,8 @@ import SwiftUI
 import ThreeCore
 
 /// A list in the tasks pane: a one-line summary with an optional control, then the content, scrolling.
-struct PaneList<Accessory: View, Content: View>: View {
-    let subtitle: String
+struct PaneList<Subtitle: View, Accessory: View, Content: View>: View {
+    @ViewBuilder var subtitle: Subtitle
     @ViewBuilder var accessory: Accessory
     @ViewBuilder var content: Content
 
@@ -11,7 +11,7 @@ struct PaneList<Accessory: View, Content: View>: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Space.md) {
                 HStack(alignment: .center, spacing: Space.sm) {
-                    Text(subtitle)
+                    subtitle
                         .font(Typo.body)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
@@ -28,7 +28,13 @@ struct PaneList<Accessory: View, Content: View>: View {
     }
 }
 
-extension PaneList where Accessory == EmptyView {
+extension PaneList where Subtitle == Text {
+    init(subtitle: String, @ViewBuilder accessory: () -> Accessory, @ViewBuilder content: () -> Content) {
+        self.init(subtitle: { Text(subtitle) }, accessory: accessory, content: content)
+    }
+}
+
+extension PaneList where Subtitle == Text, Accessory == EmptyView {
     init(subtitle: String, @ViewBuilder content: () -> Content) {
         self.init(subtitle: subtitle, accessory: { EmptyView() }, content: content)
     }
