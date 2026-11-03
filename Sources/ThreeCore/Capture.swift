@@ -88,7 +88,7 @@ extension Store {
         let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { throw ThreeError.invalid("A step needs a title.") }
         return try write { db in
-            guard try FocusTask.exists(db, key: taskId) else { throw ThreeError.noSuchTask(taskId) }
+            _ = try editableTask(taskId, db)
             let last = try Int.fetchOne(db, sql: "SELECT MAX(position) FROM step WHERE taskId = ?", arguments: [taskId]) ?? -1
             let step = Step(id: UUID().uuidString, taskId: taskId, position: last + 1, title: title, done: false, updatedAt: Date())
             try step.insert(db)
@@ -99,15 +99,24 @@ extension Store {
     public func setStep(_ id: String, done: Bool? = nil, title: String? = nil) throws {
         try write { db in
             guard var step = try Step.fetchOne(db, key: id) else { throw ThreeError.invalid("No such step.") }
+            _ = try editableTask(step.taskId, db)
             if let done { step.done = done }
-            if let title { step.title = title }
+            if let title {
+                let clean = title.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !clean.isEmpty else { throw ThreeError.invalid("A step needs a title.") }
+                step.title = clean
+            }
             step.updatedAt = Date()
             try step.update(db)
         }
     }
 
     public func removeStep(_ id: String) throws {
-        try write { db in _ = try Step.deleteOne(db, key: id) }
+        try write { db in
+            guard let step = try Step.fetchOne(db, key: id) else { throw ThreeError.invalid("No such step.") }
+            _ = try editableTask(step.taskId, db)
+            _ = try Step.deleteOne(db, key: id)
+        }
     }
 
     // MARK: Categories

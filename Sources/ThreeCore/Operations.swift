@@ -277,6 +277,9 @@ extension Store {
     public func removeTask(_ id: String) throws {
         try write { db in
             var t = try editableTask(id, db)
+            guard t.status != .carried else {
+                throw ThreeError.invalid("That task already moved to another day.")
+            }
             let worked = try Session.filter(Column("taskId") == id).fetchCount(db) > 0
             if var s = try runningSession(db), s.taskId == id { try end(&s, reason: .stopped, at: Date(), db) }
             if worked { t.status = .dropped } else { t.deletedAt = Date() }

@@ -178,13 +178,14 @@ extension Store {
 
     public func addTag(_ name: String, to taskId: String) throws {
         try write { db in
-            guard try FocusTask.exists(db, key: taskId) else { throw ThreeError.noSuchTask(taskId) }
+            _ = try editableTask(taskId, db)
             try link(taskId, to: [name], db)
         }
     }
 
     public func removeTag(_ tagId: String, from taskId: String) throws {
         try write { db in
+            _ = try editableTask(taskId, db)
             try db.execute(sql: "DELETE FROM taskTag WHERE taskId = ? AND tagId = ?", arguments: [taskId, tagId])
         }
     }

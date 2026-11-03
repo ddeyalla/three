@@ -200,6 +200,7 @@ def run(binary, scratch):
         rpc.call("schedule_task", {"id": tomorrow, "date": "tomorrow"})
         copied = rpc.call("carry_task", {"id": tomorrow})
         rpc.call("carry_task", {"id": tomorrow}, error="invalid_input")
+        rpc.call("remove_task", {"id": tomorrow}, error="invalid_input")
         rpc.call("set_task_status", {"id": tomorrow, "status": "todo"}, error="invalid_input")
         future_date = (datetime.date.today() + datetime.timedelta(days=2)).isoformat()
         future = rpc.call("get_day", {"date": future_date})
