@@ -137,92 +137,97 @@ extension Store {
                               calendar: Calendar = .current) throws -> HistoryReport {
         let range = try HistoryRange(from: from, through: through, calendar: calendar)
         return try db.read { db in
-            let sessions = try Session.filter(Column("startedAt") >= range.start && Column("startedAt") < range.end)
-                .order(Column("startedAt"), Column("id")).fetchAll(db)
-            let plans = try DayPlan.filter(Column("day") >= from && Column("day") <= through)
-                .order(Column("day"), Column("id")).fetchAll(db)
-            let planIds = plans.map(\.id)
-            let sessionTaskIds = Set(sessions.compactMap(\.taskId))
-            let tasks = try FocusTask.filter(planIds.contains(Column("dayPlanId")) || sessionTaskIds.contains(Column("id")))
-                .order(Column("position"), Column("id")).fetchAll(db)
-            let taskIds = tasks.map(\.id)
-            let referencedPlans = try DayPlan.filter(Set(tasks.compactMap(\.dayPlanId)).contains(Column("id"))).fetchAll(db)
-            let planById = Dictionary(uniqueKeysWithValues: referencedPlans.map { ($0.id, $0) })
-            let planByDay = Dictionary(uniqueKeysWithValues: plans.map { ($0.day, $0) })
-            let taskById = Dictionary(uniqueKeysWithValues: tasks.map { ($0.id, $0) })
-            let categories = try Category.filter(Set(tasks.map(\.categoryId)).contains(Column("id"))).fetchAll(db)
-            let categoryById = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0) })
-            let tags = try self.tags(for: taskIds, db)
-            let steps = try self.steps(for: taskIds, db)
-            let tasksByPlan = Dictionary(grouping: tasks, by: \.dayPlanId)
-            let sessionsByDay = Dictionary(grouping: sessions, by: { DayKey($0.startedAt, calendar: range.calendar) })
-
-            let days = range.days.map { day in
-                let plan = planByDay[day]
-                let recorded = (sessionsByDay[day] ?? []).map { session in
-                    let task = session.taskId.flatMap { taskById[$0] }
-                    return HistorySession(session: session, actualSeconds: session.elapsed(at: now), task: task,
-                                          category: task.flatMap { categoryById[$0.categoryId] },
-                                          tags: task.flatMap { tags[$0.id] } ?? [])
-                }
-                let byTask = Dictionary(grouping: recorded, by: { $0.session.taskId })
-                let planned = plan.map { tasksByPlan[$0.id] ?? [] } ?? []
-                let plannedIds = Set(planned.map(\.id))
-                let references = byTask.keys.compactMap { id -> FocusTask? in
-                    guard let id, !plannedIds.contains(id) else { return nil }
-                    return taskById[id]
-                }.sorted { ($0.position, $0.id) < ($1.position, $1.id) }
-                let detail = (planned + references).map { task in
-                    let mine = byTask[task.id] ?? []
-                    let eligible = plan != nil && task.dayPlanId == plan?.id && plan?.deletedAt == nil && task.deletedAt == nil
-                        && task.status != .dropped && task.status != .carried
-                    return HistoryTask(task: task, category: categoryById[task.categoryId],
-                                       plannedDay: task.dayPlanId.flatMap { planById[$0]?.day },
-                                       steps: steps[task.id] ?? [], tags: tags[task.id] ?? [],
-                                       focusSeconds: mine.filter { $0.session.kind == .focus }.reduce(0) { $0 + $1.actualSeconds },
-                                       sessionIds: mine.map(\.id), derivedPlannedSeconds: eligible ? task.blockMinutes * 60 : 0)
-                }
-                var totals = HistoryTotals()
-                for task in detail where task.derivedPlannedSeconds > 0 {
-                    totals.plannedSeconds += task.derivedPlannedSeconds
-                    totals.plannedTaskCount += 1
-                    if task.task.status == .done { totals.doneTaskCount += 1 }
-                }
-                for row in recorded {
-                    if row.session.kind == .focus {
-                        totals.focusSeconds += row.actualSeconds
-                        totals.focusSessionCount += 1
-                    } else {
-                        totals.breakSeconds += row.actualSeconds
-                        totals.breakSessionCount += 1
-                    }
-                }
-                var strips: [String?: HistoryCategory] = [:]
-                for task in detail where task.derivedPlannedSeconds > 0 {
-                    let id: String? = task.task.categoryId
-                    var strip = strips[id] ?? HistoryCategory(categoryId: id, category: task.category, plannedSeconds: 0, focusSeconds: 0)
-                    strip.plannedSeconds += task.derivedPlannedSeconds
-                    strips[id] = strip
-                }
-                for row in recorded where row.session.kind == .focus {
-                    let id = row.task?.categoryId
-                    var strip = strips[id] ?? HistoryCategory(categoryId: id, category: row.category, plannedSeconds: 0, focusSeconds: 0)
-                    strip.focusSeconds += row.actualSeconds
-                    strips[id] = strip
-                }
-                return HistoryDay(day: day, plan: plan, totals: totals, categories: sortedHistoryCategories(strips.values),
-                                  tasks: detail, sessions: recorded)
-            }
-            let grouped = Dictionary(grouping: days, by: { String($0.day.rawValue.prefix(7)) })
-            let months = grouped.keys.sorted().map { month in
-                let included = grouped[month]!
-                return HistoryMonth(month: month, from: included.first!.day, through: included.last!.day,
-                                    dayCount: included.count, totals: historyTotals(included),
-                                    categories: historyCategories(included))
-            }
-            return HistoryReport(from: from, through: through, takenAt: now, timeZoneIdentifier: range.calendar.timeZone.identifier,
-                                 totals: historyTotals(days), months: months, days: days)
+            try historyReport(from: from, through: through, now: now, range: range, db: db)
         }
+    }
+
+    func historyReport(from: DayKey, through: DayKey, now: Date, range: HistoryRange,
+                       db: Database) throws -> HistoryReport {
+        let sessions = try Session.filter(Column("startedAt") >= range.start && Column("startedAt") < range.end)
+            .order(Column("startedAt"), Column("id")).fetchAll(db)
+        let plans = try DayPlan.filter(Column("day") >= from && Column("day") <= through)
+            .order(Column("day"), Column("id")).fetchAll(db)
+        let planIds = plans.map(\.id)
+        let sessionTaskIds = Set(sessions.compactMap(\.taskId))
+        let tasks = try FocusTask.filter(planIds.contains(Column("dayPlanId")) || sessionTaskIds.contains(Column("id")))
+            .order(Column("position"), Column("id")).fetchAll(db)
+        let taskIds = tasks.map(\.id)
+        let referencedPlans = try DayPlan.filter(Set(tasks.compactMap(\.dayPlanId)).contains(Column("id"))).fetchAll(db)
+        let planById = Dictionary(uniqueKeysWithValues: referencedPlans.map { ($0.id, $0) })
+        let planByDay = Dictionary(uniqueKeysWithValues: plans.map { ($0.day, $0) })
+        let taskById = Dictionary(uniqueKeysWithValues: tasks.map { ($0.id, $0) })
+        let categories = try Category.filter(Set(tasks.map(\.categoryId)).contains(Column("id"))).fetchAll(db)
+        let categoryById = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0) })
+        let tags = try self.tags(for: taskIds, db)
+        let steps = try self.steps(for: taskIds, db)
+        let tasksByPlan = Dictionary(grouping: tasks, by: \.dayPlanId)
+        let sessionsByDay = Dictionary(grouping: sessions, by: { DayKey($0.startedAt, calendar: range.calendar) })
+
+        let days = range.days.map { day in
+            let plan = planByDay[day]
+            let recorded = (sessionsByDay[day] ?? []).map { session in
+                let task = session.taskId.flatMap { taskById[$0] }
+                return HistorySession(session: session, actualSeconds: session.elapsed(at: now), task: task,
+                                      category: task.flatMap { categoryById[$0.categoryId] },
+                                      tags: task.flatMap { tags[$0.id] } ?? [])
+            }
+            let byTask = Dictionary(grouping: recorded, by: { $0.session.taskId })
+            let planned = plan.map { tasksByPlan[$0.id] ?? [] } ?? []
+            let plannedIds = Set(planned.map(\.id))
+            let references = byTask.keys.compactMap { id -> FocusTask? in
+                guard let id, !plannedIds.contains(id) else { return nil }
+                return taskById[id]
+            }.sorted { ($0.position, $0.id) < ($1.position, $1.id) }
+            let detail = (planned + references).map { task in
+                let mine = byTask[task.id] ?? []
+                let eligible = plan != nil && task.dayPlanId == plan?.id && plan?.deletedAt == nil && task.deletedAt == nil
+                    && task.status != .dropped && task.status != .carried
+                return HistoryTask(task: task, category: categoryById[task.categoryId],
+                                   plannedDay: task.dayPlanId.flatMap { planById[$0]?.day },
+                                   steps: steps[task.id] ?? [], tags: tags[task.id] ?? [],
+                                   focusSeconds: mine.filter { $0.session.kind == .focus }.reduce(0) { $0 + $1.actualSeconds },
+                                   sessionIds: mine.map(\.id), derivedPlannedSeconds: eligible ? task.blockMinutes * 60 : 0)
+            }
+            var totals = HistoryTotals()
+            for task in detail where task.derivedPlannedSeconds > 0 {
+                totals.plannedSeconds += task.derivedPlannedSeconds
+                totals.plannedTaskCount += 1
+                if task.task.status == .done { totals.doneTaskCount += 1 }
+            }
+            for row in recorded {
+                if row.session.kind == .focus {
+                    totals.focusSeconds += row.actualSeconds
+                    totals.focusSessionCount += 1
+                } else {
+                    totals.breakSeconds += row.actualSeconds
+                    totals.breakSessionCount += 1
+                }
+            }
+            var strips: [String?: HistoryCategory] = [:]
+            for task in detail where task.derivedPlannedSeconds > 0 {
+                let id: String? = task.task.categoryId
+                var strip = strips[id] ?? HistoryCategory(categoryId: id, category: task.category, plannedSeconds: 0, focusSeconds: 0)
+                strip.plannedSeconds += task.derivedPlannedSeconds
+                strips[id] = strip
+            }
+            for row in recorded where row.session.kind == .focus {
+                let id = row.task?.categoryId
+                var strip = strips[id] ?? HistoryCategory(categoryId: id, category: row.category, plannedSeconds: 0, focusSeconds: 0)
+                strip.focusSeconds += row.actualSeconds
+                strips[id] = strip
+            }
+            return HistoryDay(day: day, plan: plan, totals: totals, categories: sortedHistoryCategories(strips.values),
+                              tasks: detail, sessions: recorded)
+        }
+        let grouped = Dictionary(grouping: days, by: { String($0.day.rawValue.prefix(7)) })
+        let months = grouped.keys.sorted().map { month in
+            let included = grouped[month]!
+            return HistoryMonth(month: month, from: included.first!.day, through: included.last!.day,
+                                dayCount: included.count, totals: historyTotals(included),
+                                categories: historyCategories(included))
+        }
+        return HistoryReport(from: from, through: through, takenAt: now, timeZoneIdentifier: range.calendar.timeZone.identifier,
+                             totals: historyTotals(days), months: months, days: days)
     }
 }
 
