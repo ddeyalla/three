@@ -18,6 +18,7 @@ final class PlanningController {
     @ObservationIgnored private var lastCheck: Date?
     @ObservationIgnored private var shuttingDown = false
     @ObservationIgnored private var cancellationRequested = false
+    @ObservationIgnored private var testRequested = false
 
     init(store: Store, helper: URL? = nil, deliverNotice: @escaping @MainActor (PlanningNotice) -> Void = PlanningController.notify) throws {
         self.store = store
@@ -43,17 +44,29 @@ final class PlanningController {
     }
 
     func check(now: Date, test: Bool = false) {
-        guard !shuttingDown, task == nil else {
-            if test { error = "A planning command is already running." }
+        guard !shuttingDown else { return }
+        guard task == nil else {
+            if test {
+                if checking { error = "A planning command is already running." }
+                else { testRequested = true; checking = true }
+            }
             return
         }
         if !test, let lastCheck, now >= lastCheck, now.timeIntervalSince(lastCheck) < 1 { return }
         lastCheck = now
-        checking = true
+        checking = test
         cancellationRequested = false
         let store = store
         task = Task {
-            defer { checking = false; task = nil; command = nil }
+            defer {
+                checking = false
+                task = nil
+                command = nil
+                if testRequested {
+                    testRequested = false
+                    check(now: Date(), test: true)
+                }
+            }
             do {
                 let run = try await Task.detached {
                     try store.recoverPlanningRun()
@@ -61,6 +74,7 @@ final class PlanningController {
                 }.value
                 refresh()
                 if let run, run.status == .running {
+                    checking = true
                     error = nil
                     let command = PlanningSupervisor()
                     self.command = command
@@ -84,7 +98,11 @@ final class PlanningController {
         }
     }
 
-    func cancel() { cancellationRequested = true; command?.cancel() }
+    func cancel() {
+        cancellationRequested = true
+        testRequested = false
+        command?.cancel()
+    }
 
     func shutdown() async {
         shuttingDown = true

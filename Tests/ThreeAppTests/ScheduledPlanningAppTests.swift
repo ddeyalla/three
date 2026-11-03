@@ -40,6 +40,35 @@ struct ScheduledPlanningAppTests {
         #expect(planning.lastRun == nil)
     }
 
+    @Test func testDuringAnIdlePollRunsOnceAfterAdmissionFinishes() async throws {
+        let store = try store()
+        var settings = PlanningSettings()
+        settings.command = "printf queued-test; exit 7"
+        try store.setPlanningSettings(settings)
+        let planning = try PlanningController(store: store, helper: try helper(), deliverNotice: { _ in })
+        planning.check(now: Date())
+        let poll = planning.task
+        planning.check(now: Date(), test: true)
+        #expect(planning.checking)
+        await poll?.value
+        await planning.task?.value
+        #expect(!planning.checking)
+        #expect(planning.error == nil)
+        #expect(planning.lastRun?.trigger == .test)
+        #expect(planning.lastRun?.stdout == "queued-test")
+        #expect(planning.lastRun?.exitCode == 7)
+    }
+
+    @Test func cancelAlsoCancelsATestQueuedDuringAnIdlePoll() async throws {
+        let planning = try PlanningController(store: store(), helper: try helper(), deliverNotice: { _ in })
+        planning.check(now: Date())
+        planning.check(now: Date(), test: true)
+        planning.cancel()
+        await planning.task?.value
+        #expect(!planning.checking)
+        #expect(planning.lastRun == nil)
+    }
+
     @Test func testShowsOutputAndFailureAndDoesNotRepeatNudgeOnReload() async throws {
         let store = try store()
         var settings = PlanningSettings()

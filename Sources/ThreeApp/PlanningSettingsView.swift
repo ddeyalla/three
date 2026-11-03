@@ -11,6 +11,8 @@ struct PlanningSettingsView: View {
     var body: some View {
         Form {
             Section {
+                Text("Prepare a draft for today at a set time. You review and commit it yourself. Three must be open.")
+                    .foregroundStyle(.secondary)
                 Toggle("Scheduled planning", isOn: $form.enabled)
                 TextField("Local planning time (HH:mm)", text: $form.localTime)
                 TextField("Local command", text: $form.command, axis: .vertical)
