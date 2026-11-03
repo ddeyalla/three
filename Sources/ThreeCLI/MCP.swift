@@ -8,11 +8,13 @@ struct MCPCommand: AsyncParsableCommand {
 
     func run() async throws {
         do {
-            let adapter = ThreeMCP(store: try store())
+            let context = try ScheduledPlanningContext(environment: ProcessInfo.processInfo.environment)
+            let adapter = ThreeMCP(store: try store(), scheduled: context)
+            if let context { try adapter.store.validateScheduledContext(context) }
             let server = Server(name: "three", version: "1.0.0",
                                 instructions: "Read three://plan-day-guide. Propose drafts with commit=false for human review. Calendar, free time and manual blocking are unsupported.",
                                 capabilities: .init(resources: .init(), tools: .init()))
-            await server.withMethodHandler(ListTools.self) { _ in .init(tools: MCPTool.allCases.map(\.definition)) }
+            await server.withMethodHandler(ListTools.self) { _ in .init(tools: adapter.definitions) }
             await server.withMethodHandler(ValidatedMethod<CallTool>.self) { parameters in
                 let params = try parameters.requireValue()
                 return adapter.call(name: params.name, arguments: params.arguments ?? [:])
@@ -35,7 +37,8 @@ struct MCPCommand: AsyncParsableCommand {
                           let text = try? String(contentsOf: url, encoding: .utf8) else {
                         throw MCPError.internalError("Planning guide is unavailable.")
                     }
-                    return .init(contents: [.text(text, uri: params.uri, mimeType: "text/markdown")])
+                    let scheduledGuide = context.map { "\n\nScheduled mode targets \($0.day.rawValue). Only reads and one plan_day with commit=false are permitted. Do not carry, edit, drop, commit, or start focus. If context is insufficient, explain what is missing and leave the day unchanged.\n" } ?? ""
+                    return .init(contents: [.text(text + scheduledGuide, uri: params.uri, mimeType: "text/markdown")])
                 default: throw MCPError.invalidParams("Unknown resource URI.")
                 }
             }
@@ -162,10 +165,28 @@ private func objectSchema(_ fields: [String: Value], required: [String]) -> Valu
 
 private struct ThreeMCP: Sendable {
     let store: Store
+    let scheduled: ScheduledPlanningContext?
+
+    var tools: [MCPTool] {
+        scheduled == nil ? MCPTool.allCases : [.getToday, .getDay, .planDay, .listCategories, .getStatus, .getCarryover, .getHistory, .getBlockStatus]
+    }
+
+    var definitions: [Tool] {
+        tools.map { tool in
+            guard tool == .planDay, let scheduled else { return tool.definition }
+            return Tool(name: tool.rawValue, description: "Create one draft for \(scheduled.day). Preserves all existing plans. Never commits or starts a timer.",
+                        inputSchema: objectSchema(["date": ["type": "string", "enum": [.string(scheduled.day.rawValue)]],
+                                                   "tasks": ["type": "array", "items": taskSchema, "minItems": 1, "maxItems": 5],
+                                                   "commit": ["type": "boolean", "enum": [false]]], required: ["date", "tasks"]),
+                        annotations: .init(readOnlyHint: false, openWorldHint: false))
+        }
+    }
 
     func call(name: String, arguments: [String: Value]) -> CallTool.Result {
         guard let tool = MCPTool(rawValue: name) else { return failure("unknown_tool", "Unknown or unsupported tool.") }
         do {
+            guard tools.contains(tool) else { return failure("scheduled_only", "Scheduled mode permits reads and draft creation only.") }
+            if let scheduled { try store.validateScheduledContext(scheduled) }
             try validate(.object(arguments), schema: tool.definition.inputSchema)
             return try perform(tool, MCPArguments(values: arguments))
         } catch let error as ThreeError {
@@ -194,7 +215,14 @@ private struct ThreeMCP: Sendable {
         case .planDay:
             let day = try a.day("date")
             let tasks = try a.array("tasks").map { value in try MCPArguments(values: value.objectValue!).newTask() }
-            try store.setPlan(tasks, day: day, source: .mcp, commit: a.bool("commit") ?? false)
+            if let scheduled {
+                guard try a.requiredString("date") == scheduled.day.rawValue, day == scheduled.day, a.bool("commit") != true else {
+                    return failure("scheduled_only", "Scheduled mode only creates an uncommitted draft for its target date.")
+                }
+                try store.createScheduledDraft(tasks, context: scheduled)
+            } else {
+                try store.setPlan(tasks, day: day, source: .mcp, commit: a.bool("commit") ?? false)
+            }
             let snapshot = try store.snapshot(for: day)
             return try result(MCPPlanResult(day: MCPDay(snapshot), warnings: snapshot.activeTaskCount > Rules.idealTasks ? ["More than three tasks are planned. Leave room for buffer."] : []))
         case .commitDay: try store.commit(day: a.day("date"))

@@ -251,6 +251,27 @@ public final class Store: @unchecked Sendable {
         m.registerMigration("v8-canonical-plan-dates") { db in
             try canonicalizePlanDates(db)
         }
+        m.registerMigration("v9-scheduled-planning") { db in
+            try db.create(table: "planningRun") { t in
+                t.primaryKey("id", .text)
+                t.column("day", .text).notNull().indexed()
+                t.column("trigger", .text).notNull()
+                t.column("status", .text).notNull()
+                t.column("startedAt", .datetime).notNull()
+                t.column("deadline", .datetime).notNull()
+                t.column("finishedAt", .datetime)
+                t.column("command", .text).notNull()
+                t.column("stdout", .text).notNull().defaults(to: "")
+                t.column("stderr", .text).notNull().defaults(to: "")
+                t.column("outputTruncated", .boolean).notNull().defaults(to: false)
+                t.column("exitCode", .integer)
+                t.column("error", .text)
+                t.column("processGroup", .integer)
+                t.column("draftPlanId", .text).references("dayPlan")
+                t.column("notifiedAt", .datetime)
+            }
+            try db.execute(sql: "CREATE UNIQUE INDEX planning_one_running ON planningRun(status) WHERE status = 'running'")
+        }
         return m
     }
 
