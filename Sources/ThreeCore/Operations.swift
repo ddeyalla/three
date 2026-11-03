@@ -137,6 +137,22 @@ extension Store {
         return p
     }
 
+    func requireEditable(_ plan: DayPlan) throws {
+        guard plan.deletedAt == nil, plan.status != .closed else {
+            throw ThreeError.invalid("A closed day cannot be changed.")
+        }
+    }
+
+    func editableTask(_ id: String, _ db: Database) throws -> FocusTask {
+        guard let task = try FocusTask.fetchOne(db, key: id), task.deletedAt == nil else {
+            throw ThreeError.noSuchTask(id)
+        }
+        if let planId = task.dayPlanId, let plan = try DayPlan.fetchOne(db, key: planId) {
+            try requireEditable(plan)
+        }
+        return task
+    }
+
     func liveTasks(_ planId: String?, _ db: Database) throws -> [FocusTask] {
         try FocusTask.filter(Column("dayPlanId") == planId && Column("deletedAt") == nil)
             .order(Column("position")).fetchAll(db)
@@ -144,6 +160,7 @@ extension Store {
 
     /// Inserts into `plan`, or into the inbox when `plan` is nil. Only a day counts toward the five-task cap.
     func insertTask(_ new: NewTask, plan: DayPlan?, source: Source, _ db: Database) throws -> FocusTask {
+        if let plan { try requireEditable(plan) }
         let title = new.title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { throw ThreeError.invalid("A task needs a title.") }
         guard (5...480).contains(new.blockMinutes) else { throw ThreeError.invalid("Blocks are 5 to 480 minutes.") }
@@ -173,6 +190,10 @@ extension Store {
     public func setPlan(_ tasks: [NewTask], day: DayKey, source: Source, commit: Bool) throws {
         try write { db in
             var plan = try planRow(day, source: source, db)
+            try requireEditable(plan)
+            guard commit || plan.status == .draft else {
+                throw ThreeError.invalid("A draft cannot replace a committed plan. Replan explicitly with commit=true.")
+            }
             let worked = Set(try String.fetchAll(db, sql: "SELECT DISTINCT taskId FROM session WHERE taskId IS NOT NULL"))
             for var t in try liveTasks(plan.id, db) where !worked.contains(t.id) {
                 t.deletedAt = Date(); t.updatedAt = Date()
@@ -188,9 +209,10 @@ extension Store {
 
     public func commit(day: DayKey = .today) throws {
         try write { db in
-            guard var plan = try DayPlan.filter(Column("day") == day).fetchOne(db) else {
+            guard var plan = try DayPlan.filter(Column("day") == day && Column("deletedAt") == nil).fetchOne(db) else {
                 throw ThreeError.invalid("No plan for \(day).")
             }
+            try requireEditable(plan)
             plan.status = .committed
             plan.committedAt = plan.committedAt ?? Date()
             plan.updatedAt = Date()
@@ -201,14 +223,30 @@ extension Store {
     public func updateTask(_ id: String, title: String? = nil, category: String? = nil,
                            blockMinutes: Int? = nil, status: TaskStatus? = nil, notes: String? = nil) throws {
         try write { db in
-            guard var t = try FocusTask.fetchOne(db, key: id) else { throw ThreeError.noSuchTask(id) }
-            if let title { t.title = title }
+            var t = try editableTask(id, db)
+            if let title {
+                let clean = title.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !clean.isEmpty else { throw ThreeError.invalid("A task needs a title.") }
+                t.title = clean
+            }
             if let category { t.categoryId = try self.category(category, db).id }
             if let blockMinutes {
                 guard (5...480).contains(blockMinutes) else { throw ThreeError.invalid("Blocks are 5 to 480 minutes.") }
                 t.blockMinutes = blockMinutes
             }
-            if let status { t.status = status }
+            if let status {
+                guard t.status != .carried || status == .carried else {
+                    throw ThreeError.invalid("That task already moved to another day.")
+                }
+                if status == .active, try runningSession(db)?.taskId != id {
+                    throw ThreeError.invalid("Start focus to activate a task.")
+                }
+                if let planId = t.dayPlanId, (t.status == .dropped || t.status == .carried),
+                   status != .dropped && status != .carried {
+                    try checkCap(liveTasks(planId, db))
+                }
+                t.status = status
+            }
             if let notes { t.notes = notes }
             t.updatedAt = Date()
             try t.update(db)
@@ -224,7 +262,7 @@ extension Store {
     /// Moves a task to `index` among the day's visible tasks. Dropped tasks are hidden, so they sink to the end.
     public func moveTask(_ id: String, to index: Int) throws {
         try write { db in
-            guard let moving = try FocusTask.fetchOne(db, key: id) else { throw ThreeError.noSuchTask(id) }
+            let moving = try editableTask(id, db)
             let others = try liveTasks(moving.dayPlanId, db).filter { $0.id != id }
             var tasks = others.filter { $0.status != .dropped }
             tasks.insert(moving, at: max(0, min(index, tasks.count)))
@@ -238,7 +276,7 @@ extension Store {
 
     public func removeTask(_ id: String) throws {
         try write { db in
-            guard var t = try FocusTask.fetchOne(db, key: id) else { throw ThreeError.noSuchTask(id) }
+            var t = try editableTask(id, db)
             let worked = try Session.filter(Column("taskId") == id).fetchCount(db) > 0
             if var s = try runningSession(db), s.taskId == id { try end(&s, reason: .stopped, at: Date(), db) }
             if worked { t.status = .dropped } else { t.deletedAt = Date() }
@@ -286,6 +324,7 @@ extension Store {
                   let t = try liveTasks(plan.id, db).first(where: { $0.status.isOpen }) else { throw ThreeError.nothingToStart }
             task = t
         }
+        task = try editableTask(task.id, db)
         guard task.status.isOpen else { throw ThreeError.invalid("Reopen the task before starting it.") }
         guard task.dayPlanId != nil else { throw ThreeError.invalid("Plan it for today before starting it.") }
         let focused = try Session.filter(Column("taskId") == task.id && Column("kind") == SessionKind.focus)
@@ -315,7 +354,7 @@ extension Store {
     @discardableResult
     public func pushToTomorrow(_ id: String, now: Date = Date()) throws -> FocusTask {
         try write { db in
-            guard var t = try FocusTask.fetchOne(db, key: id), t.deletedAt == nil else { throw ThreeError.noSuchTask(id) }
+            var t = try editableTask(id, db)
             guard t.status.isOpen else { throw ThreeError.invalid("Only open tasks can be carried to tomorrow.") }
             guard try runningSession(db)?.taskId != id else {
                 throw ThreeError.invalid("Finish the running block before moving its task.")

@@ -52,11 +52,12 @@ extension Store {
     /// Plans a task for `day`, or returns it to the inbox when `day` is nil. Planning respects the five-task cap.
     public func schedule(_ id: String, on day: DayKey?) throws {
         try write { db in
-            guard var t = try FocusTask.fetchOne(db, key: id), t.deletedAt == nil else { throw ThreeError.noSuchTask(id) }
+            var t = try editableTask(id, db)
             if try Session.filter(Column("endedAt") == nil && Column("taskId") == id).fetchCount(db) > 0 {
                 throw ThreeError.invalid("Finish the running block before moving its task.")
             }
             let plan = try day.map { try planRow($0, source: .app, db) }
+            if let plan { try requireEditable(plan) }
             guard plan?.id != t.dayPlanId else { return }
             let destination = try liveTasks(plan?.id, db)
             if plan != nil { try checkCap(destination) }

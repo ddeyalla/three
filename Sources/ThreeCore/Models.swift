@@ -7,7 +7,8 @@ public struct DayKey: Hashable, Codable, Comparable, CustomStringConvertible, Se
     public let rawValue: String
 
     public init?(_ raw: String) {
-        guard DayKey.formatter.date(from: raw) != nil else { return nil }
+        let formatter = DayKey.formatter
+        guard raw.count == 10, let date = formatter.date(from: raw), formatter.string(from: date) == raw else { return nil }
         rawValue = raw
     }
 
@@ -28,7 +29,12 @@ public struct DayKey: Hashable, Codable, Comparable, CustomStringConvertible, Se
     public static func < (a: DayKey, b: DayKey) -> Bool { a.rawValue < b.rawValue }
 
     public init(from decoder: Decoder) throws {
-        rawValue = try decoder.singleValueContainer().decode(String.self)
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        guard let day = DayKey(raw) else {
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Use a valid yyyy-MM-dd date.")
+        }
+        self = day
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -41,6 +47,7 @@ public struct DayKey: Hashable, Codable, Comparable, CustomStringConvertible, Se
         f.calendar = Calendar(identifier: .gregorian)
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyy-MM-dd"
+        f.isLenient = false
         return f
     }
 }
