@@ -125,9 +125,9 @@ public final class PlanningCommand: @unchecked Sendable {
             drain(err[0], into: &stderr)
             let now = clock()
             if isCancelled { forced = .init(status: .cancelled, error: "Planning was cancelled.") }
-            else if DayKey(now) != run.day || now < run.startedAt {
+            else if DayKey(now) != run.day || now.timeIntervalSince1970 < run.startedAt.timeIntervalSince1970 {
                 forced = .init(status: .cancelled, error: "Local date or clock changed during planning. No automatic retry.")
-            } else if start.duration(to: .now) >= .seconds(timeout) || now >= run.deadline {
+            } else if start.duration(to: .now) >= .seconds(timeout) || now.timeIntervalSince1970 >= run.deadline.timeIntervalSince1970 {
                 forced = .init(status: .timedOut, error: "Planning exceeded its wall-time limit.")
             }
             // WNOWAIT leaves the leader unreaped, so this group ID cannot be reused before cleanup.

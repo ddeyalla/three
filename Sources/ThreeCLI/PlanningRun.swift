@@ -22,8 +22,8 @@ struct PlanningRunCommand: AsyncParsableCommand {
         }
         try store.recordPlanningSupervisor(runID, pid: getpid())
         let now = Date()
-        guard DayKey(now) == run.day, now >= run.startedAt, now < run.deadline else {
-            try store.finishPlanningRun(runID, result: .init(status: now >= run.deadline ? .timedOut : .cancelled,
+        guard run.isWithinWindow(at: now) else {
+            try store.finishPlanningRun(runID, result: .init(status: now.timeIntervalSince1970 >= run.deadline.timeIntervalSince1970 ? .timedOut : .cancelled,
                                                             error: "Planning expired or its local date changed before launch. No command was started."))
             return
         }

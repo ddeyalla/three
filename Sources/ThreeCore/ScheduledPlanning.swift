@@ -58,6 +58,12 @@ public struct PlanningRun: Codable, FetchableRecord, PersistableRecord, Identifi
     public var supervisorPID: Int32?
     public var draftPlanId: String?
     public var notifiedAt: Date?
+
+    public func isWithinWindow(at now: Date) -> Bool {
+        // Compare in the stored epoch so a persisted deadline stays exact at its boundary.
+        let timestamp = now.timeIntervalSince1970
+        return DayKey(now) == day && timestamp >= startedAt.timeIntervalSince1970 && timestamp < deadline.timeIntervalSince1970
+    }
 }
 
 public struct PlanningNotice: Sendable {
@@ -176,7 +182,7 @@ extension Store {
 
     private func scheduledRun(_ context: ScheduledPlanningContext, now: Date, _ db: Database) throws -> PlanningRun {
         guard let run = try PlanningRun.fetchOne(db, key: context.runID), run.status == .running,
-              run.day == context.day, DayKey(now) == context.day, now >= run.startedAt, now < run.deadline else {
+              run.day == context.day, run.isWithinWindow(at: now) else {
             throw ThreeError.invalid("Scheduled planning claim is inactive, expired, or outside its target local day.")
         }
         return run

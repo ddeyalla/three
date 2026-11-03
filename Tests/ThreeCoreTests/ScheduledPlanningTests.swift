@@ -207,6 +207,20 @@ struct ScheduledPlanningTests {
         #expect(try store.takePlanningNotice(day: .today) == nil)
     }
 
+    @Test func timestampBoundariesSurviveNumericDatabaseRoundTrips() throws {
+        let reference = DayKey.today.startDate.addingTimeInterval(3600).timeIntervalSinceReferenceDate
+        for instant in [reference.nextDown, reference.nextUp] {
+            let store = try store()
+            let now = Date(timeIntervalSinceReferenceDate: instant)
+            let run = try #require(try store.claimPlanningRun(trigger: .test, now: now))
+            let context = try context(run)
+            #expect(throws: ThreeError.self) { try store.createScheduledDraft([task()], context: context, now: run.deadline) }
+            #expect(try store.snapshot(for: run.day).plan == nil)
+            try store.createScheduledDraft([task()], context: context, now: now)
+            #expect(try store.snapshot(for: run.day).plan?.status == .draft)
+        }
+    }
+
     @Test func timerAndHumanPlanRacesDoNotMutateWork() throws {
         let store = try store()
         try enabled(store)
