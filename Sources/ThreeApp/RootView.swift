@@ -33,13 +33,21 @@ struct RootView: View {
         .background(Backdrop())
         .background(InitialFocusSink())
         .safeAreaInset(edge: .top) {
-            if !model.setup.onboardingDismissed {
-                SetupIntroduction(openConnect: {
-                    model.settingsTab = .connect
-                    openSettings()
-                }, openSetup: { openSettings() })
-                .padding(Space.lg)
-                .frame(maxWidth: 680)
+            VStack(spacing: 0) {
+                if model.hasRecoveryNotice {
+                    RecoveryEntry(controller: model.recovery, review: model.reviewRecovery)
+                        .padding(.horizontal, Space.lg)
+                        .padding(.top, Space.md)
+                        .frame(maxWidth: 680)
+                }
+                if !model.setup.onboardingDismissed {
+                    SetupIntroduction(openConnect: {
+                        model.settingsTab = .connect
+                        openSettings()
+                    }, openSetup: { openSettings() })
+                    .padding(Space.lg)
+                    .frame(maxWidth: 680)
+                }
             }
         }
         .onAppear {
@@ -48,8 +56,14 @@ struct RootView: View {
             if open == "settings" || open == "blocking" { openSettings() }
         }
         .preferredColorScheme(.dark)
-        .sheet(isPresented: Binding(get: { model.reviewingDay != nil }, set: { if !$0 { model.reviewingDay = nil } })) {
-            DayReviewSheet()
+        .sheet(isPresented: Binding(get: { model.reviewingRecovery || model.reviewingDay != nil }, set: {
+            if !$0 { model.reviewingRecovery = false; model.reviewingDay = nil }
+        })) {
+            if model.reviewingRecovery {
+                RecoveryReviewView(controller: model.recovery, dismiss: { model.reviewingRecovery = false })
+            } else {
+                DayReviewSheet()
+            }
         }
         .frame(minWidth: [.history, .trends].contains(model.destination) ? 600 : 1060, minHeight: 640)
     }

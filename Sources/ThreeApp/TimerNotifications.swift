@@ -2,6 +2,22 @@ import Foundation
 import ThreeCore
 import UserNotifications
 
+@MainActor
+struct TimerNotificationDelivery {
+    var removePending: ([String]) -> Void
+    var removeDelivered: ([String]) -> Void
+    var add: (UNNotificationRequest, @escaping @Sendable (String?) -> Void) -> Void
+
+    static var system: Self {
+        let center = UNUserNotificationCenter.current()
+        return Self(removePending: { center.removePendingNotificationRequests(withIdentifiers: $0) },
+                    removeDelivered: { center.removeDeliveredNotifications(withIdentifiers: $0) },
+                    add: { request, completion in
+                        center.add(request) { completion($0.map { String($0.localizedDescription.prefix(400)) }) }
+                    })
+    }
+}
+
 struct TimerNotificationIdentity: Equatable, Sendable {
     let sessionID: String
     let plannedEnd: Date
@@ -48,12 +64,13 @@ enum TimerNotificationRoute: Equatable {
     static let extendAction = "three.extend-five"
 
     static func resolve(action: String, identity: TimerNotificationIdentity?, current: Session?,
-                        saved: [DeferredReflection], now: Date) -> Self {
+                        saved: [DeferredReflection], now: Date, recoverySuspended: Bool = false) -> Self {
         guard [reviewAction, openAction, extendAction, UNNotificationDefaultActionIdentifier].contains(action) else {
             return .stale
         }
         guard let identity else { return .stale }
         if action == openAction { return .openMain }
+        if recoverySuspended { return .openMain }
         if identity.kind == .break, action == UNNotificationDefaultActionIdentifier { return .openMain }
         if let session = current, identity.matches(session), session.isRunning, !session.isPaused,
            session.remaining(at: now) <= 0 {

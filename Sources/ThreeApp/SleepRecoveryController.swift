@@ -51,10 +51,12 @@ final class SleepRecoveryController {
     @ObservationIgnored private var observers: [(NotificationCenter, NSObjectProtocol)] = []
     @ObservationIgnored private var observing = false
     @ObservationIgnored private var pendingEvents: [(RecoveryEvent, RecoveryInstant)] = []
+    @ObservationIgnored private var decisionError: String?
     private var stateUnavailable = false
     @ObservationIgnored var didChange: (Set<String>) -> Void = { _ in }
 
     var reviews: [RecoveryReview] { status?.reviews ?? [] }
+    var needsRetry: Bool { stateUnavailable }
 
     init(store: Store, clock: @escaping () -> RecoveryInstant = RecoverySystemClock.now) {
         self.store = store
@@ -78,7 +80,7 @@ final class SleepRecoveryController {
                 guard let event = RecoverySystemEvent.event(for: name) else { continue }
                 let token = center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                     MainActor.assumeIsolated {
-                        self?.receive(event)
+                        _ = self?.receive(event)
                     }
                 }
                 observers.append((center, token))
@@ -98,6 +100,17 @@ final class SleepRecoveryController {
         return stateUnavailable || (status?.suspendsReconciliation(for: session.id) ?? true)
     }
 
+    func suspendsReconciliation(for sessionID: String) -> Bool {
+        stateUnavailable || (status?.suspendsReconciliation(for: sessionID) ?? true)
+    }
+
+    func retry() {
+        decisionError = nil
+        let affected = status?.unresolvedSessionIDs ?? []
+        refresh()
+        didChange(affected.union(status?.unresolvedSessionIDs ?? []))
+    }
+
     @discardableResult
     func receive(_ event: RecoveryEvent, at instant: RecoveryInstant? = nil) -> Bool {
         let affected = status?.unresolvedSessionIDs ?? []
@@ -111,12 +124,12 @@ final class SleepRecoveryController {
     func refresh() -> Bool {
         do {
             while let (event, instant) = pendingEvents.first {
-                status = try store.observeRecovery(event, at: instant)
+                publish(try store.observeRecovery(event, at: instant))
                 pendingEvents.removeFirst()
             }
-            status = try store.recoveryStatus()
+            publish(try store.recoveryStatus())
             stateUnavailable = false
-            error = nil
+            error = decisionError
             return true
         } catch {
             stateUnavailable = true
@@ -127,20 +140,35 @@ final class SleepRecoveryController {
 
     @discardableResult
     func decide(_ id: String, _ decision: RecoveryDecision) -> Bool {
+        decisionError = nil
         var affected = status?.unresolvedSessionIDs ?? []
         guard refresh() else { didChange(affected); return false }
         affected.formUnion(status?.unresolvedSessionIDs ?? [])
         let succeeded: Bool
         do {
             try store.decideRecovery(id, decision: decision, now: clock().date)
-            status = try store.recoveryStatus()
+            publish(try store.recoveryStatus())
             error = nil
             succeeded = true
         } catch {
+            decisionError = error.localizedDescription
             self.error = error.localizedDescription
             succeeded = false
         }
         didChange(affected.union(status?.unresolvedSessionIDs ?? []))
         return succeeded
+    }
+
+    private func publish(_ next: RecoveryStatus) {
+        if let status, status.observing == next.observing,
+           status.unresolvedSessionIDs == next.unresolvedSessionIDs,
+           status.reviews.count == next.reviews.count,
+           zip(status.reviews, next.reviews).allSatisfy({ before, after in
+               before.gap == after.gap && before.sessions.count == after.sessions.count
+                   && zip(before.sessions, after.sessions).allSatisfy {
+                       $0.session == $1.session && $0.taskTitle == $1.taskTitle && $0.eligibleSeconds == $1.eligibleSeconds
+                   }
+           }) { return }
+        status = next
     }
 }

@@ -90,6 +90,8 @@ struct ThreeApp: App {
                 Button("History") { model.destination = .history }.keyboardShortcut("6")
                 Button("Trends") { model.destination = .trends }.keyboardShortcut("7")
                 Button("Day Review") { model.reviewingDay = model.dayCloses.first?.day ?? model.snapshot.day }
+                Button("Review Interrupted Focus") { model.reviewRecovery() }
+                    .disabled(!model.hasRecoveryNotice)
                 Divider()
                 Button("Review Saved Reflection") {
                     if let saved = model.deferredReflections.first { model.reviewReflection(saved) }
@@ -140,6 +142,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        model?.shutdown()
         notch?.stop()
         menuBar?.stop()
         if let activationObserver { NotificationCenter.default.removeObserver(activationObserver) }
@@ -167,7 +170,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async
-        -> UNNotificationPresentationOptions { [.banner, .sound] }
+        -> UNNotificationPresentationOptions {
+        let identity = TimerNotificationIdentity(userInfo: notification.request.content.userInfo)
+        let present = await model?.shouldPresentTimerNotification(identity) ?? false
+        return present ? [.banner, .sound] : []
+    }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         guard response.actionIdentifier != UNNotificationDismissActionIdentifier else { return }

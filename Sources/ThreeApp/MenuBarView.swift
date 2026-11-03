@@ -29,6 +29,7 @@ struct MenuBarStatus {
             parts = [model.snapshot.tasks.isEmpty ? "Plan today" : "Three"]
         }
         if !model.deferredReflections.isEmpty { parts.append("Saved reflection awaiting review") }
+        if model.hasRecoveryNotice { parts.append("Interrupted focus awaiting review") }
         if model.blocking.isEnforcing { parts.append(model.blocking.headline) }
         spokenLabel = parts.joined(separator: ", ")
     }
@@ -41,6 +42,12 @@ struct MenuBarView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.md) {
+            if model.hasRecoveryNotice {
+                RecoveryEntry(controller: model.recovery, review: {
+                    model.reviewRecovery()
+                    openMain()
+                })
+            }
             if let saved = model.deferredReflections.first {
                 VStack(alignment: .leading, spacing: Space.sm) {
                     if model.deferredReflections.count > 1 {

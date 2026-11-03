@@ -1,6 +1,28 @@
 import SwiftUI
 import ThreeCore
 
+struct RecoveryEntry: View {
+    let controller: SleepRecoveryController
+    let review: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            if let error = controller.error {
+                Text(error).font(Typo.meta).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: Space.sm) {
+                Button("Review interrupted focus", action: review)
+                if controller.needsRetry {
+                    Button("Retry") { controller.retry() }
+                }
+            }
+            .font(Typo.body)
+            .buttonStyle(.glass)
+        }
+    }
+}
+
 struct RecoveryReviewView: View {
     @Bindable var controller: SleepRecoveryController
     let dismiss: () -> Void
@@ -22,7 +44,7 @@ struct RecoveryReviewView: View {
                     Label(error, systemImage: "exclamationmark.circle")
                         .font(Typo.body).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                    Button("Refresh") { controller.refresh() }
+                    Button("Retry") { controller.retry() }
                         .font(Typo.body).buttonStyle(.glass)
                 }
                 if let review = controller.reviews.first {

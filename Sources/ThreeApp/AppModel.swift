@@ -3,6 +3,7 @@ import Observation
 import SwiftUI
 import ThreeCore
 import UserNotifications
+import notify
 
 /// The app's single source of UI state: the latest snapshot plus a 1 Hz clock.
 /// It also owns the side effects other processes can't: notifications, sounds, the reflection panel.
@@ -11,6 +12,7 @@ import UserNotifications
 final class AppModel {
     let store: Store
     let planning: PlanningController
+    let recovery: SleepRecoveryController
     let setup = NativeSetup()
     private(set) var snapshot: DaySnapshot
     private(set) var now = Date()
@@ -26,6 +28,7 @@ final class AppModel {
     private(set) var deferredReflections: [DeferredReflection] = []
     private(set) var dayCloses: [DayCloseSummary] = []
     var reviewingDay: DayKey?
+    var reviewingRecovery = false
     private(set) var reflectionPresentation: ReflectionPresentation?
     var destination: Destination = .today
     /// The card opened in place in Inbox, Upcoming or Done, or the tag opened in Tags.
@@ -55,61 +58,106 @@ final class AppModel {
     @ObservationIgnored private var systemObservers: [NSObjectProtocol] = []
     @ObservationIgnored private var closeCursor: DayKey?
     @ObservationIgnored private var nextCloseCheck = Date.distantPast
+    @ObservationIgnored private let clock: () -> RecoveryInstant
+    @ObservationIgnored private let notifications: TimerNotificationDelivery
+    @ObservationIgnored private let runsSystemEffects: Bool
+    @ObservationIgnored private var suspendedReflectionID: String?
 
-    init() {
+    init(store suppliedStore: Store? = nil, clock: @escaping () -> RecoveryInstant = RecoverySystemClock.now,
+         notifications: TimerNotificationDelivery = .system, runsSystemEffects: Bool = true) {
+        self.clock = clock
+        self.notifications = notifications
+        self.runsSystemEffects = runsSystemEffects
+        let date = clock().date
+        now = date
         do {
-            store = try Store()
+            store = try suppliedStore ?? Store()
+            recovery = SleepRecoveryController(store: store, clock: clock)
+            if runsSystemEffects { recovery.start() }
+            else { recovery.receive(.relaunched) }
             planning = try PlanningController(store: store)
-            let closes = try store.closeEligibleDays()
-            closeCursor = closes.nextAfter
-            nextCloseCheck = Date().addingTimeInterval(60)
-            snapshot = try store.snapshot()
+            if !recovery.needsRetry {
+                let closes = try store.closeEligibleDays(now: date)
+                closeCursor = closes.nextAfter
+            }
+            nextCloseCheck = date.addingTimeInterval(60)
+            snapshot = try store.snapshot(for: DayKey(date))
             inbox = try store.inbox()
             upcoming = try store.upcoming()
             logbook = try store.logbook()
             tagSummaries = try store.tagSummaries()
             deferredReflections = try store.deferredReflections()
             dayCloses = try store.recentDayCloses()
-            blocking = BlockingState(status: try store.blockStatus(), now: Date())
+            blocking = BlockingState(status: try store.blockStatus(now: date), now: date)
         } catch {
             fatalError("Three can't open its database: \(error)")
         }
         // THREE_OPEN=inbox|upcoming|done|tags opens on that view, for screenshots and scripts.
         if let open = ProcessInfo.processInfo.environment["THREE_OPEN"], let d = Destination(rawValue: open) { destination = d }
+        recovery.didChange = { [weak self] affectedIDs in
+            guard let self else { return }
+            var ids = affectedIDs
+            if self.recovery.needsRetry, let running = self.running, running.kind == .focus { ids.insert(running.id) }
+            self.invalidateRecovery(ids)
+            self.reload()
+        }
+        var affected = recovery.status?.unresolvedSessionIDs ?? []
+        if recovery.needsRetry, let running, running.kind == .focus { affected.insert(running.id) }
+        invalidateRecovery(affected)
+        reconcile()
+        guard runsSystemEffects else { return }
         signalToken = ChangeSignal.observe(databasePath: store.db.path) { [weak self] in self?.reload() }
         let ticker = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
-        // .common keeps the clock running while a menu is open.
         RunLoop.main.add(ticker, forMode: .common)
         self.ticker = ticker
-        // A notification left from before a relaunch may be stale; reconcile schedules a fresh one if needed.
-        if let running { UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [running.id]) }
         UNUserNotificationCenter.current().getPendingNotificationRequests { [weak self] requests in
             let identifiers = requests.map(\.identifier)
             Task { @MainActor in
                 guard let self else { return }
                 let staleTimers = identifiers.filter { UUID(uuidString: $0) != nil && $0 != self.running?.id }
-                UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: staleTimers)
+                self.notifications.removePending(staleTimers)
             }
         }
-        reconcile()
-        // A new time zone, a changed clock or a wake can move every focus-hours boundary at once.
-        let local = NotificationCenter.default, workspace = NSWorkspace.shared.notificationCenter
-        systemObservers = [
-            local.addObserver(forName: .NSSystemTimeZoneDidChange, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.reload() }
-            },
-            local.addObserver(forName: .NSSystemClockDidChange, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.reload() }
-            },
-            workspace.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.reload() }
-            },
-        ]
+        systemObservers = [NotificationCenter.default.addObserver(
+            forName: .NSSystemTimeZoneDidChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.reload() }
+        }]
         appBlocker.start()
         refreshBlocking()
         planning.check(now: now)
+    }
+
+    isolated deinit { shutdown() }
+
+    func shutdown() {
+        recovery.stop()
+        if signalToken != 0 { notify_cancel(signalToken); signalToken = 0 }
+        ticker?.invalidate()
+        ticker = nil
+        systemObservers.forEach { NotificationCenter.default.removeObserver($0) }
+        systemObservers = []
+    }
+
+    var hasRecoveryNotice: Bool { !recovery.reviews.isEmpty || recovery.error != nil }
+
+    func reviewRecovery() {
+        reviewingDay = nil
+        reviewingRecovery = true
+    }
+
+    private func invalidateRecovery(_ affectedIDs: Set<String>) {
+        guard !affectedIDs.isEmpty else { return }
+        let ids = affectedIDs.sorted()
+        notifications.removePending(ids)
+        notifications.removeDelivered(ids)
+        if let scheduledNotification, affectedIDs.contains(scheduledNotification.id) {
+            self.scheduledNotification = nil
+            notificationRevision += 1
+        }
+        if let running, affectedIDs.contains(running.id) { reflectedBlock = nil }
     }
 
     // MARK: Derived
@@ -156,9 +204,10 @@ final class AppModel {
 
     // MARK: Loop
 
-    private func tick() {
-        now = Date()
-        planning.check(now: now)
+    func tick() {
+        now = clock().date
+        if refreshRecovery() { reload(checkClose: false) }
+        if runsSystemEffects { planning.check(now: now) }
         if snapshot.day != DayKey(now) { reload() }
         if now >= nextCloseCheck || now < nextCloseCheck.addingTimeInterval(-60) {
             if checkDayClose(at: now) { reload(checkClose: false) }
@@ -166,20 +215,20 @@ final class AppModel {
         // A clock set back by more than a tick leaves the last policy in the future, so read it again.
         if now >= blockingRefreshDue || now < blocking.now.addingTimeInterval(-1) { refreshBlocking() }
         try? store.finishBreakIfDue(now: now)
+        reconcile()
         reconcileReflection()
-        if case .live(let prompt, _) = reflectionPresentation, now >= prompt.deadline {
+        if case .live(let prompt, _) = reflectionPresentation?.content, !recovery.suspendsReconciliation(for: running), now >= prompt.deadline {
             do {
-                try store.deferReflection(prompt, note: reflectionNote, now: now)
-                hideReflection()
+                if try store.deferReflection(prompt, note: reflectionNote, now: now) { hideReflection() }
                 reload()
             } catch {
                 self.error = error.localizedDescription
             }
         }
-        if let running, running.kind == .focus, !running.isPaused,
+        if let running, running.kind == .focus, !running.isPaused, !recovery.suspendsReconciliation(for: running),
            running.remaining(at: now) <= 0, reflectedBlock != blockKey(running), reflectionPresentation == nil {
             reflectedBlock = blockKey(running)
-            if UserDefaults.standard.object(forKey: "chime") as? Bool ?? true { NSSound(named: "Glass")?.play() }
+            if runsSystemEffects, UserDefaults.standard.object(forKey: "chime") as? Bool ?? true { NSSound(named: "Glass")?.play() }
             showReflection(.live(ReflectionPrompt(session: running, openedAt: now), task: runningTask))
         }
     }
@@ -187,6 +236,8 @@ final class AppModel {
     @discardableResult
     private func checkDayClose(at date: Date) -> Bool {
         nextCloseCheck = date.addingTimeInterval(60)
+        refreshRecovery()
+        guard !recovery.needsRetry else { return false }
         do {
             let closes = try store.closeEligibleDays(now: date, after: closeCursor)
             closeCursor = closes.nextAfter
@@ -200,9 +251,16 @@ final class AppModel {
     func reload(checkClose: Bool = true) {
         let selectedBefore = selectedTask?.id
         defer { if selectedTask?.id != selectedBefore { dialOverride = nil } }
+        now = clock().date
+        refreshRecovery()
         do {
-            if checkClose { checkDayClose(at: Date()) }
-            snapshot = try store.snapshot(for: DayKey(Date()))
+            if checkClose { checkDayClose(at: now) }
+            let before = snapshot.running
+            snapshot = try store.snapshot(for: DayKey(now))
+            if let before, let running, before.id == running.id,
+               before.recoveryTrimSeconds != running.recoveryTrimSeconds {
+                invalidateRecovery([running.id])
+            }
             inbox = try store.inbox()
             upcoming = try store.upcoming()
             logbook = try store.logbook()
@@ -219,7 +277,20 @@ final class AppModel {
         }
         refreshBlocking()
         planning.refresh()
-        planning.check(now: Date())
+        if runsSystemEffects { planning.check(now: now) }
+    }
+
+    @discardableResult
+    private func refreshRecovery() -> Bool {
+        let before = recovery.status?.unresolvedSessionIDs ?? []
+        let unavailable = recovery.needsRetry
+        recovery.refresh()
+        let after = recovery.status?.unresolvedSessionIDs ?? []
+        guard before != after || unavailable != recovery.needsRetry else { return false }
+        var affected = before.union(after)
+        if recovery.needsRetry, let running, running.kind == .focus { affected.insert(running.id) }
+        invalidateRecovery(affected)
+        return true
     }
 
     /// Browser heartbeats are written silently, so connections are re-read this often even when nothing else changes.
@@ -232,7 +303,7 @@ final class AppModel {
     /// Re-reads the blocker and applies it: hides apps now in force and closes an overlay whose rule no longer is.
     func refreshBlocking() {
         NSTimeZone.resetSystemTimeZone()
-        let at = Date()
+        let at = clock().date
         do {
             blocking = BlockingState(status: try store.blockStatus(now: at, calendar: .current), now: at,
                                      failedAppRuleIDs: appBlocker.failedRuleIDs)
@@ -240,8 +311,10 @@ final class AppModel {
             self.error = error.localizedDescription
             return
         }
-        appBlocker.enforce(blocking)
-        blockOverlay.reconcile(with: blocking)
+        if runsSystemEffects {
+            appBlocker.enforce(blocking)
+            blockOverlay.reconcile(with: blocking)
+        }
     }
 
     func updateAppBlockingFailures(_ ids: Set<String>) {
@@ -250,10 +323,9 @@ final class AppModel {
 
     /// Keeps the one pending notification in step with the running session, whoever changed it.
     private func reconcile() {
-        let center = UNUserNotificationCenter.current()
-        guard let running, !running.isPaused, running.remaining(at: Date()) > 0 else {
+        guard let running, !running.isPaused, !recovery.suspendsReconciliation(for: running), running.remaining(at: now) > 0 else {
             if scheduledNotification != nil {
-                center.removePendingNotificationRequests(withIdentifiers: [scheduledNotification!.id])
+                notifications.removePending([scheduledNotification!.id])
                 scheduledNotification = nil
                 notificationRevision += 1
             }
@@ -272,14 +344,13 @@ final class AppModel {
             content.body = snapshot.nextTask.map { "Next: \($0.task.title) (\($0.task.blockMinutes)m)" } ?? "Nice work today."
         }
         content.sound = .default
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, running.plannedEnd.timeIntervalSinceNow), repeats: false)
-        if let old = scheduledNotification { center.removePendingNotificationRequests(withIdentifiers: [old.id]) }
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, running.plannedEnd.timeIntervalSince(now)), repeats: false)
+        if let old = scheduledNotification { notifications.removePending([old.id]) }
         let id = running.id, end = running.plannedEnd
         notificationRevision += 1
         let revision = notificationRevision
         scheduledNotification = (running.id, running.plannedEnd)
-        center.add(UNNotificationRequest(identifier: id, content: content, trigger: trigger)) { [weak self] error in
-            let message = error.map { String($0.localizedDescription.prefix(400)) }
+        notifications.add(UNNotificationRequest(identifier: id, content: content, trigger: trigger)) { [weak self] message in
             Task { @MainActor in
                 guard let self, self.scheduledNotification?.id == id,
                       self.scheduledNotification?.end == end, self.notificationRevision == revision else { return }
@@ -290,7 +361,7 @@ final class AppModel {
 
     func retryTimerNotification() {
         if let old = scheduledNotification {
-            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [old.id])
+            notifications.removePending([old.id])
         }
         notificationRevision += 1
         scheduledNotification = nil
@@ -301,16 +372,32 @@ final class AppModel {
     func handleTimerNotification(action: String, identity: TimerNotificationIdentity?) {
         reload()
         switch TimerNotificationRoute.resolve(action: action, identity: identity, current: running,
-                                             saved: deferredReflections, now: Date()) {
+                                             saved: deferredReflections, now: now,
+                                             recoverySuspended: identity.map {
+                                                 $0.kind == .focus && recovery.suspendsReconciliation(for: $0.sessionID)
+                                             } ?? recovery.needsRetry) {
         case .liveReflection: finishEarly()
         case .savedReflection(let id):
             if let saved = deferredReflections.first(where: { $0.id == id }) { reviewReflection(saved) }
         case .extendTimer(let expected):
             perform { try store.extend(minutes: 5, expectedSession: expected) }
-        case .openMain: break
+        case .openMain:
+            if hasRecoveryNotice { reviewRecovery() }
         case .stale:
             notificationError = "This reminder no longer matches the timer. Your current timer was left unchanged."
         }
+    }
+
+    func shouldPresentTimerNotification(_ identity: TimerNotificationIdentity?) -> Bool {
+        reload()
+        guard let identity else { return true }
+        if identity.kind == .break {
+            return running.map(identity.matches) == true || snapshot.sessions.contains {
+                identity.matches($0) && $0.remaining(at: now) <= 0
+            }
+        }
+        guard !recovery.suspendsReconciliation(for: identity.sessionID) else { return false }
+        return running.map(identity.matches) == true || deferredReflections.contains { identity.matches($0.session) }
     }
 
     // MARK: Actions
@@ -353,13 +440,15 @@ final class AppModel {
     func stop() { perform { try store.stop() } }
 
     func finishEarly() {
+        recovery.refresh()
+        if recovery.suspendsReconciliation(for: running) { reviewRecovery(); return }
         if reflectionPresentation != nil {
-            reflection.activate()
+            if runsSystemEffects { reflection.activate() }
             return
         }
         guard let running, running.kind == .focus else { return }
         reflectedBlock = blockKey(running)
-        showReflection(.live(ReflectionPrompt(session: running, openedAt: Date()), task: runningTask), takeFocus: true)
+        showReflection(.live(ReflectionPrompt(session: running, openedAt: clock().date), task: runningTask), takeFocus: true)
     }
 
     private func blockKey(_ s: Session) -> String { "\(s.id)/\(s.plannedSeconds)/\(s.plannedEnd.timeIntervalSince1970)" }
@@ -370,9 +459,9 @@ final class AppModel {
     }
 
     func reflectionActivity(note: String) {
-        guard case .live(let prompt, let task) = reflectionPresentation else { return }
+        guard case .live(let prompt, let task) = reflectionPresentation?.content else { return }
         reflectionNote = note
-        reflectionPresentation = .live(ReflectionPrompt(session: prompt.session, openedAt: Date()), task: task)
+        reflectionPresentation?.content = .live(ReflectionPrompt(session: prompt.session, openedAt: clock().date), task: task)
     }
 
     func dismissReflection(_ saved: DeferredReflection) {
@@ -382,7 +471,7 @@ final class AppModel {
     }
 
     func closeReflection() {
-        if case .saved(let saved) = reflectionPresentation {
+        if case .saved(let saved) = reflectionPresentation?.content {
             dismissReflection(saved)
         } else {
             hideReflection()
@@ -391,22 +480,44 @@ final class AppModel {
 
     func hideReflection() {
         reflectionPresentation = nil
-        reflection.hide()
+        suspendedReflectionID = nil
+        if runsSystemEffects { reflection.hide() }
     }
 
     private func showReflection(_ presentation: ReflectionPresentation, takeFocus: Bool = false) {
         reflectionPresentation = presentation
         reflectionNote = presentation.session.note ?? ""
-        reflection.show(presentation, takeFocus: takeFocus || presentation.isSaved)
+        if runsSystemEffects { reflection.show(presentation, takeFocus: takeFocus || presentation.isSaved) }
     }
 
     private func reconcileReflection() {
-        switch reflectionPresentation {
+        if case .live(let prompt, _) = reflectionPresentation?.content, let running {
+            var expected = prompt.session
+            expected.recoveryTrimSeconds = running.recoveryTrimSeconds
+            let sameBlock = ReflectionPrompt(session: expected, openedAt: prompt.openedAt).matches(running)
+            if sameBlock {
+                if recovery.suspendsReconciliation(for: running) {
+                    suspendedReflectionID = running.id
+                    if prompt.session.recoveryTrimSeconds != running.recoveryTrimSeconds {
+                        reflectionPresentation?.content = .live(ReflectionPrompt(session: running, openedAt: prompt.openedAt), task: runningTask)
+                    }
+                } else if suspendedReflectionID == running.id || prompt.session.recoveryTrimSeconds != running.recoveryTrimSeconds {
+                    reflectionPresentation?.content = .live(ReflectionPrompt(session: running, openedAt: now), task: runningTask)
+                    suspendedReflectionID = nil
+                    reflectedBlock = blockKey(running)
+                }
+            }
+        }
+        switch reflectionPresentation?.content {
         case .live(let prompt, _) where !prompt.matches(running):
             hideReflection()
             if running?.isPaused == true { reflectedBlock = nil }
-        case .saved(let saved) where !deferredReflections.contains(where: { $0.id == saved.id }):
-            hideReflection()
+        case .saved(let saved):
+            if let current = deferredReflections.first(where: { $0.id == saved.id }) {
+                if current.session != saved.session { reflectionPresentation?.content = .saved(current) }
+            } else {
+                hideReflection()
+            }
         default:
             break
         }
@@ -511,26 +622,41 @@ final class AppModel {
     }
 }
 
-enum ReflectionPresentation {
-    case live(ReflectionPrompt, task: TaskRow?)
-    case saved(DeferredReflection)
+@MainActor @Observable
+final class ReflectionPresentation {
+    enum Content {
+        case live(ReflectionPrompt, task: TaskRow?)
+        case saved(DeferredReflection)
+    }
+
+    var content: Content
+
+    private init(_ content: Content) { self.content = content }
+
+    static func live(_ prompt: ReflectionPrompt, task: TaskRow?) -> ReflectionPresentation {
+        ReflectionPresentation(.live(prompt, task: task))
+    }
+
+    static func saved(_ reflection: DeferredReflection) -> ReflectionPresentation {
+        ReflectionPresentation(.saved(reflection))
+    }
 
     var session: Session {
-        switch self {
+        switch content {
         case .live(let prompt, _): prompt.session
         case .saved(let saved): saved.session
         }
     }
 
     var task: TaskRow? {
-        switch self {
+        switch content {
         case .live(_, let task): task
         case .saved(let saved): saved.task
         }
     }
 
     var isSaved: Bool {
-        if case .saved = self { return true }
+        if case .saved = content { return true }
         return false
     }
 }
