@@ -36,3 +36,11 @@ PASS. The collision-policy candidate passed `CONFIG=release ./scripts/bundle.sh`
 Codex Sol 6.1 High independently passed `cb68bd8` against `fbaa3e5`, with no verified findings. The coordinator inspected the report and recorded commands under `/Users/divyanshudv/.t3/worktrees/adhd/t3-5e1f4c92/.audit/collision-review/`. The exact extracted helper typechecked against Charts with a macOS 26 target. Source-extracted tick selection passed lengths zero through 366, sparse inputs, and civil-date boundaries. Source comparison confirmed all five complete domains, marks, numerical values, and full-date accessibility remain unchanged. Frozen identities, hashes, strict signatures, plist checks, and helper byte equality passed.
 
 This is source, API, and artifact proof. The reviewer launched no app and did not observe corrected labels or endpoint visibility. Greedy collision handling may omit overlapping labels. Terra retains the native acceptance gate. The reviewer left only scratch audit files and no owned processes, and the coordinator stopped it after delivery.
+
+## Native collision-policy verdict
+
+Terra passed the recorded truncation check on frozen `cb68bd8`. The coordinator inspected the 600-point daily-focus, 680-point accuracy, and 1240-point daily-focus screenshots in the [native receipt](trends-collision-native.md). Displayed labels are whole at 600, 680, 1060, and 1240 points. Weekly labels remain whole at the tested minimum and wide sizes. Native metrics, chronological positions, missing ratios, tag selection, and the narrow empty state match the packaged fixture.
+
+At the three smaller widths, the daily axes omit both endpoint labels. The coordinator accepts this reduced label density with the existing year-qualified page range and full-date value disclosures. It is a documented presentation limitation, not a missing record or a claim that every tick is visible. No additional axis abstraction or accounting change is warranted by this result. Larger-fixture native timing and other tickets' interaction gates remain open.
+
+Fresh protected-state captures match exactly. Terra stopped its owned processes; Manual Test's previously absent process remains an exception. The coordinator stopped the completed desktop delegate before assigning the next native pass.
