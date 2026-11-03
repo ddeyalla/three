@@ -3,7 +3,7 @@ import SwiftUI
 import ThreeCore
 
 enum SettingsTab: Hashable {
-    case timer, planning, categories, blocking, connect
+    case timer, planning, categories, blocking, connect, setup
 }
 
 struct SettingsView: View {
@@ -18,6 +18,9 @@ struct SettingsView: View {
             Tab("Categories", systemImage: "circle.grid.2x2", value: .categories) { CategorySettings() }
             Tab("Blocking", systemImage: "hand.raised", value: .blocking) { BlockingSettings() }
             Tab("Connect", systemImage: "point.3.connected.trianglepath.dotted", value: .connect) { ConnectSettings() }
+            Tab("Setup", systemImage: "keyboard", value: .setup) {
+                NativeSetupSettings { model.settingsTab = .connect }
+            }
         }
         .frame(width: 520, height: 460)
         .preferredColorScheme(.dark)

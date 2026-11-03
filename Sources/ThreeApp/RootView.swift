@@ -11,6 +11,8 @@ struct RootView: View {
         Group {
             if model.destination == .history {
                 HistoryView()
+            } else if model.destination == .trends {
+                TrendsView().environment(model)
             } else {
                 WorkspaceView()
             }
@@ -30,6 +32,16 @@ struct RootView: View {
         .animation(.easeOut(duration: 0.2), value: model.error)
         .background(Backdrop())
         .background(InitialFocusSink())
+        .safeAreaInset(edge: .top) {
+            if !model.setup.onboardingDismissed {
+                SetupIntroduction(openConnect: {
+                    model.settingsTab = .connect
+                    openSettings()
+                }, openSetup: { openSettings() })
+                .padding(Space.lg)
+                .frame(maxWidth: 680)
+            }
+        }
         .onAppear {
             let open = ProcessInfo.processInfo.environment["THREE_OPEN"]
             if open == "blocking" { model.settingsTab = .blocking }
@@ -39,7 +51,7 @@ struct RootView: View {
         .sheet(isPresented: Binding(get: { model.reviewingDay != nil }, set: { if !$0 { model.reviewingDay = nil } })) {
             DayReviewSheet()
         }
-        .frame(minWidth: model.destination == .history ? 600 : 1060, minHeight: 640)
+        .frame(minWidth: [.history, .trends].contains(model.destination) ? 600 : 1060, minHeight: 640)
     }
 }
 
@@ -60,12 +72,13 @@ struct TasksPane: View {
                 case .upcoming: UpcomingList()
                 case .done: DoneList()
                 case .tags: TagsList()
-                case .history: EmptyView()
+                case .history, .trends: EmptyView()
                 }
             }
             .frame(maxHeight: .infinity, alignment: .top)
             HStack(spacing: Space.lg) {
                 Button("History", systemImage: "clock.arrow.circlepath") { model.destination = .history }
+                Button("Trends", systemImage: "chart.bar") { model.destination = .trends }
                 Button("Day review") { model.reviewingDay = model.dayCloses.first?.day ?? model.snapshot.day }
                 Spacer()
                 SettingsLink {

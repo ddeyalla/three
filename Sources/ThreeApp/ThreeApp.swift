@@ -6,12 +6,26 @@ import UserNotifications
 @main
 struct ThreeApp: App {
     @NSApplicationDelegateAdaptor private var delegate: AppDelegate
-    @State private var model = AppModel()
+    @State private var model: AppModel
     @State private var workspace = WorkspaceLayout()
-    @State private var notch: NotchController?
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
+
+    init() {
+        let model = AppModel()
+        _model = State(initialValue: model)
+        delegate.prepare(model: model)
+    }
 
     var body: some Scene {
+        let open = openWindow, settings = openSettings
+        let _ = delegate.setWindowActions(openMain: {
+            open(id: "main")
+            NSApp.activate()
+        }, openSettings: {
+            settings()
+            NSApp.activate()
+        })
         Window("Three", id: "main") {
             RootView()
                 .environment(model)
@@ -49,8 +63,8 @@ struct ThreeApp: App {
                 Divider()
                 UnblockMenu(model: model)
                 Divider()
-                Button("Show Focus Controls") { notch?.showControls() }
-                    .disabled(notch?.preference.isEnabled != true || notch?.placement == nil
+                Button("Show Focus Controls") { delegate.notch?.showControls() }
+                    .disabled(delegate.notch?.preference.isEnabled != true || delegate.notch?.placement == nil
                               || model.running?.kind != .focus || model.reflectionPresentation != nil)
             }
             CommandGroup(before: .toolbar) {
@@ -74,6 +88,7 @@ struct ThreeApp: App {
                 Button("Done") { model.destination = .done }.keyboardShortcut("4")
                 Button("Tags") { model.destination = .tags }.keyboardShortcut("5")
                 Button("History") { model.destination = .history }.keyboardShortcut("6")
+                Button("Trends") { model.destination = .trends }.keyboardShortcut("7")
                 Button("Day Review") { model.reviewingDay = model.dayCloses.first?.day ?? model.snapshot.day }
                 Divider()
                 Button("Review Saved Reflection") {
@@ -85,39 +100,50 @@ struct ThreeApp: App {
         }
 
         Settings {
-            SettingsView(notch: notch)
+            SettingsView(notch: delegate.notch)
                 .environment(model)
         }
-
-        MenuBarExtra {
-            MenuBarView().environment(model)
-        } label: {
-            MenuBarLabel().environment(model)
-                .onAppear(perform: startControllers)
-        }
-        .menuBarExtraStyle(.window)
     }
 
     private func startControllers() {
-        delegate.planning = model.planning
-        guard notch == nil else { return }
-        let open = openWindow
-        let controller = NotchController(model: model, openMain: {
-            open(id: "main")
-            NSApp.activate()
-        })
-        notch = controller
-        delegate.notch = controller
-        controller.start()
+        delegate.startControllers()
     }
 }
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     var planning: PlanningController?
     var notch: NotchController?
+    private var menuBar: MenuBarController?
+    private var model: AppModel?
+    private var openMain: () -> Void = {}
+    private var openSettings: () -> Void = {}
+    private var activationObserver: NSObjectProtocol?
+
+    func prepare(model: AppModel) {
+        guard self.model == nil else { return }
+        self.model = model
+        planning = model.planning
+        notch = NotchController(model: model, openMain: { [weak self] in self?.openMain() })
+        menuBar = MenuBarController(model: model, openMain: { [weak self] in self?.openMain() },
+                                    openSettings: { [weak self] in self?.openSettings() })
+    }
+
+    func setWindowActions(openMain: @escaping () -> Void, openSettings: @escaping () -> Void) {
+        self.openMain = openMain
+        self.openSettings = openSettings
+    }
+
+    func startControllers() {
+        menuBar?.start()
+        notch?.start()
+    }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         notch?.stop()
+        menuBar?.stop()
+        if let activationObserver { NotificationCenter.default.removeObserver(activationObserver) }
+        activationObserver = nil
         guard let planning else { return .terminateNow }
         Task {
             await planning.shutdown()
@@ -127,11 +153,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
     func applicationDidFinishLaunching(_ notification: Notification) {
         UNUserNotificationCenter.current().delegate = self
+        TimerNotificationRoute.registerCategories()
+        startControllers()
+        activationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in await self?.model?.setup.refresh() }
+        }
+        Task { await model?.setup.refresh() }
     }
 
     /// The menu bar keeps running the timer after the window closes.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
-    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async
         -> UNNotificationPresentationOptions { [.banner, .sound] }
+
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        guard response.actionIdentifier != UNNotificationDismissActionIdentifier else { return }
+        let action = response.actionIdentifier
+        let identity = TimerNotificationIdentity(userInfo: response.notification.request.content.userInfo)
+        await receiveTimerNotification(action: action, identity: identity)
+    }
+
+    private func receiveTimerNotification(action: String, identity: TimerNotificationIdentity?) {
+        openMain()
+        model?.handleTimerNotification(action: action, identity: identity)
+    }
 }

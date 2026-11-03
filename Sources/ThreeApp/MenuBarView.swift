@@ -2,42 +2,24 @@ import AppKit
 import SwiftUI
 import ThreeCore
 
-struct MenuBarLabel: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+@MainActor
+struct MenuBarStatus {
+    let symbol: String
+    let time: String?
+    let spokenLabel: String
 
-    /// macOS draws a menu bar extra as one template symbol and a plain title, dropping a `Label`'s text, a second image,
-    /// sizes and opacity (docs/menu-bar-design.md). So the symbol shows the most pressing state and the time stays beside it.
-    var body: some View {
-        HStack {
-            Image(systemName: symbol)
-            if let time { Text(time) }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(spokenLabel)
-    }
-
-    /// A saved reflection's dot, else the hand while something is really blocked, else the timer.
-    private var symbol: String {
+    init(model: AppModel, reduceMotion: Bool) {
         if !model.deferredReflections.isEmpty {
-            // Swapping the symbol is the pulse: the menu bar ignores opacity.
-            return reduceMotion || Int(model.now.timeIntervalSince1970).isMultiple(of: 2) ? "circlebadge.fill" : "circlebadge"
+            symbol = reduceMotion || Int(model.now.timeIntervalSince1970).isMultiple(of: 2) ? "circlebadge.fill" : "circlebadge"
+        } else if model.blocking.isEnforcing {
+            symbol = "hand.raised.fill"
+        } else {
+            symbol = model.running?.kind == .break ? "cup.and.saucer.fill" : "timer"
         }
-        // Never pulses: blocking is a state, not a reminder.
-        if model.blocking.isEnforcing { return "hand.raised.fill" }
-        return model.running?.kind == .break ? "cup.and.saucer.fill" : "timer"
-    }
-
-    /// "24:13", "Paused 24:13", "+03:12" or "Break 04:12": worded to stand alone, since the symbol may be showing
-    /// the reminder or blocking instead.
-    private var time: String? {
-        guard let running = model.running else { return nil }
-        let clock = Format.clock(running.remaining(at: model.now))
-        if running.kind == .break { return "Break \(clock)" }
-        return running.isPaused ? "Paused \(clock)" : clock
-    }
-
-    private var spokenLabel: String {
+        if let running = model.running {
+            let clock = Format.clock(running.remaining(at: model.now))
+            time = running.kind == .break ? "Break \(clock)" : running.isPaused ? "Paused \(clock)" : clock
+        } else { time = nil }
         var parts: [String]
         if let running = model.running, let time {
             parts = running.kind == .break ? [time] : [model.runningTask?.task.title ?? "Focus", time]
@@ -48,13 +30,14 @@ struct MenuBarLabel: View {
         }
         if !model.deferredReflections.isEmpty { parts.append("Saved reflection awaiting review") }
         if model.blocking.isEnforcing { parts.append(model.blocking.headline) }
-        return parts.joined(separator: ", ")
+        spokenLabel = parts.joined(separator: ", ")
     }
 }
 
 struct MenuBarView: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.openWindow) private var openWindow
+    let openMain: () -> Void
+    let openSettings: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.md) {
@@ -102,8 +85,7 @@ struct MenuBarView: View {
             } else if model.isTodayClosed {
                 Button("Review closed day") {
                     model.reviewingDay = model.snapshot.day
-                    openWindow(id: "main")
-                    NSApp.activate()
+                    openMain()
                 }
                 .buttonStyle(.glass)
             } else if let next = model.selectedTask {
@@ -114,7 +96,7 @@ struct MenuBarView: View {
             }
 
             if model.blocking.policy.isActive {
-                BlockingRow()
+                BlockingRow(openSettings: openSettings)
             }
 
             if !model.snapshot.tasks.isEmpty {
@@ -136,16 +118,30 @@ struct MenuBarView: View {
                 }
             }
 
+            if !model.setup.onboardingDismissed {
+                SetupIntroduction(openConnect: {
+                    model.settingsTab = .connect
+                    openSettings()
+                }, openSetup: openSettings)
+            }
+            if case .failed(let message) = model.setup.shortcut.status {
+                Text(message).font(Typo.meta).foregroundStyle(Theme.overrun)
+                Button("Shortcut settings…") { model.settingsTab = .setup; openSettings() }
+                    .buttonStyle(.plain)
+            }
+            if let error = model.notificationError {
+                Text(error).font(Typo.meta).foregroundStyle(Theme.overrun)
+            }
             QuickAddField(defaultDay: nil, placeholder: "Capture to inbox", claimsKeyboardShortcut: false)
             ErrorNote()
 
             Divider()
             HStack {
                 Button("Open Three") {
-                    openWindow(id: "main")
-                    NSApp.activate()
+                    openMain()
                 }
                 Spacer()
+                Button("Settings…") { openSettings() }
                 Button("Quit") { NSApp.terminate(nil) }
             }
             .buttonStyle(.plain)
@@ -161,7 +157,7 @@ struct MenuBarView: View {
 /// While blocking is on: until when, why and what covers it, with the one route to open a rule for five minutes.
 private struct BlockingRow: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.openSettings) private var openSettings
+    let openSettings: () -> Void
 
     var body: some View {
         let state = model.blocking

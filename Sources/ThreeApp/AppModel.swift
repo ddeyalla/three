@@ -11,9 +11,11 @@ import UserNotifications
 final class AppModel {
     let store: Store
     let planning: PlanningController
+    let setup = NativeSetup()
     private(set) var snapshot: DaySnapshot
     private(set) var now = Date()
     var error: String?
+    private(set) var notificationError: String?
     /// Minutes dragged on the dial while idle; nil follows the selected task.
     var dialOverride: Int?
     var selectedTaskId: String?
@@ -45,6 +47,7 @@ final class AppModel {
     /// Extending changes the length, which re-arms it, whoever extended.
     @ObservationIgnored private var reflectedBlock: String?
     @ObservationIgnored private var scheduledNotification: (id: String, end: Date)?
+    @ObservationIgnored private var notificationRevision = 0
     @ObservationIgnored private var reflectionNote = ""
     @ObservationIgnored lazy var reflection = ReflectionPanelController(model: self)
     @ObservationIgnored lazy var appBlocker = AppBlocker(model: self)
@@ -80,13 +83,15 @@ final class AppModel {
         // .common keeps the clock running while a menu is open.
         RunLoop.main.add(ticker, forMode: .common)
         self.ticker = ticker
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
         // A notification left from before a relaunch may be stale; reconcile schedules a fresh one if needed.
         if let running { UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [running.id]) }
-        let currentTimerID = running?.id
-        UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
-            let staleTimers = requests.map(\.identifier).filter { UUID(uuidString: $0) != nil && $0 != currentTimerID }
-            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: staleTimers)
+        UNUserNotificationCenter.current().getPendingNotificationRequests { [weak self] requests in
+            let identifiers = requests.map(\.identifier)
+            Task { @MainActor in
+                guard let self else { return }
+                let staleTimers = identifiers.filter { UUID(uuidString: $0) != nil && $0 != self.running?.id }
+                UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: staleTimers)
+            }
         }
         reconcile()
         // A new time zone, a changed clock or a wake can move every focus-hours boundary at once.
@@ -250,23 +255,62 @@ final class AppModel {
             if scheduledNotification != nil {
                 center.removePendingNotificationRequests(withIdentifiers: [scheduledNotification!.id])
                 scheduledNotification = nil
+                notificationRevision += 1
             }
             return
         }
         if let s = scheduledNotification, s.id == running.id, s.end == running.plannedEnd { return }
         let content = UNMutableNotificationContent()
+        content.userInfo = TimerNotificationIdentity(session: running).userInfo
         if running.kind == .focus {
+            content.categoryIdentifier = TimerNotificationRoute.focusCategory
             content.title = "Time's up: \(runningTask?.task.title ?? "focus block")"
             content.body = "How did it go?"
         } else {
+            content.categoryIdentifier = TimerNotificationRoute.breakCategory
             content.title = "Break's over"
             content.body = snapshot.nextTask.map { "Next: \($0.task.title) (\($0.task.blockMinutes)m)" } ?? "Nice work today."
         }
         content.sound = .default
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, running.plannedEnd.timeIntervalSinceNow), repeats: false)
         if let old = scheduledNotification { center.removePendingNotificationRequests(withIdentifiers: [old.id]) }
-        center.add(UNNotificationRequest(identifier: running.id, content: content, trigger: trigger))
+        let id = running.id, end = running.plannedEnd
+        notificationRevision += 1
+        let revision = notificationRevision
         scheduledNotification = (running.id, running.plannedEnd)
+        center.add(UNNotificationRequest(identifier: id, content: content, trigger: trigger)) { [weak self] error in
+            let message = error.map { String($0.localizedDescription.prefix(400)) }
+            Task { @MainActor in
+                guard let self, self.scheduledNotification?.id == id,
+                      self.scheduledNotification?.end == end, self.notificationRevision == revision else { return }
+                self.notificationError = message.map { "Timer reminder could not be scheduled. \($0)" }
+            }
+        }
+    }
+
+    func retryTimerNotification() {
+        if let old = scheduledNotification {
+            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [old.id])
+        }
+        notificationRevision += 1
+        scheduledNotification = nil
+        notificationError = nil
+        reload()
+    }
+
+    func handleTimerNotification(action: String, identity: TimerNotificationIdentity?) {
+        reload()
+        switch TimerNotificationRoute.resolve(action: action, identity: identity, current: running,
+                                             saved: deferredReflections, now: Date()) {
+        case .liveReflection: finishEarly()
+        case .savedReflection(let id):
+            if let saved = deferredReflections.first(where: { $0.id == id }) { reviewReflection(saved) }
+        case .extendTimer(let expected):
+            perform { try store.extend(minutes: 5, expectedSession: expected) }
+        case .openMain: break
+        case .stale:
+            notificationError = "This reminder no longer matches the timer. Your current timer was left unchanged."
+        }
     }
 
     // MARK: Actions
@@ -493,7 +537,7 @@ enum ReflectionPresentation {
 
 /// What the tasks pane shows.
 enum Destination: String, Hashable, CaseIterable {
-    case today, inbox, upcoming, done, tags, history
+    case today, inbox, upcoming, done, tags, history, trends
 
     var title: String { rawValue.capitalized }
 }
