@@ -1,0 +1,2666 @@
+{
+  "source": "7e0e382eab1f4f8a3b556f685fb9615f826370a1",
+  "binarySHA256": "5123937f55ab4c2bc21c73896c3fd186644372e36f80f8da4c73f408cfde778d",
+  "migrations": [
+    "v1",
+    "v2-calm-colors",
+    "v3-inbox-steps-prefs",
+    "v4-close-orphaned-sessions",
+    "v5-tags",
+    "v6-deferred-reflections",
+    "v7-blocker",
+    "v8-canonical-plan-dates",
+    "v9-scheduled-planning",
+    "v10-planning-supervisor",
+    "v11-day-close",
+    "v12-sleep-recovery"
+  ],
+  "tables": {
+    "blockEvent": {
+      "sql": "CREATE TABLE \"blockEvent\" (\"id\" TEXT PRIMARY KEY NOT NULL, \"at\" DATETIME NOT NULL, \"ruleId\" TEXT NOT NULL REFERENCES \"blockRule\"(\"id\"), \"sessionId\" TEXT REFERENCES \"session\"(\"id\"), \"action\" TEXT NOT NULL CHECK (\"action\" IN ('blocked', 'unblocked')), \"reason\" TEXT, \"expiresAt\" DATETIME)",
+      "columns": [
+        [
+          0,
+          "id",
+          "TEXT",
+          1,
+          null,
+          1
+        ],
+        [
+          1,
+          "at",
+          "DATETIME",
+          1,
+          null,
+          0
+        ],
+        [
+          2,
+          "ruleId",
+          "TEXT",
+          1,
+          null,
+          0
+        ],
+        [
+          3,
+          "sessionId",
+          "TEXT",
+          0,
+          null,
+          0
+        ],
+        [
+          4,
+          "action",
+          "TEXT",
+          1,
+          null,
+          0
+        ],
+        [
+          5,
+          "reason",
+          "TEXT",
+          0,
+          null,
+          0
+        ],
+        [
+          6,
+          "expiresAt",
+          "DATETIME",
+          0,
+          null,
+          0
+        ]
+      ],
+      "foreignKeys": [
+        [
+          0,
+          0,
+          "session",
+          "sessionId",
+          "id",
+          "NO ACTION",
+          "NO ACTION",
+          "NONE"
+        ],
+        [
+          1,
+          0,
+          "blockRule",
+          "ruleId",
+          "id",
+          "NO ACTION",
+          "NO ACTION",
+          "NONE"
+        ]
+      ],
+      "indexes": [
+        [
+          0,
+          "blockEvent_rule_at",
+          0,
+          "c",
+          0
+        ],
+        [
+          1,
+          "sqlite_autoindex_blockEvent_1",
+          1,
+          "pk",
+          0
+        ]
+      ],
+      "indexDefinitions": {
+        "blockEvent_rule_at": {
+          "sql": "CREATE INDEX \"blockEvent_rule_at\" ON \"blockEvent\"(\"ruleId\", \"at\")",
+          "columns": [
+            [
+              0,
+              2,
+              "ruleId",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              1,
+              "at",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              2,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        },
+        "sqlite_autoindex_blockEvent_1": {
+          "sql": null,
+          "columns": [
+            [
+              0,
+              0,
+              "id",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        }
+      }
+    },
+    "blockRule": {
+      "sql": "CREATE TABLE \"blockRule\" (\"id\" TEXT PRIMARY KEY NOT NULL, \"kind\" TEXT NOT NULL CHECK (\"kind\" IN ('domain', 'app')), \"value\" TEXT NOT NULL, \"enabled\" BOOLEAN NOT NULL DEFAULT 1, \"createdAt\" DATETIME NOT NULL, \"updatedAt\" DATETIME NOT NULL, \"deletedAt\" DATETIME)",
+      "columns": [
+        [
+          0,
+          "id",
+          "TEXT",
+          1,
+          null,
+          1
+        ],
+        [
+          1,
+          "kind",
+          "TEXT",
+          1,
+          null,
+          0
+        ],
+        [
+          2,
+          "value",
+          "TEXT",
+          1,
+          null,
+          0
+        ],
+        [
+          3,
+          "enabled",
+          "BOOLEAN",
+          1,
+          "1",
+          0
+        ],
+        [
+          4,
+          "createdAt",
+          "DATETIME",
+          1,
+          null,
+          0
+        ],
+        [
+          5,
+          "updatedAt",
+          "DATETIME",
+          1,
+          null,
+          0
+        ],
+        [
+          6,
+          "deletedAt",
+          "DATETIME",
+          0,
+          null,
+          0
+        ]
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        [
+          0,
+          "blockRule_live",
+          1,
+          "c",
+          1
+        ],
+        [
+          1,
+          "sqlite_autoindex_blockRule_1",
+          1,
+          "pk",
+          0
+        ]
+      ],
+      "indexDefinitions": {
+        "blockRule_live": {
+          "sql": "CREATE UNIQUE INDEX blockRule_live ON blockRule(kind, value COLLATE NOCASE) WHERE deletedAt IS NULL",
+          "columns": [
+            [
+              0,
+              1,
+              "kind",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              2,
+              "value",
+              0,
+              "NOCASE",
+              1
+            ],
+            [
+              2,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        },
+        "sqlite_autoindex_blockRule_1": {
+          "sql": null,
+          "columns": [
+            [
+              0,
+              0,
+              "id",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        }
+      }
+    },
+    "breakDecision": {
+      "sql": "CREATE TABLE \"breakDecision\" (\"sessionId\" TEXT PRIMARY KEY NOT NULL REFERENCES \"session\"(\"id\"), \"decision\" TEXT NOT NULL CHECK (\"decision\" IN ('taken', 'skipped')), \"decidedAt\" DATETIME NOT NULL)",
+      "columns": [
+        [
+          0,
+          "sessionId",
+          "TEXT",
+          1,
+          null,
+          1
+        ],
+        [
+          1,
+          "decision",
+          "TEXT",
+          1,
+          null,
+          0
+        ],
+        [
+          2,
+          "decidedAt",
+          "DATETIME",
+          1,
+          null,
+          0
+        ]
+      ],
+      "foreignKeys": [
+        [
+          0,
+          0,
+          "session",
+          "sessionId",
+          "id",
+          "NO ACTION",
+          "NO ACTION",
+          "NONE"
+        ]
+      ],
+      "indexes": [
+        [
+          0,
+          "sqlite_autoindex_breakDecision_1",
+          1,
+          "pk",
+          0
+        ]
+      ],
+      "indexDefinitions": {
+        "sqlite_autoindex_breakDecision_1": {
+          "sql": null,
+          "columns": [
+            [
+              0,
+              0,
+              "sessionId",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        }
+      }
+    },
+    "browserClient": {
+      "sql": "CREATE TABLE \"browserClient\" (\"id\" TEXT PRIMARY KEY NOT NULL, \"extensionVersion\" TEXT NOT NULL, \"hostAccess\" BOOLEAN NOT NULL, \"connectedAt\" DATETIME NOT NULL, \"seenAt\" DATETIME NOT NULL)",
+      "columns": [
+        [
+          0,
+          "id",
+          "TEXT",
+          1,
+          null,
+          1
+        ],
+        [
+          1,
+          "extensionVersion",
+          "TEXT",
+          1,
+          null,
+          0
+        ],
+        [
+          2,
+          "hostAccess",
+          "BOOLEAN",
+          1,
+          null,
+          0
+        ],
+        [
+          3,
+          "connectedAt",
+          "DATETIME",
+          1,
+          null,
+          0
+        ],
+        [
+          4,
+          "seenAt",
+          "DATETIME",
+          1,
+          null,
+          0
+        ]
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        [
+          0,
+          "sqlite_autoindex_browserClient_1",
+          1,
+          "pk",
+          0
+        ]
+      ],
+      "indexDefinitions": {
+        "sqlite_autoindex_browserClient_1": {
+          "sql": null,
+          "columns": [
+            [
+              0,
+              0,
+              "id",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        }
+      }
+    },
+    "carryDecision": {
+      "sql": "CREATE TABLE \"carryDecision\" (\"sourceTaskId\" TEXT PRIMARY KEY NOT NULL REFERENCES \"task\"(\"id\"), \"decision\" TEXT NOT NULL CHECK (\"decision\" IN ('accepted', 'dismissed')), \"copyTaskId\" TEXT UNIQUE REFERENCES \"task\"(\"id\"), \"destinationDay\" TEXT, \"decidedAt\" DATETIME NOT NULL, CHECK ((decision = 'accepted' AND copyTaskId IS NOT NULL AND destinationDay IS NOT NULL) OR (decision = 'dismissed' AND copyTaskId IS NULL AND destinationDay IS NULL)))",
+      "columns": [
+        [
+          0,
+          "sourceTaskId",
+          "TEXT",
+          1,
+          null,
+          1
+        ],
+        [
+          1,
+          "decision",
+          "TEXT",
+          1,
+          null,
+          0
+        ],
+        [
+          2,
+          "copyTaskId",
+          "TEXT",
+          0,
+          null,
+          0
+        ],
+        [
+          3,
+          "destinationDay",
+          "TEXT",
+          0,
+          null,
+          0
+        ],
+        [
+          4,
+          "decidedAt",
+          "DATETIME",
+          1,
+          null,
+          0
+        ]
+      ],
+      "foreignKeys": [
+        [
+          0,
+          0,
+          "task",
+          "copyTaskId",
+          "id",
+          "NO ACTION",
+          "NO ACTION",
+          "NONE"
+        ],
+        [
+          1,
+          0,
+          "task",
+          "sourceTaskId",
+          "id",
+          "NO ACTION",
+          "NO ACTION",
+          "NONE"
+        ]
+      ],
+      "indexes": [
+        [
+          0,
+          "sqlite_autoindex_carryDecision_2",
+          1,
+          "u",
+          0
+        ],
+        [
+          1,
+          "sqlite_autoindex_carryDecision_1",
+          1,
+          "pk",
+          0
+        ]
+      ],
+      "indexDefinitions": {
+        "sqlite_autoindex_carryDecision_2": {
+          "sql": null,
+          "columns": [
+            [
+              0,
+              2,
+              "copyTaskId",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        },
+        "sqlite_autoindex_carryDecision_1": {
+          "sql": null,
+          "columns": [
+            [
+              0,
+              0,
+              "sourceTaskId",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        }
+      }
+    },
+    "category": {
+      "sql": "CREATE TABLE \"category\" (\"id\" TEXT PRIMARY KEY NOT NULL, \"name\" TEXT NOT NULL UNIQUE, \"colorHex\" TEXT NOT NULL, \"position\" INTEGER NOT NULL, \"archived\" BOOLEAN NOT NULL DEFAULT 0, \"updatedAt\" DATETIME NOT NULL, \"deletedAt\" DATETIME)",
+      "columns": [
+        [
+          0,
+          "id",
+          "TEXT",
+          1,
+          null,
+          1
+        ],
+        [
+          1,
+          "name",
+          "TEXT",
+          1,
+          null,
+          0
+        ],
+        [
+          2,
+          "colorHex",
+          "TEXT",
+          1,
+          null,
+          0
+        ],
+        [
+          3,
+          "position",
+          "INTEGER",
+          1,
+          null,
+          0
+        ],
+        [
+          4,
+          "archived",
+          "BOOLEAN",
+          1,
+          "0",
+          0
+        ],
+        [
+          5,
+          "updatedAt",
+          "DATETIME",
+          1,
+          null,
+          0
+        ],
+        [
+          6,
+          "deletedAt",
+          "DATETIME",
+          0,
+          null,
+          0
+        ]
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        [
+          0,
+          "sqlite_autoindex_category_2",
+          1,
+          "u",
+          0
+        ],
+        [
+          1,
+          "sqlite_autoindex_category_1",
+          1,
+          "pk",
+          0
+        ]
+      ],
+      "indexDefinitions": {
+        "sqlite_autoindex_category_2": {
+          "sql": null,
+          "columns": [
+            [
+              0,
+              1,
+              "name",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        },
+        "sqlite_autoindex_category_1": {
+          "sql": null,
+          "columns": [
+            [
+              0,
+              0,
+              "id",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        }
+      }
+    },
+    "dayClose": {
+      "sql": "CREATE TABLE \"dayClose\" (\"planId\" TEXT PRIMARY KEY NOT NULL REFERENCES \"dayPlan\"(\"id\"), \"day\" TEXT NOT NULL UNIQUE, \"closedAt\" DATETIME NOT NULL, \"summaryJSON\" TEXT NOT NULL)",
+      "columns": [
+        [
+          0,
+          "planId",
+          "TEXT",
+          1,
+          null,
+          1
+        ],
+        [
+          1,
+          "day",
+          "TEXT",
+          1,
+          null,
+          0
+        ],
+        [
+          2,
+          "closedAt",
+          "DATETIME",
+          1,
+          null,
+          0
+        ],
+        [
+          3,
+          "summaryJSON",
+          "TEXT",
+          1,
+          null,
+          0
+        ]
+      ],
+      "foreignKeys": [
+        [
+          0,
+          0,
+          "dayPlan",
+          "planId",
+          "id",
+          "NO ACTION",
+          "NO ACTION",
+          "NONE"
+        ]
+      ],
+      "indexes": [
+        [
+          0,
+          "sqlite_autoindex_dayClose_2",
+          1,
+          "u",
+          0
+        ],
+        [
+          1,
+          "sqlite_autoindex_dayClose_1",
+          1,
+          "pk",
+          0
+        ]
+      ],
+      "indexDefinitions": {
+        "sqlite_autoindex_dayClose_2": {
+          "sql": null,
+          "columns": [
+            [
+              0,
+              1,
+              "day",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        },
+        "sqlite_autoindex_dayClose_1": {
+          "sql": null,
+          "columns": [
+            [
+              0,
+              0,
+              "planId",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        }
+      }
+    },
+    "dayPlan": {
+      "sql": "CREATE TABLE \"dayPlan\" (\"id\" TEXT PRIMARY KEY NOT NULL, \"day\" TEXT NOT NULL UNIQUE, \"status\" TEXT NOT NULL, \"source\" TEXT NOT NULL, \"createdAt\" DATETIME NOT NULL, \"committedAt\" DATETIME, \"updatedAt\" DATETIME NOT NULL, \"deletedAt\" DATETIME)",
+      "columns": [
+        [
+          0,
+          "id",
+          "TEXT",
+          1,
+          null,
+          1
+        ],
+        [
+          1,
+          "day",
+          "TEXT",
+          1,
+          null,
+          0
+        ],
+        [
+          2,
+          "status",
+          "TEXT",
+          1,
+          null,
+          0
+        ],
+        [
+          3,
+          "source",
+          "TEXT",
+          1,
+          null,
+          0
+        ],
+        [
+          4,
+          "createdAt",
+          "DATETIME",
+          1,
+          null,
+          0
+        ],
+        [
+          5,
+          "committedAt",
+          "DATETIME",
+          0,
+          null,
+          0
+        ],
+        [
+          6,
+          "updatedAt",
+          "DATETIME",
+          1,
+          null,
+          0
+        ],
+        [
+          7,
+          "deletedAt",
+          "DATETIME",
+          0,
+          null,
+          0
+        ]
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        [
+          0,
+          "sqlite_autoindex_dayPlan_2",
+          1,
+          "u",
+          0
+        ],
+        [
+          1,
+          "sqlite_autoindex_dayPlan_1",
+          1,
+          "pk",
+          0
+        ]
+      ],
+      "indexDefinitions": {
+        "sqlite_autoindex_dayPlan_2": {
+          "sql": null,
+          "columns": [
+            [
+              0,
+              1,
+              "day",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        },
+        "sqlite_autoindex_dayPlan_1": {
+          "sql": null,
+          "columns": [
+            [
+              0,
+              0,
+              "id",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        }
+      }
+    },
+    "focusWindow": {
+      "sql": "CREATE TABLE \"focusWindow\" (\"id\" TEXT PRIMARY KEY NOT NULL, \"weekday\" INTEGER NOT NULL CHECK ((\"weekday\" >= 1) AND (\"weekday\" <= 7)), \"startMinute\" INTEGER NOT NULL CHECK ((\"startMinute\" >= 0) AND (\"startMinute\" < 1440)), \"endMinute\" INTEGER NOT NULL CHECK ((\"endMinute\" >= 0) AND (\"endMinute\" <= 1440)), \"createdAt\" DATETIME NOT NULL, \"updatedAt\" DATETIME NOT NULL, \"deletedAt\" DATETIME, CHECK (startMinute <> endMinute))",
+      "columns": [
+        [
+          0,
+          "id",
+          "TEXT",
+          1,
+          null,
+          1
+        ],
+        [
+          1,
+          "weekday",
+          "INTEGER",
+          1,
+          null,
+          0
+        ],
+        [
+          2,
+          "startMinute",
+          "INTEGER",
+          1,
+          null,
+          0
+        ],
+        [
+          3,
+          "endMinute",
+          "INTEGER",
+          1,
+          null,
+          0
+        ],
+        [
+          4,
+          "createdAt",
+          "DATETIME",
+          1,
+          null,
+          0
+        ],
+        [
+          5,
+          "updatedAt",
+          "DATETIME",
+          1,
+          null,
+          0
+        ],
+        [
+          6,
+          "deletedAt",
+          "DATETIME",
+          0,
+          null,
+          0
+        ]
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        [
+          0,
+          "focusWindow_live",
+          1,
+          "c",
+          1
+        ],
+        [
+          1,
+          "sqlite_autoindex_focusWindow_1",
+          1,
+          "pk",
+          0
+        ]
+      ],
+      "indexDefinitions": {
+        "focusWindow_live": {
+          "sql": "CREATE UNIQUE INDEX focusWindow_live ON focusWindow(weekday, startMinute, endMinute) WHERE deletedAt IS NULL",
+          "columns": [
+            [
+              0,
+              1,
+              "weekday",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              2,
+              "startMinute",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              2,
+              3,
+              "endMinute",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              3,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        },
+        "sqlite_autoindex_focusWindow_1": {
+          "sql": null,
+          "columns": [
+            [
+              0,
+              0,
+              "id",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        }
+      }
+    },
+    "grdb_migrations": {
+      "sql": "CREATE TABLE grdb_migrations (identifier TEXT NOT NULL PRIMARY KEY)",
+      "columns": [
+        [
+          0,
+          "identifier",
+          "TEXT",
+          1,
+          null,
+          1
+        ]
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        [
+          0,
+          "sqlite_autoindex_grdb_migrations_1",
+          1,
+          "pk",
+          0
+        ]
+      ],
+      "indexDefinitions": {
+        "sqlite_autoindex_grdb_migrations_1": {
+          "sql": null,
+          "columns": [
+            [
+              0,
+              0,
+              "identifier",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        }
+      }
+    },
+    "planCommitment": {
+      "sql": "CREATE TABLE \"planCommitment\" (\"planId\" TEXT PRIMARY KEY NOT NULL REFERENCES \"dayPlan\"(\"id\"), \"capturedAt\" DATETIME NOT NULL, \"tasksJSON\" TEXT NOT NULL)",
+      "columns": [
+        [
+          0,
+          "planId",
+          "TEXT",
+          1,
+          null,
+          1
+        ],
+        [
+          1,
+          "capturedAt",
+          "DATETIME",
+          1,
+          null,
+          0
+        ],
+        [
+          2,
+          "tasksJSON",
+          "TEXT",
+          1,
+          null,
+          0
+        ]
+      ],
+      "foreignKeys": [
+        [
+          0,
+          0,
+          "dayPlan",
+          "planId",
+          "id",
+          "NO ACTION",
+          "NO ACTION",
+          "NONE"
+        ]
+      ],
+      "indexes": [
+        [
+          0,
+          "sqlite_autoindex_planCommitment_1",
+          1,
+          "pk",
+          0
+        ]
+      ],
+      "indexDefinitions": {
+        "sqlite_autoindex_planCommitment_1": {
+          "sql": null,
+          "columns": [
+            [
+              0,
+              0,
+              "planId",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        }
+      }
+    },
+    "planningRun": {
+      "sql": "CREATE TABLE \"planningRun\" (\"id\" TEXT PRIMARY KEY NOT NULL, \"day\" TEXT NOT NULL, \"trigger\" TEXT NOT NULL, \"status\" TEXT NOT NULL, \"startedAt\" DATETIME NOT NULL, \"deadline\" DATETIME NOT NULL, \"finishedAt\" DATETIME, \"command\" TEXT NOT NULL, \"stdout\" TEXT NOT NULL DEFAULT '', \"stderr\" TEXT NOT NULL DEFAULT '', \"outputTruncated\" BOOLEAN NOT NULL DEFAULT 0, \"exitCode\" INTEGER, \"error\" TEXT, \"processGroup\" INTEGER, \"draftPlanId\" TEXT REFERENCES \"dayPlan\"(\"id\"), \"notifiedAt\" DATETIME, \"supervisorPID\" INTEGER)",
+      "columns": [
+        [
+          0,
+          "id",
+          "TEXT",
+          1,
+          null,
+          1
+        ],
+        [
+          1,
+          "day",
+          "TEXT",
+          1,
+          null,
+          0
+        ],
+        [
+          2,
+          "trigger",
+          "TEXT",
+          1,
+          null,
+          0
+        ],
+        [
+          3,
+          "status",
+          "TEXT",
+          1,
+          null,
+          0
+        ],
+        [
+          4,
+          "startedAt",
+          "DATETIME",
+          1,
+          null,
+          0
+        ],
+        [
+          5,
+          "deadline",
+          "DATETIME",
+          1,
+          null,
+          0
+        ],
+        [
+          6,
+          "finishedAt",
+          "DATETIME",
+          0,
+          null,
+          0
+        ],
+        [
+          7,
+          "command",
+          "TEXT",
+          1,
+          null,
+          0
+        ],
+        [
+          8,
+          "stdout",
+          "TEXT",
+          1,
+          "''",
+          0
+        ],
+        [
+          9,
+          "stderr",
+          "TEXT",
+          1,
+          "''",
+          0
+        ],
+        [
+          10,
+          "outputTruncated",
+          "BOOLEAN",
+          1,
+          "0",
+          0
+        ],
+        [
+          11,
+          "exitCode",
+          "INTEGER",
+          0,
+          null,
+          0
+        ],
+        [
+          12,
+          "error",
+          "TEXT",
+          0,
+          null,
+          0
+        ],
+        [
+          13,
+          "processGroup",
+          "INTEGER",
+          0,
+          null,
+          0
+        ],
+        [
+          14,
+          "draftPlanId",
+          "TEXT",
+          0,
+          null,
+          0
+        ],
+        [
+          15,
+          "notifiedAt",
+          "DATETIME",
+          0,
+          null,
+          0
+        ],
+        [
+          16,
+          "supervisorPID",
+          "INTEGER",
+          0,
+          null,
+          0
+        ]
+      ],
+      "foreignKeys": [
+        [
+          0,
+          0,
+          "dayPlan",
+          "draftPlanId",
+          "id",
+          "NO ACTION",
+          "NO ACTION",
+          "NONE"
+        ]
+      ],
+      "indexes": [
+        [
+          0,
+          "planning_one_running",
+          1,
+          "c",
+          1
+        ],
+        [
+          1,
+          "planningRun_on_day",
+          0,
+          "c",
+          0
+        ],
+        [
+          2,
+          "sqlite_autoindex_planningRun_1",
+          1,
+          "pk",
+          0
+        ]
+      ],
+      "indexDefinitions": {
+        "planning_one_running": {
+          "sql": "CREATE UNIQUE INDEX planning_one_running ON planningRun(status) WHERE status = 'running'",
+          "columns": [
+            [
+              0,
+              3,
+              "status",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        },
+        "planningRun_on_day": {
+          "sql": "CREATE INDEX \"planningRun_on_day\" ON \"planningRun\"(\"day\")",
+          "columns": [
+            [
+              0,
+              1,
+              "day",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        },
+        "sqlite_autoindex_planningRun_1": {
+          "sql": null,
+          "columns": [
+            [
+              0,
+              0,
+              "id",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        }
+      }
+    },
+    "preference": {
+      "sql": "CREATE TABLE \"preference\" (\"key\" TEXT PRIMARY KEY NOT NULL, \"value\" TEXT NOT NULL)",
+      "columns": [
+        [
+          0,
+          "key",
+          "TEXT",
+          1,
+          null,
+          1
+        ],
+        [
+          1,
+          "value",
+          "TEXT",
+          1,
+          null,
+          0
+        ]
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        [
+          0,
+          "sqlite_autoindex_preference_1",
+          1,
+          "pk",
+          0
+        ]
+      ],
+      "indexDefinitions": {
+        "sqlite_autoindex_preference_1": {
+          "sql": null,
+          "columns": [
+            [
+              0,
+              0,
+              "key",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        }
+      }
+    },
+    "recoveryGap": {
+      "sql": "CREATE TABLE \"recoveryGap\" (\"id\" TEXT PRIMARY KEY NOT NULL, \"startedAt\" DATETIME NOT NULL, \"endedAt\" DATETIME, \"lastObservedAt\" DATETIME NOT NULL, \"continuousSeconds\" DOUBLE, \"clockID\" TEXT, \"clockReliable\" BOOLEAN NOT NULL, \"sleeping\" BOOLEAN NOT NULL, \"locked\" BOOLEAN NOT NULL, \"awaySeconds\" DOUBLE NOT NULL DEFAULT 0, \"state\" TEXT NOT NULL CHECK (\"state\" IN ('observing', 'review', 'notRequired', 'kept', 'trimmed')), \"decidedAt\" DATETIME, CHECK ((state = 'observing' AND endedAt IS NULL) OR (state <> 'observing' AND endedAt IS NOT NULL)))",
+      "columns": [
+        [
+          0,
+          "id",
+          "TEXT",
+          1,
+          null,
+          1
+        ],
+        [
+          1,
+          "startedAt",
+          "DATETIME",
+          1,
+          null,
+          0
+        ],
+        [
+          2,
+          "endedAt",
+          "DATETIME",
+          0,
+          null,
+          0
+        ],
+        [
+          3,
+          "lastObservedAt",
+          "DATETIME",
+          1,
+          null,
+          0
+        ],
+        [
+          4,
+          "continuousSeconds",
+          "DOUBLE",
+          0,
+          null,
+          0
+        ],
+        [
+          5,
+          "clockID",
+          "TEXT",
+          0,
+          null,
+          0
+        ],
+        [
+          6,
+          "clockReliable",
+          "BOOLEAN",
+          1,
+          null,
+          0
+        ],
+        [
+          7,
+          "sleeping",
+          "BOOLEAN",
+          1,
+          null,
+          0
+        ],
+        [
+          8,
+          "locked",
+          "BOOLEAN",
+          1,
+          null,
+          0
+        ],
+        [
+          9,
+          "awaySeconds",
+          "DOUBLE",
+          1,
+          "0",
+          0
+        ],
+        [
+          10,
+          "state",
+          "TEXT",
+          1,
+          null,
+          0
+        ],
+        [
+          11,
+          "decidedAt",
+          "DATETIME",
+          0,
+          null,
+          0
+        ]
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        [
+          0,
+          "recovery_pending",
+          0,
+          "c",
+          0
+        ],
+        [
+          1,
+          "recovery_one_observing",
+          1,
+          "c",
+          1
+        ],
+        [
+          2,
+          "sqlite_autoindex_recoveryGap_1",
+          1,
+          "pk",
+          0
+        ]
+      ],
+      "indexDefinitions": {
+        "recovery_pending": {
+          "sql": "CREATE INDEX \"recovery_pending\" ON \"recoveryGap\"(\"state\", \"startedAt\")",
+          "columns": [
+            [
+              0,
+              10,
+              "state",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              1,
+              "startedAt",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              2,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        },
+        "recovery_one_observing": {
+          "sql": "CREATE UNIQUE INDEX recovery_one_observing ON recoveryGap(state) WHERE state = 'observing'",
+          "columns": [
+            [
+              0,
+              10,
+              "state",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        },
+        "sqlite_autoindex_recoveryGap_1": {
+          "sql": null,
+          "columns": [
+            [
+              0,
+              0,
+              "id",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        }
+      }
+    },
+    "recoveryImpact": {
+      "sql": "CREATE TABLE \"recoveryImpact\" (\"gapId\" TEXT NOT NULL REFERENCES \"recoveryGap\"(\"id\"), \"sessionId\" TEXT NOT NULL REFERENCES \"session\"(\"id\"), \"baselineWork\" DOUBLE NOT NULL CHECK (\"baselineWork\" >= 0), \"eligibleSeconds\" DOUBLE NOT NULL CHECK (\"eligibleSeconds\" >= 0) DEFAULT 0, PRIMARY KEY (\"gapId\", \"sessionId\"))",
+      "columns": [
+        [
+          0,
+          "gapId",
+          "TEXT",
+          1,
+          null,
+          1
+        ],
+        [
+          1,
+          "sessionId",
+          "TEXT",
+          1,
+          null,
+          2
+        ],
+        [
+          2,
+          "baselineWork",
+          "DOUBLE",
+          1,
+          null,
+          0
+        ],
+        [
+          3,
+          "eligibleSeconds",
+          "DOUBLE",
+          1,
+          "0",
+          0
+        ]
+      ],
+      "foreignKeys": [
+        [
+          0,
+          0,
+          "session",
+          "sessionId",
+          "id",
+          "NO ACTION",
+          "NO ACTION",
+          "NONE"
+        ],
+        [
+          1,
+          0,
+          "recoveryGap",
+          "gapId",
+          "id",
+          "NO ACTION",
+          "NO ACTION",
+          "NONE"
+        ]
+      ],
+      "indexes": [
+        [
+          0,
+          "recoveryImpact_on_sessionId",
+          0,
+          "c",
+          0
+        ],
+        [
+          1,
+          "sqlite_autoindex_recoveryImpact_1",
+          1,
+          "pk",
+          0
+        ]
+      ],
+      "indexDefinitions": {
+        "recoveryImpact_on_sessionId": {
+          "sql": "CREATE INDEX \"recoveryImpact_on_sessionId\" ON \"recoveryImpact\"(\"sessionId\")",
+          "columns": [
+            [
+              0,
+              1,
+              "sessionId",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        },
+        "sqlite_autoindex_recoveryImpact_1": {
+          "sql": null,
+          "columns": [
+            [
+              0,
+              0,
+              "gapId",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              1,
+              "sessionId",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              2,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        }
+      }
+    },
+    "session": {
+      "sql": "CREATE TABLE \"session\" (\"id\" TEXT PRIMARY KEY NOT NULL, \"taskId\" TEXT REFERENCES \"task\"(\"id\"), \"kind\" TEXT NOT NULL, \"plannedSeconds\" INTEGER NOT NULL, \"startedAt\" DATETIME NOT NULL, \"pausedAt\" DATETIME, \"pausedSeconds\" INTEGER NOT NULL DEFAULT 0, \"endedAt\" DATETIME, \"endReason\" TEXT, \"outcome\" TEXT, \"focusRating\" INTEGER, \"note\" TEXT, \"updatedAt\" DATETIME NOT NULL, \"reflectionPending\" BOOLEAN NOT NULL DEFAULT 0, \"recoveryTrimSeconds\" DOUBLE NOT NULL CHECK (\"recoveryTrimSeconds\" >= 0) DEFAULT 0)",
+      "columns": [
+        [
+          0,
+          "id",
+          "TEXT",
+          1,
+          null,
+          1
+        ],
+        [
+          1,
+          "taskId",
+          "TEXT",
+          0,
+          null,
+          0
+        ],
+        [
+          2,
+          "kind",
+          "TEXT",
+          1,
+          null,
+          0
+        ],
+        [
+          3,
+          "plannedSeconds",
+          "INTEGER",
+          1,
+          null,
+          0
+        ],
+        [
+          4,
+          "startedAt",
+          "DATETIME",
+          1,
+          null,
+          0
+        ],
+        [
+          5,
+          "pausedAt",
+          "DATETIME",
+          0,
+          null,
+          0
+        ],
+        [
+          6,
+          "pausedSeconds",
+          "INTEGER",
+          1,
+          "0",
+          0
+        ],
+        [
+          7,
+          "endedAt",
+          "DATETIME",
+          0,
+          null,
+          0
+        ],
+        [
+          8,
+          "endReason",
+          "TEXT",
+          0,
+          null,
+          0
+        ],
+        [
+          9,
+          "outcome",
+          "TEXT",
+          0,
+          null,
+          0
+        ],
+        [
+          10,
+          "focusRating",
+          "INTEGER",
+          0,
+          null,
+          0
+        ],
+        [
+          11,
+          "note",
+          "TEXT",
+          0,
+          null,
+          0
+        ],
+        [
+          12,
+          "updatedAt",
+          "DATETIME",
+          1,
+          null,
+          0
+        ],
+        [
+          13,
+          "reflectionPending",
+          "BOOLEAN",
+          1,
+          "0",
+          0
+        ],
+        [
+          14,
+          "recoveryTrimSeconds",
+          "DOUBLE",
+          1,
+          "0",
+          0
+        ]
+      ],
+      "foreignKeys": [
+        [
+          0,
+          0,
+          "task",
+          "taskId",
+          "id",
+          "NO ACTION",
+          "NO ACTION",
+          "NONE"
+        ]
+      ],
+      "indexes": [
+        [
+          0,
+          "session_one_running",
+          1,
+          "c",
+          1
+        ],
+        [
+          1,
+          "session_on_startedAt",
+          0,
+          "c",
+          0
+        ],
+        [
+          2,
+          "session_on_taskId",
+          0,
+          "c",
+          0
+        ],
+        [
+          3,
+          "sqlite_autoindex_session_1",
+          1,
+          "pk",
+          0
+        ]
+      ],
+      "indexDefinitions": {
+        "session_one_running": {
+          "sql": "CREATE UNIQUE INDEX session_one_running ON session(endedAt IS NULL) WHERE endedAt IS NULL",
+          "columns": [
+            [
+              0,
+              -2,
+              null,
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        },
+        "session_on_startedAt": {
+          "sql": "CREATE INDEX \"session_on_startedAt\" ON \"session\"(\"startedAt\")",
+          "columns": [
+            [
+              0,
+              4,
+              "startedAt",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        },
+        "session_on_taskId": {
+          "sql": "CREATE INDEX \"session_on_taskId\" ON \"session\"(\"taskId\")",
+          "columns": [
+            [
+              0,
+              1,
+              "taskId",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        },
+        "sqlite_autoindex_session_1": {
+          "sql": null,
+          "columns": [
+            [
+              0,
+              0,
+              "id",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        }
+      }
+    },
+    "step": {
+      "sql": "CREATE TABLE \"step\" (\"id\" TEXT PRIMARY KEY NOT NULL, \"taskId\" TEXT NOT NULL REFERENCES \"task\"(\"id\") ON DELETE CASCADE, \"position\" INTEGER NOT NULL, \"title\" TEXT NOT NULL, \"done\" BOOLEAN NOT NULL DEFAULT 0, \"updatedAt\" DATETIME NOT NULL)",
+      "columns": [
+        [
+          0,
+          "id",
+          "TEXT",
+          1,
+          null,
+          1
+        ],
+        [
+          1,
+          "taskId",
+          "TEXT",
+          1,
+          null,
+          0
+        ],
+        [
+          2,
+          "position",
+          "INTEGER",
+          1,
+          null,
+          0
+        ],
+        [
+          3,
+          "title",
+          "TEXT",
+          1,
+          null,
+          0
+        ],
+        [
+          4,
+          "done",
+          "BOOLEAN",
+          1,
+          "0",
+          0
+        ],
+        [
+          5,
+          "updatedAt",
+          "DATETIME",
+          1,
+          null,
+          0
+        ]
+      ],
+      "foreignKeys": [
+        [
+          0,
+          0,
+          "task",
+          "taskId",
+          "id",
+          "NO ACTION",
+          "CASCADE",
+          "NONE"
+        ]
+      ],
+      "indexes": [
+        [
+          0,
+          "step_on_taskId",
+          0,
+          "c",
+          0
+        ],
+        [
+          1,
+          "sqlite_autoindex_step_1",
+          1,
+          "pk",
+          0
+        ]
+      ],
+      "indexDefinitions": {
+        "step_on_taskId": {
+          "sql": "CREATE INDEX \"step_on_taskId\" ON \"step\"(\"taskId\")",
+          "columns": [
+            [
+              0,
+              1,
+              "taskId",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        },
+        "sqlite_autoindex_step_1": {
+          "sql": null,
+          "columns": [
+            [
+              0,
+              0,
+              "id",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        }
+      }
+    },
+    "tag": {
+      "sql": "CREATE TABLE \"tag\" (\"id\" TEXT PRIMARY KEY NOT NULL, \"name\" TEXT NOT NULL UNIQUE COLLATE NOCASE, \"archived\" BOOLEAN NOT NULL DEFAULT 0, \"createdAt\" DATETIME NOT NULL, \"updatedAt\" DATETIME NOT NULL)",
+      "columns": [
+        [
+          0,
+          "id",
+          "TEXT",
+          1,
+          null,
+          1
+        ],
+        [
+          1,
+          "name",
+          "TEXT",
+          1,
+          null,
+          0
+        ],
+        [
+          2,
+          "archived",
+          "BOOLEAN",
+          1,
+          "0",
+          0
+        ],
+        [
+          3,
+          "createdAt",
+          "DATETIME",
+          1,
+          null,
+          0
+        ],
+        [
+          4,
+          "updatedAt",
+          "DATETIME",
+          1,
+          null,
+          0
+        ]
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        [
+          0,
+          "sqlite_autoindex_tag_2",
+          1,
+          "u",
+          0
+        ],
+        [
+          1,
+          "sqlite_autoindex_tag_1",
+          1,
+          "pk",
+          0
+        ]
+      ],
+      "indexDefinitions": {
+        "sqlite_autoindex_tag_2": {
+          "sql": null,
+          "columns": [
+            [
+              0,
+              1,
+              "name",
+              0,
+              "NOCASE",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        },
+        "sqlite_autoindex_tag_1": {
+          "sql": null,
+          "columns": [
+            [
+              0,
+              0,
+              "id",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        }
+      }
+    },
+    "task": {
+      "sql": "CREATE TABLE \"task\" (\"id\" TEXT PRIMARY KEY NOT NULL, \"dayPlanId\" TEXT REFERENCES \"dayPlan\"(\"id\"), \"position\" INTEGER NOT NULL, \"title\" TEXT NOT NULL, \"categoryId\" TEXT NOT NULL REFERENCES \"category\"(\"id\"), \"blockMinutes\" INTEGER NOT NULL CHECK (\"blockMinutes\" > 0), \"scheduledStart\" DATETIME, \"strict\" BOOLEAN NOT NULL DEFAULT 0, \"status\" TEXT NOT NULL, \"linearRef\" TEXT, \"notes\" TEXT NOT NULL DEFAULT '', \"createdBy\" TEXT NOT NULL, \"updatedAt\" DATETIME NOT NULL, \"deletedAt\" DATETIME, \"doneAt\" DATETIME, \"carriedFromTaskId\" TEXT REFERENCES \"task\"(\"id\"))",
+      "columns": [
+        [
+          0,
+          "id",
+          "TEXT",
+          1,
+          null,
+          1
+        ],
+        [
+          1,
+          "dayPlanId",
+          "TEXT",
+          0,
+          null,
+          0
+        ],
+        [
+          2,
+          "position",
+          "INTEGER",
+          1,
+          null,
+          0
+        ],
+        [
+          3,
+          "title",
+          "TEXT",
+          1,
+          null,
+          0
+        ],
+        [
+          4,
+          "categoryId",
+          "TEXT",
+          1,
+          null,
+          0
+        ],
+        [
+          5,
+          "blockMinutes",
+          "INTEGER",
+          1,
+          null,
+          0
+        ],
+        [
+          6,
+          "scheduledStart",
+          "DATETIME",
+          0,
+          null,
+          0
+        ],
+        [
+          7,
+          "strict",
+          "BOOLEAN",
+          1,
+          "0",
+          0
+        ],
+        [
+          8,
+          "status",
+          "TEXT",
+          1,
+          null,
+          0
+        ],
+        [
+          9,
+          "linearRef",
+          "TEXT",
+          0,
+          null,
+          0
+        ],
+        [
+          10,
+          "notes",
+          "TEXT",
+          1,
+          "''",
+          0
+        ],
+        [
+          11,
+          "createdBy",
+          "TEXT",
+          1,
+          null,
+          0
+        ],
+        [
+          12,
+          "updatedAt",
+          "DATETIME",
+          1,
+          null,
+          0
+        ],
+        [
+          13,
+          "deletedAt",
+          "DATETIME",
+          0,
+          null,
+          0
+        ],
+        [
+          14,
+          "doneAt",
+          "DATETIME",
+          0,
+          null,
+          0
+        ],
+        [
+          15,
+          "carriedFromTaskId",
+          "TEXT",
+          0,
+          null,
+          0
+        ]
+      ],
+      "foreignKeys": [
+        [
+          0,
+          0,
+          "task",
+          "carriedFromTaskId",
+          "id",
+          "NO ACTION",
+          "NO ACTION",
+          "NONE"
+        ],
+        [
+          1,
+          0,
+          "category",
+          "categoryId",
+          "id",
+          "NO ACTION",
+          "NO ACTION",
+          "NONE"
+        ],
+        [
+          2,
+          0,
+          "dayPlan",
+          "dayPlanId",
+          "id",
+          "NO ACTION",
+          "NO ACTION",
+          "NONE"
+        ]
+      ],
+      "indexes": [
+        [
+          0,
+          "task_carry_source",
+          1,
+          "c",
+          1
+        ],
+        [
+          1,
+          "task_on_dayPlanId",
+          0,
+          "c",
+          0
+        ],
+        [
+          2,
+          "sqlite_autoindex_task_1",
+          1,
+          "pk",
+          0
+        ]
+      ],
+      "indexDefinitions": {
+        "task_carry_source": {
+          "sql": "CREATE UNIQUE INDEX task_carry_source ON task(carriedFromTaskId) WHERE carriedFromTaskId IS NOT NULL",
+          "columns": [
+            [
+              0,
+              15,
+              "carriedFromTaskId",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        },
+        "task_on_dayPlanId": {
+          "sql": "CREATE INDEX \"task_on_dayPlanId\" ON \"task\"(\"dayPlanId\")",
+          "columns": [
+            [
+              0,
+              1,
+              "dayPlanId",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        },
+        "sqlite_autoindex_task_1": {
+          "sql": null,
+          "columns": [
+            [
+              0,
+              0,
+              "id",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        }
+      }
+    },
+    "taskTag": {
+      "sql": "CREATE TABLE \"taskTag\" (\"taskId\" TEXT NOT NULL REFERENCES \"task\"(\"id\") ON DELETE CASCADE, \"tagId\" TEXT NOT NULL REFERENCES \"tag\"(\"id\") ON DELETE CASCADE, PRIMARY KEY (\"taskId\", \"tagId\"))",
+      "columns": [
+        [
+          0,
+          "taskId",
+          "TEXT",
+          1,
+          null,
+          1
+        ],
+        [
+          1,
+          "tagId",
+          "TEXT",
+          1,
+          null,
+          2
+        ]
+      ],
+      "foreignKeys": [
+        [
+          0,
+          0,
+          "tag",
+          "tagId",
+          "id",
+          "NO ACTION",
+          "CASCADE",
+          "NONE"
+        ],
+        [
+          1,
+          0,
+          "task",
+          "taskId",
+          "id",
+          "NO ACTION",
+          "CASCADE",
+          "NONE"
+        ]
+      ],
+      "indexes": [
+        [
+          0,
+          "taskTag_on_tagId",
+          0,
+          "c",
+          0
+        ],
+        [
+          1,
+          "sqlite_autoindex_taskTag_1",
+          1,
+          "pk",
+          0
+        ]
+      ],
+      "indexDefinitions": {
+        "taskTag_on_tagId": {
+          "sql": "CREATE INDEX \"taskTag_on_tagId\" ON \"taskTag\"(\"tagId\")",
+          "columns": [
+            [
+              0,
+              1,
+              "tagId",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        },
+        "sqlite_autoindex_taskTag_1": {
+          "sql": null,
+          "columns": [
+            [
+              0,
+              0,
+              "taskId",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              1,
+              1,
+              "tagId",
+              0,
+              "BINARY",
+              1
+            ],
+            [
+              2,
+              -1,
+              null,
+              0,
+              "BINARY",
+              0
+            ]
+          ]
+        }
+      }
+    }
+  },
+  "viewsAndTriggers": []
+}
