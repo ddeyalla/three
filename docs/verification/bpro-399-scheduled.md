@@ -11,6 +11,7 @@ BPRO-399 adds opt-in app-owned local planning after the manual MCP draft path. I
 | Initial HEAD | `5b043bc50838ae47269c29764912dc1f5581050b` |
 | Core and scheduled MCP unit | `11e9eca88a6a0fdeba12124304e3668fb588174e` |
 | App integration and Settings unit | `8d6637d7503552d7bfe1f7ed8a4d30e57bee6a82` |
+| Final code and automated proof | `9b5701aa484f0ed4f133a49d2dcc19008d551204` |
 | Native tested source | `8d6637d`, release app, macOS 27.0.1 arm64 |
 | Native executable instruction hash | `4bca1b25394a7d69daa2547ea82eb63a19930c3b7a36887359d5cb9650da41ca` |
 | Agent | In-thread `codex/gpt-6.1-sol`, High. No children or other model runs. |
@@ -39,10 +40,10 @@ The Codex default constructs a per-invocation local MCP configuration, ignores b
 | --- | --- | --- |
 | `./scripts/swift.sh test --filter 'ScheduledPlanningTests\|ScheduledPlanningAppTests'` | Focused Core and App tests pass. | `focused-tests.log` |
 | `make test` | 130 Core tests, 26 App tests, and 22 extension tests pass. Extension suite reports zero skipped tests. | `make-test.log`, `final-make-test.log` |
-| `python3 scripts/test-mcp.py --binary build/Three.app/Contents/Helpers/three` | Normal 26-tool protocol, resources, malformed input, CLI sharing, caps, timers, carry-over, and restart checks pass. | `mcp-regression.log`, `release-mcp.log` |
-| `python3 scripts/test-scheduled-planning.py --app build/Three.app` | Real local fixture command runs through the native runner and relocated packaged helper. Restricted draft, source, eighteen forbidden mutations, commit=true, wrong date, duplicate write, expired startup, malformed startup, and normal-channel explicit commit checks pass. | `scheduled-protocol.log`, `release-scheduled-protocol.log` |
-| `CONFIG=release ./scripts/bundle.sh` | App and CLI release products build and bundle. Packaged helper resources survive relocation to a path with spaces. | `bundle-release.log` |
-| `codesign --verify --deep --strict build/Three.app` | Ad-hoc signature verification passes. This is not notarization or release. | `signature.log` |
+| `python3 scripts/test-mcp.py --binary build/Three.app/Contents/Helpers/three` | Normal 26-tool protocol, resources, malformed input, CLI sharing, caps, timers, carry-over, and restart checks pass. | `mcp-regression.log`, `release-mcp.log`, `final-mcp-regression.log` |
+| `python3 scripts/test-scheduled-planning.py --app build/Three.app` | Real local fixture command runs through the native runner and relocated packaged helper. Restricted draft, source, eighteen forbidden mutations, commit=true, wrong date, duplicate write, expired startup, malformed startup, and normal-channel explicit commit checks pass. | `scheduled-protocol.log`, `release-scheduled-protocol.log`, `final-scheduled-protocol.log` |
+| `CONFIG=release ./scripts/bundle.sh` | App and CLI release products build and bundle. Packaged helper resources survive relocation to a path with spaces. | `bundle-release.log`, `final-bundle-release.log` |
+| `codesign --verify --deep --strict build/Three.app` | Ad-hoc signature verification passes. This is not notarization or release. | `signature.log`, `final-signature.log` |
 
 Core behavior checks cover default-off preferences, strict local time validation, v8 migration, no backlog replay, next-day admission, multi-instance and manual races, existing draft/committed/closed/full work, claim expiry, backward clock, source, duplicate draft, timer and human-edit races, no-draft failure, notification dedupe through retry, unknown crash state, proven-gone recovery, login PATH, working directory, permission and nonzero failures, capped output, timeout, cancellation, and descendant cleanup.
 
