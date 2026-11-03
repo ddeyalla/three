@@ -220,3 +220,212 @@ Build the Lever determined the retained fixture and reusable driver.
 Model the Domain determined the fixed case table and independent per-date expectations.
 Explain the Number determined separate query and encoding clocks, five interleaved samples, full validation, contention records, and a separate profile.
 Prove It Works keeps this release Store and packaged protocol evidence separate from native and v12 acceptance.
+
+## v12 event-date reuse comparison
+
+This follow-up measures the focused event-date reuse change on v12.
+The v11 report above remains historical evidence and is not a causal baseline for this change.
+The host prepared `/Users/divyanshudv/.t3/worktrees/adhd/t3-9af4ee21` on `t3/event-date-reuse` at `7e0e382eab1f4f8a3b556f685fb9615f826370a1`.
+The starting diff was clean. The base includes `baf775e`, which preserves moved commitment evidence.
+No commits or dependencies were imported. Commitment, outcome, elapsed accounting, schema, app, CLI, and MCP implementation code are unchanged.
+
+The request-scoped session lookup now stores the `HistoryDay.day` beside each selected focus session.
+History already grouped those sessions by start date using the report calendar.
+Linked events reuse that civil date. Unassociated events still convert their occurrence timestamp using the same calendar.
+The event SQL, event order, tag membership, and reference accounting are unchanged.
+There is no shared formatter or mutable cache.
+
+The predeclared decision is to compare optimized v12 artifacts on identical data and retain only a demonstrated reduction in repeated conversion work.
+A measured latency difference is inconclusive where run-to-run spread exceeds the median gap.
+The Explain the Number principle requires a separate owned-process profile and visible ranges.
+Model the Domain determines the local `(day, session)` tuple instead of a formatter cache.
+Prove It Works determines the complete result comparisons and real packaged protocol checks.
+All work runs in-thread on Codex gpt-6.1-sol High, without delegates or desktop control.
+
+### Matched artifacts and fixture
+
+The unmodified v12 product was built and measured before editing `Stats.swift`.
+Its signed bundle, optimized linked probe, source hashes, fixture, canonical responses, and timing samples remain in `event-date-v12-baseline`.
+After the small Core edit, a second release build produced the candidate artifacts.
+The comparison preserves those separately in `event-date-v12-comparison2`.
+Neither bundle is launched as an app.
+
+The comparison starts from a byte-identical copy of the retained baseline SQLite file.
+Both sides use that same comparison database and separate persistent Store and MCP processes.
+Every tracked Source file except `Stats.swift`, the package manifest and lockfile, and the build wrappers must hash identically across the two builds.
+The Swift probe source must also match. Each measured CLI and probe has its own recorded SHA-256.
+The driver verifies the original and archived candidate bundle and the preserved baseline bundle with deep, strict codesign verification.
+
+The schema guard now requires `v12-sleep-recovery`, empty `recoveryGap` and `recoveryImpact` tables, and zero `recoveryTrimSeconds` on every session.
+The 366 dates, 3,660 focus sessions, 1,098 break sessions, 12,810 events, all other cardinalities, and all independent numeric expectations above remain unchanged.
+The fixture deliberately measures no recovery decisions or trims. Recovery correctness is a separate acceptance boundary.
+This fixture contains 10,980 linked events and 1,830 unassociated events.
+The changed code therefore avoids 10,980 repeated event-level civil-date conversions at the maximum window.
+It retains the 1,830 occurrence-date conversions and all existing History grouping work.
+That arithmetic describes removed work, not a predicted speedup.
+
+Each side receives one warmup for every case and path, then five measured samples.
+For each case and round the driver runs baseline Store, MCP, and CLI, then candidate Store, MCP, and CLI.
+Each individual boundary therefore alternates baseline and candidate across five rounds.
+The starting case rotates each round. Requests remain serial, caches remain warm, and every CLI request starts a new packaged process.
+The direct Store and encoding intervals retain their original boundaries.
+MCP and CLI end-to-end intervals include full parsing, independent validation, and complete output comparison.
+Only top-level `takenAt` is removed before canonical JSON byte comparison.
+Every response records that canonical SHA-256 and its output byte counts.
+Every result must match the actual pre-change response as well as the independent expectations.
+The database must still match its physical bytes, logical dump, schema, and counts before and after measured reads and cleanup.
+
+The successful build and measurement commands run from this worktree.
+
+```sh
+CONFIG=release ./scripts/bundle.sh > build/verification/non-calendar/event-date-baseline-build-resumed.log 2>&1
+python3 scripts/verification/read-performance.py --output build/verification/non-calendar/event-date-v12-baseline --through 2026-11-03 --samples 5 > build/verification/non-calendar/event-date-v12-baseline.log 2>&1
+CONFIG=release ./scripts/bundle.sh > build/verification/non-calendar/event-date-candidate-build.log 2>&1
+python3 scripts/verification/read-performance.py --output build/verification/non-calendar/event-date-v12-comparison2 --through 2026-11-03 --samples 5 --baseline build/verification/non-calendar/event-date-v12-baseline > build/verification/non-calendar/event-date-v12-comparison2.log 2>&1
+```
+
+The driver uses disposable `THREE_DB` and `THREE_CHROME_DATA` paths and UTC for timed reads.
+The default 28-date request remains a true default with no explicit bounds and ends on the current UTC date.
+No installed or Manual Test app, database, scheduler setting, login item, notification permission, or browser is changed.
+
+### Failed attempts retained without timings
+
+The first baseline build and its retry failed with `No space left on device`.
+The logs are `event-date-baseline-build.log` and `event-date-baseline-build-retry.log`.
+Only this active worktree's newly created package repository cache was removed locally.
+A third build was interrupted in its verified owned process group when the coordinator requested a capacity pause.
+Its log is `event-date-baseline-build-retry2.log` and its exit was 130.
+After the coordinator recovered 7.3 GiB elsewhere, the resumed baseline build passed.
+The product source remained unchanged throughout baseline capture. No timing from a failed build exists.
+
+The first comparison stopped before opening its measurement processes because the baseline archive failed deep signature verification.
+Python's bundle copy had dropped the shell native-host launcher's signature metadata.
+The measured CLI and probe hashes were intact.
+The driver now uses macOS `ditto` and verifies the archived bundle immediately.
+The baseline launcher's bytes matched the candidate launcher exactly.
+`ditto` restored that unchanged launcher's metadata, after which the original baseline bundle's full signature verified and its recorded CLI SHA-256 still matched.
+No binary was rebuilt or resigned for this repair. No verification assertion was removed.
+`event-date-v12-comparison.log` and `event-date-archive-repair.log` retain the failure and repair evidence.
+
+### Measured verdict
+
+The default 28-date Stats read is measurably faster on this fixture.
+The direct Store median decreases from 288.28 ms to 168.29 ms, or 41.62 percent less latency.
+Its baseline range is 283.80 to 289.50 ms and its candidate range is 163.87 to 172.99 ms, with five measured samples per side.
+The median gap exceeds each side's spread. Packaged MCP and CLI also have separated ranges at this size.
+
+The maximum 366-date comparisons are inconclusive under the predeclared noise rule.
+Their medians are lower, but at least one side's full spread exceeds the median gap at every boundary.
+The maximum Store ranges happen to be separated, while the MCP and CLI ranges overlap.
+No maximum-window percentage speedup is claimed, and no outlier is removed.
+There is no measurable change in either History control case.
+
+All values below are milliseconds, with the median followed by the full minimum to maximum range.
+Each row has five measured samples per side, after one warmup per side.
+
+| Stats case and boundary | Baseline median and range | Candidate median and range | Verdict |
+| --- | ---: | ---: | --- |
+| Default 28, direct Store query | 288.28, 283.80 to 289.50 | 168.29, 163.87 to 172.99 | Faster |
+| Default 28, persistent MCP end to end | 460.95, 438.70 to 475.56 | 351.43, 320.08 to 353.95 | Faster |
+| Default 28, packaged CLI end to end | 332.32, 329.98 to 336.67 | 212.33, 210.50 to 214.28 | Faster |
+| Maximum 366, direct Store query | 5,425.10, 5,391.55 to 8,671.79 | 3,901.53, 3,849.09 to 4,745.38 | Inconclusive |
+| Maximum 366, persistent MCP end to end | 7,572.81, 7,387.11 to 8,795.03 | 5,910.40, 5,755.75 to 8,811.24 | Inconclusive |
+| Maximum 366, packaged CLI end to end | 5,770.04, 5,755.93 to 5,812.42 | 4,165.49, 4,158.12 to 7,232.03 | Inconclusive |
+
+The default query median is about 87 percent of the baseline CLI median and 63 percent of the baseline MCP median.
+These are approximate component shares from separate requests, not additive spans from one trace.
+The query is a material part of the end-to-end wait, and the default-window improvement appears at both packaged boundaries.
+It does not establish native selection, rendering, or interaction latency.
+
+The unchanged History Store control medians are 79.10 versus 79.03 ms for the month and 911.02 versus 914.73 ms for 366 dates.
+Their differences are smaller than the observed spreads.
+`summary.json` retains query, encoding, parsed, and fully validated timing distributions for all four cases and both sides.
+The separate initial v12 baseline run also remains available, but the causal table uses only the alternating comparison.
+
+Compact and pretty encoding still process the full materialized result.
+At the default size, their candidate medians are 10.31 and 10.65 ms.
+At 366 dates, their candidate medians are 127.13 and 132.89 ms.
+These costs remain far below the query interval. The change does not skip encoding or return fewer results.
+
+Both sides produce the same measured output sizes.
+
+| Stats case | Compact JSON bytes | Pretty JSON bytes | MCP wire bytes | CLI stdout bytes |
+| --- | ---: | ---: | ---: | ---: |
+| Default 28 | 607,734 | 1,215,726 | 675,028 to 675,029 | 1,215,727 |
+| Maximum 366 | 7,495,398 | 15,054,531 | 8,324,828 to 8,324,829 | 15,054,532 |
+
+The CLI includes its trailing newline. MCP request IDs account for the one-byte wire variation.
+Every timed and warmup response has the same normalized result hash for its case, across both sides and all three paths.
+
+### Limiter and contention evidence
+
+The comparison's one-minute load samples range from 4.07 to 17.21 on 12 logical cores.
+Its manifest host snapshot is at 2026-11-03 11:54:01.981 UTC, or 17:24:01.981 Asia/Kolkata.
+The last timed-case host snapshot is at 11:58:58.537 UTC, or 17:28:58.537 local.
+The post-profile host snapshot is at 11:59:25.171 UTC, or 17:29:25.171 local.
+These timestamps and the raw counters allow the coordinator to identify overlap with its combined-source test and release builds.
+The later integrated `a305ba9` lifecycle and `75fc9aa` protocol commits are not imported into either measured side.
+The host snapshots show another Swift compiler and system analysis processes during the high-load interval.
+No other process was stopped or sampled. This worker ran no test compilation during the timed comparison or its profiles.
+
+Each side then runs an owned-probe profile, excluded from the timing table.
+Both five-second `sample` captures exit successfully.
+The baseline performs two additional validated maximum Stats reads over 12.79 seconds, and the candidate performs three over 13.65 seconds.
+Those wall times include the profiler and Python validation and are not speedup measurements.
+
+The baseline profile has 3,100 query-thread stacks, with 1,524 passing through the event map at old `Stats.swift:203`.
+Of those, 1,481 pass through the event-date conversion at old `Stats.swift:207`, predominantly into `NSDateFormatter` regeneration and ICU.
+The candidate has 3,042 query stacks, with 226 through the event map at `Stats.swift:205` and 206 through its remaining occurrence-date conversion at `Stats.swift:209`.
+The candidate instead spends 1,300 sampled stacks in the per-tag daily calculation at `Stats.swift:239` and 691 in History at `Stats.swift:191`.
+These are sampled stack frequencies, not exact request CPU fractions or an Amdahl bound.
+They support the narrower finding that the repeated linked-event formatter work has been removed while existing aggregation and History work remain.
+
+The owned probe reaches 100 percent CPU in each profile, consistent with serial query work limiting this path.
+Across each profile's counter window, its disk read and write byte counters and page-ins do not increase.
+The Python generator uses 0.227 user and 0.157 system seconds during the baseline profile, and 0.328 user and 0.171 system seconds during the candidate profile.
+The generator is not saturated. These observations support CPU work and scheduler contention, rather than warm-read disk bandwidth, as the limit.
+Remaining History date grouping, per-day/tag aggregation, and the retained ambient-event conversions prevent the whole query from disappearing.
+The profiles do not isolate every cause of the MCP-versus-CLI difference.
+
+### Correctness, cleanup, and acceptance
+
+PASS. The pre-change v12 run validates all 72 timed and warmup responses with zero unexpected errors or rejections.
+PASS. The alternating comparison validates 120 timed and 24 warmup responses with zero unexpected errors or rejections and empty MCP stderr for both sides.
+PASS. All five additional comparison-profile reads pass independent numeric and cardinality expectations.
+PASS. Both databases preserve their physical bytes, logical dumps, schema, and table counts across measured reads and owned-process cleanup.
+Their logical SHA-256 is `20f5c0219db7ee83a64d94c96cf2a64e56b515af607228f6a3f6027632bb5a80`.
+The comparison database remains 4,550,656 bytes, with main-file SHA-256 `105da3c97901eea368461922c249e83b70364f243eb4c620bac3368f9606a2d9` before and after reads.
+The initial baseline has a different physical header after pool startup, with identical logical contents. Its own before/after main-file SHA-256 stays `4067a70b2b2f50b72e943cfc13a61907438b0952b33b3d68c0e4ba960f8fc40b`.
+The copy is asserted byte-identical to the initial baseline before the comparison pools are opened.
+All four comparison persistent processes and both initial baseline processes exit zero, recorded with their owned PIDs in `cleanup.json`.
+
+PASS. Thirty-two additional packaged CLI/MCP responses preserve expected event attribution in Cairo's skipped midnight hour and repeated late hour, Apia's skipped date, and a Los Angeles cross-midnight session.
+Each disposable fixture includes two linked hits, one linked unblock, an ambient hit, and a hit linked to a break.
+Linked focus events follow the session start day; the other hits follow occurrence day; skipped dates stay empty.
+Both sides agree on full History and Stats output, and each fixture's logical storage is unchanged.
+`date-checks.json` records all four cases and each case directory retains its database and canonical responses.
+
+The following focused checks run against the optimized candidate. They use disposable data and Chrome folders.
+
+```sh
+THREE_DB="$PWD/build/verification/non-calendar/event-date-focused-default.sqlite" THREE_CHROME_DATA="$PWD/build/verification/non-calendar/event-date-focused-chrome" ./scripts/swift.sh test -c release --filter 'stats|history' > build/verification/non-calendar/event-date-focused-tests.log 2>&1
+THREE_CHROME_DATA="$PWD/build/verification/non-calendar/event-date-stats-parity-chrome" python3 scripts/test-stats.py --binary build/verification/non-calendar/event-date-v12-comparison2/Three.app/Contents/Helpers/three > build/verification/non-calendar/event-date-stats-parity.log 2>&1
+THREE_CHROME_DATA="$PWD/build/verification/non-calendar/event-date-history-parity-chrome" python3 scripts/test-history.py --binary build/verification/non-calendar/event-date-v12-comparison2/Three.app/Contents/Helpers/three > build/verification/non-calendar/event-date-history-parity.log 2>&1
+git diff --check
+```
+
+PASS. All 29 selected Swift tests pass, including Apia skipped-date cases, DST, start-day event attribution, missing references, tag overlap, and the inherited moved-commitment regression tests.
+Cairo is covered by the additional packaged fixtures, not by an invented pre-existing unit test.
+PASS. Fixed packaged Stats parity verifies all five metrics, denominators, tags, breaks, null ratios, bounds, and read-only storage.
+PASS. Fixed packaged History parity verifies elapsed accounting, carry history, deleted references, empty dates, legacy compatibility, and read-only storage.
+PASS. `git diff --check` and Python source compilation pass. The historical v11 report remains a byte-identical prefix of this document.
+
+Raw evidence remains under `build/verification/non-calendar/event-date-v12-baseline` and `event-date-v12-comparison2`.
+Each contains artifact hashes, manifest, exact probe compiler command, canonical outputs, raw samples, summaries, host snapshots, owned counters, preservation checks, cleanup receipts, and separate profiles.
+`event-date-final-verification.log` records the final artifact checks of alternating sample order, canonical hashes, artifact signatures and hashes, unchanged storage, dead owned PIDs, and focused test receipts.
+The measured CLI hashes are `d64d39bea4375f322c75a0578c7058a218d7a194924d3ae5684eec880005d26d` for baseline and `d5a2807f9093f01bd192f4d8b4c1d57900a1088b99a4aaf54168b66ec4947458` for candidate.
+
+COULD NOT RUN. Native rendering and interaction acceptance are outside this worker's authorization. No native latency claim is made.
+COULD NOT RUN. macOS 26 runtime acceptance is unavailable on this macOS 27 host.
+The full integrated suite and independent review remain coordinator responsibilities. The focused checks do not replace them.
+No calendar, BPRO-396, production data, manual-test data, release metadata, paid model, real sync, Linear, merge, or PR operation is part of this unit.

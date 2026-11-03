@@ -190,7 +190,9 @@ extension Store {
         return try db.read { db in
             let history = try historyReport(from: from, through: through, now: now, range: range, db: db)
             let focus = history.days.flatMap(\.sessions).filter { $0.session.kind == .focus }
-            let focusById = Dictionary(uniqueKeysWithValues: focus.map { ($0.id, $0) })
+            let focusById = Dictionary(uniqueKeysWithValues: history.days.flatMap { day in
+                day.sessions.filter { $0.session.kind == .focus }.map { ($0.id, (day: day.day, session: $0)) }
+            })
             let focusIds = focus.map(\.id)
             let eventRows = try SQLRequest<Row>("""
                 SELECT e.at, e.ruleId, e.sessionId, e.action, r.kind AS targetKind, r.value AS targetValue, s.kind AS sessionKind
@@ -204,11 +206,11 @@ extension Store {
                 let sessionId: String? = row["sessionId"]
                 let linked = sessionId.flatMap { focusById[$0] }
                 let at: Date = row["at"]
-                return StatsEvent(day: DayKey(linked?.session.startedAt ?? at, calendar: range.calendar),
+                return StatsEvent(day: linked?.day ?? DayKey(at, calendar: range.calendar),
                                   ruleId: row["ruleId"], kind: row["targetKind"], target: row["targetValue"],
                                   isHit: (row["action"] as String) == "blocked", associated: linked != nil,
                                   unresolvedSession: sessionId != nil && (row["sessionKind"] as String?) == nil,
-                                  tagIds: Set(linked?.tags.map(\.id) ?? []))
+                                  tagIds: Set(linked?.session.tags.map(\.id) ?? []))
             }
             let commitmentRows = try SQLRequest<Row>("SELECT * FROM planCommitment WHERE planId IN \(history.days.compactMap(\.plan?.id))").fetchAll(db)
             let commitments = try Dictionary(uniqueKeysWithValues: commitmentRows.map { row in
