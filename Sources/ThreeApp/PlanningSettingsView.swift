@@ -3,28 +3,23 @@ import ThreeCore
 
 struct PlanningSettingsView: View {
     @Environment(AppModel.self) private var model
-    @State private var time = "09:30"
-    @State private var command = ""
+    @State private var form = PlanningSettings()
 
     private var planning: PlanningController { model.planning }
-    private var changed: Bool { time != planning.settings.localTime || command != planning.settings.command }
+    private var changed: Bool { form != planning.settings }
 
     var body: some View {
         Form {
             Section {
-                Toggle("Scheduled planning", isOn: Binding(get: { planning.settings.enabled }, set: { enabled in
-                    var settings = planning.settings
-                    settings.enabled = enabled
-                    planning.save(settings)
-                }))
-                TextField("Local planning time (HH:mm)", text: $time)
-                TextField("Local command", text: $command, axis: .vertical)
+                Toggle("Scheduled planning", isOn: $form.enabled)
+                TextField("Local planning time (HH:mm)", text: $form.localTime)
+                TextField("Local command", text: $form.command, axis: .vertical)
                     .font(Typo.code)
                     .lineLimit(3...6)
                     .accessibilityIdentifier("planning-command")
                 HStack {
                     Button("Save") { save() }.disabled(!changed)
-                    Button("Use Codex default") { command = PlanningSettings.defaultCommand }
+                    Button("Use Codex default") { form.command = PlanningSettings.defaultCommand }
                     Spacer()
                     Button("Test") {
                         if save() { planning.check(now: Date(), test: true) }
@@ -35,7 +30,7 @@ struct PlanningSettingsView: View {
                     }
                 }
             } footer: {
-                Text("Off by default. Runs once per local day while Three is open, with one catch-up after wake. Test runs now and can retry a failed attempt. Existing plans and timers are preserved. Commands run in your home directory through your login shell. The ten-minute limit and 64 KiB per output stream apply to Test too.")
+                Text("Save applies the switch, time, and command together. Test saves them and runs now. Off by default, with one catch-up after wake while Three is open. Existing plans and timers are preserved. Commands use your home directory and login shell, with a ten-minute limit and 64 KiB per output stream.")
                     .foregroundStyle(.secondary)
             }
             Section {
@@ -69,14 +64,11 @@ struct PlanningSettingsView: View {
         .onChange(of: planning.settings) { load() }
     }
 
-    private func load() { time = planning.settings.localTime; command = planning.settings.command }
+    private func load() { form = planning.settings }
 
     @discardableResult
     private func save() -> Bool {
-        var settings = planning.settings
-        settings.localTime = time
-        settings.command = command
-        planning.save(settings)
+        planning.save(form)
         return planning.error == nil
     }
 
