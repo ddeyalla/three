@@ -18,3 +18,15 @@ Native before/after rendering at narrow and wide sizes and independent review re
 Codex Sol 6.1 High independently passed `07607eb` relative to `2fc510c`, with no verified findings. The coordinator inspected `/Users/divyanshudv/.t3/worktrees/adhd/t3-cddc4978/.audit/07607eb-axis-review.json`. The review checked complete and sparse domains, empty input, first/final ticks, year-qualified context, and preserved accessible full dates. It verified the frozen app/helper SHA-256 values and strict ad-hoc signature. The helper is byte-identical to the previously reviewed `dbba9ae` helper.
 
 The reviewer ran no build, suite, app launch or desktop interaction. It left only its scratch receipt and no owned processes, and was stopped after delivery. Native rendering remains with Terra on the frozen `07607eb` release. This verdict does not close other acceptance gaps or localize the prior supervisor failure.
+
+## Narrow-width collision correction
+
+Terra's [read-view receipt](readviews-native.md) reproduced date-label truncation at 680 and 1060 points on `07607eb`. The coordinator inspected the saved daily-focus and accuracy screenshots. Five ticks have ample space between them, but the daily categorical labels still truncate. The corresponding weekly axis shows complete dates at the same window width.
+
+| Before | After | Why |
+| --- | --- | --- |
+| The shared axis leaves label collision resolution at the platform's automatic policy. Daily dates truncate to `1...` at 680 points. | Request Swift Charts' native `.greedy` collision resolution. | The documented policy displays a label when it does not overlap another label. It avoids requesting truncated labels or changing the data domain. |
+
+The one-line change remains in `trendsDateAxis`. Compact date text, selected ticks, full categorical domains, numerical marks, and accessible values stay intact. [Apple's collision-resolution documentation](https://developer.apple.com/documentation/charts/axisvaluelabelcollisionresolution/greedy) supplies the platform behavior. Native rendering is still required to establish the correction at supported widths. No accounting or protocol change is involved.
+
+PASS. The collision-policy candidate passed `CONFIG=release ./scripts/bundle.sh`, strict deep signing, plist validation, design lint, and `git diff --check`. Logs are `build/verification/non-calendar/trends-collision-release.log` and `trends-collision-lint.log`. The app SHA-256 is `00e5ea3483dbf10107f3522e3f428f7ac26cb990a86607ed3e4c75a3aa635ff2`. The helper remains byte-identical to the reviewed `07607eb` helper, with SHA-256 `e2b864559d7e50a68dbeb194d692aee1751fb61834d9c8ac1393aea4ec52f8a2`. The source delta adds no comments or tests. Fresh source review and native rendering remain open.

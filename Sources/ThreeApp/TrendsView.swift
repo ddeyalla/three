@@ -340,7 +340,7 @@ private func trendsDateAxis(_ dates: [DayKey]) -> some AxisContent {
     return AxisMarks(values: ticks) { value in
         AxisGridLine()
         AxisTick()
-        AxisValueLabel {
+        AxisValueLabel(collisionResolution: .greedy) {
             if let date = value.as(String.self) {
                 Text(String(date.suffix(5))).monospacedDigit()
             }
