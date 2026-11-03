@@ -144,16 +144,22 @@ private func task(_ title: String, _ minutes: Int = 60, _ category: String = "Co
     #expect(QuickAdd.parse("tomorrow 30m", categories: cats, today: today).title.isEmpty)
 }
 
-@Test func openTasksFromEarlierDaysWaitInTheInbox() throws {
+/// Unfinished work from an earlier day has one home: the carry-over review, not the inbox.
+@Test func openTasksFromEarlierDaysWaitForCarryReviewNotTheInbox() throws {
     let store = try Store(url: freshURL())
     let yesterday = DayKey.today.adding(days: -1)
     let left = try store.addTask(task("Left over"), day: yesterday, source: .cli)
     let done = try store.addTask(task("Finished"), day: yesterday, source: .cli)
     try store.setTaskStatus(done.id, .done)
-    #expect(try store.inbox().map(\.id) == [left.id])
-    try store.schedule(left.id, on: .today)
-    #expect(try store.inbox().isEmpty)
-    #expect(try store.snapshot().tasks.map(\.id) == [left.id])
+    let undated = try store.addToInbox(task("Someday"), source: .cli)
+    let inbox = try store.inbox().map(\.id)
+    let carryover = try store.carryover(before: .today).map(\.id)
+    #expect(inbox == [undated.id])
+    #expect(carryover == [left.id])
+    #expect(Set(inbox).isDisjoint(with: carryover))
+    try store.carryTask(left.id, to: .today)
+    #expect(try store.carryover(before: .today).isEmpty)
+    #expect(try store.inbox().map(\.id) == [undated.id])
 }
 
 @Test func deletingTheRunningTaskStopsItsBlock() throws {
