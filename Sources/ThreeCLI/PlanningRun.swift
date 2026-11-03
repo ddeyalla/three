@@ -17,11 +17,16 @@ struct PlanningRunCommand: AsyncParsableCommand {
             throw ValidationError("Planning supervision needs the app's control pipe.")
         }
         let store = try store()
-        guard let run = try store.planningRun(runID), run.status == .running, run.processGroup == nil,
-              DayKey.today == run.day, Date() >= run.startedAt, Date() < run.deadline else {
+        guard let run = try store.planningRun(runID), run.status == .running, run.processGroup == nil else {
             throw ValidationError("Planning claim is inactive or already supervised.")
         }
         try store.recordPlanningSupervisor(runID, pid: getpid())
+        let now = Date()
+        guard DayKey(now) == run.day, now >= run.startedAt, now < run.deadline else {
+            try store.finishPlanningRun(runID, result: .init(status: now >= run.deadline ? .timedOut : .cancelled,
+                                                            error: "Planning expired or its local date changed before launch. No command was started."))
+            return
+        }
         let command = PlanningCommand()
         let channel = FileHandle.standardInput
         channel.readabilityHandler = { handle in

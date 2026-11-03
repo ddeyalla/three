@@ -53,7 +53,8 @@ def exercise(binary, scratch, case):
         connection.execute("""INSERT INTO planningRun
             (id,day,trigger,status,startedAt,deadline,command)
             VALUES(?,?,'test','running',?,?,?)""",
-                           (run_id, datetime.date.today().isoformat(), now, now + lifetime, command))
+                           (run_id, datetime.date.today().isoformat(), now - 3 if case == "expired" else now,
+                            now - 1 if case == "expired" else now + lifetime, command))
     owner = None
     helper = None
     try:
@@ -69,6 +70,13 @@ helper.wait()
         else:
             helper = subprocess.Popen([str(binary), "planning-run", run_id], stdin=subprocess.PIPE,
                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
+        if case == "expired":
+            helper.wait(timeout=2)
+            result = record(database)
+            assert helper.returncode == 0 and result["status"] == "timedOut" and result["processGroup"] is None, result
+            assert not ready.exists()
+            print(json.dumps({"case": case, "status": result["status"], "command_started": False}))
+            return
         await_state(lambda: ready.exists() and len(ready.read_text().split()) == 2, time.monotonic() + lifetime)
         group, child = map(int, ready.read_text().split())
         assert record(database)["processGroup"] == group
@@ -116,7 +124,7 @@ def main():
     binary = args.binary.resolve(strict=True)
     root = Path(__file__).resolve().parent.parent
     with tempfile.TemporaryDirectory(prefix="supervisor-proof-", dir=root / "build") as folder:
-        for case in ["owner-death", "cancel", "deadline"]:
+        for case in ["owner-death", "cancel", "deadline", "expired"]:
             exercise(binary, Path(folder), case)
     print("PASS: owner death, cancellation, and deadline stop the real helper's owned command group and persist the result.")
 
