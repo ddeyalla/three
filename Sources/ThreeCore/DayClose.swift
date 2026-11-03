@@ -230,7 +230,7 @@ extension Store {
     public func closeDay(_ day: DayKey = .today, now: Date = Date(),
                          pendingRecovery: DayCloseRecoveryCheck? = nil) throws -> DayCloseResult {
         let outcome = try db.write { try closeDay(day, now: now, pendingRecovery: pendingRecovery, $0) }
-        if outcome.didClose { ChangeSignal.post() }
+        if outcome.didClose { ChangeSignal.post(databasePath: db.path) }
         return outcome.result
     }
 
@@ -272,7 +272,7 @@ extension Store {
             }
             return (batch: DayCloseBatch(attempts: attempts, nextAfter: days.count > limit ? attempts.last?.day : nil), didClose: didClose)
         }
-        if outcome.didClose { ChangeSignal.post() }
+        if outcome.didClose { ChangeSignal.post(databasePath: db.path) }
         return outcome.batch
     }
 

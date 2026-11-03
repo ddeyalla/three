@@ -76,7 +76,7 @@ final class AppModel {
         }
         // THREE_OPEN=inbox|upcoming|done|tags opens on that view, for screenshots and scripts.
         if let open = ProcessInfo.processInfo.environment["THREE_OPEN"], let d = Destination(rawValue: open) { destination = d }
-        signalToken = ChangeSignal.observe { [weak self] in self?.reload() }
+        signalToken = ChangeSignal.observe(databasePath: store.db.path) { [weak self] in self?.reload() }
         let ticker = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }

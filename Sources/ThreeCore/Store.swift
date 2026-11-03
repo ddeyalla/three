@@ -36,6 +36,10 @@ public final class Store: @unchecked Sendable {
         if let override = ProcessInfo.processInfo.environment["THREE_DB"] {
             return URL(fileURLWithPath: override)
         }
+        return standardURL
+    }
+
+    static var standardURL: URL {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Three", isDirectory: true)
         return dir.appendingPathComponent("three.sqlite")

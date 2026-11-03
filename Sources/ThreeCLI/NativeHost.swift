@@ -44,7 +44,7 @@ final class HostLoop {
     init(store: Store) { self.store = store }
 
     func start() {
-        signalToken = ChangeSignal.observe { [weak self] in MainActor.assumeIsolated { self?.refresh() } }
+        signalToken = ChangeSignal.observe(databasePath: store.db.path) { [weak self] in MainActor.assumeIsolated { self?.refresh() } }
         timer.setEventHandler { [weak self] in MainActor.assumeIsolated { self?.refresh() } }
         timer.resume()
         readStdin()

@@ -50,7 +50,7 @@ A verified P2 notch race required a narrow coordinator exception to the temporar
 
 ## Final integration ownership
 
-The initial recovery and native-setup workers have completed and been stopped. A fresh lifecycle worker exclusively owns AppModel, ThreeApp, RootView, MenuBarView, SettingsView, TimerNotifications, the recovery controller/review views, and focused App integration tests. It composes v12 with native setup and preserves the current ChangeSignal observer until the coordinator resolves the separate native diagnosis.
+The initial recovery and native-setup workers have completed and been stopped. A fresh lifecycle worker exclusively owns AppModel, ThreeApp, RootView, MenuBarView, SettingsView, TimerNotifications, the recovery controller/review views, and focused App integration tests. It composes v12 with native setup and preserves the coordinator's database-scoped ChangeSignal observer.
 
 A fresh protocol worker owns ThreeCLI/Three.swift, MCP.swift, recovery Codable conformances only in SleepRecovery.swift, protocol documentation, packaged recovery tests, and a new Core test file for recovery-adjusted History/Stats. It exposes explicit manual-channel reads and decisions, never raw sleep/lock simulation tools or scheduled access. Stats, History, Models, Store, and Operations remain outside its ownership.
 

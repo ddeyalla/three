@@ -3,6 +3,7 @@
 import argparse
 import ctypes
 import datetime
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -137,10 +138,15 @@ def run(binary, scratch):
 
         notify = ctypes.CDLL("/usr/lib/system/libsystem_notify.dylib")
         token = ctypes.c_int()
-        assert notify.notify_register_check(b"com.deyalla.three.changed", ctypes.byref(token)) == 0
+        signal_name = "com.deyalla.three.changed." + hashlib.sha256(str(db.resolve()).encode()).hexdigest()
+        assert notify.notify_register_check(signal_name.encode(), ctypes.byref(token)) == 0
         changed = ctypes.c_int()
         assert notify.notify_check(token.value, ctypes.byref(changed)) == 0
         try:
+            other_env = dict(env, THREE_DB=str(scratch / "unrelated.sqlite"))
+            subprocess.run([str(binary), "capture", "Unrelated database"], env=other_env,
+                           check=True, capture_output=True, text=True)
+            assert notify.notify_check(token.value, ctypes.byref(changed)) == 0 and changed.value == 0
             proposal = rpc.call("plan_day", {"date": "today", "tasks": [task("Review draft"), task("Ship feature")]})
             assert proposal["day"]["plan"]["status"] == "draft"
             assert proposal["day"]["plan"]["source"] == "mcp"

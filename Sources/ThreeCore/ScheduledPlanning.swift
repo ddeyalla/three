@@ -151,7 +151,7 @@ extension Store {
             try run.insert(db)
             return run
         }
-        if run != nil { ChangeSignal.post() }
+        if run != nil { ChangeSignal.post(databasePath: db.path) }
         return run
     }
 
@@ -254,7 +254,7 @@ extension Store {
             try run.update(db)
             return PlanningNotice(day: day, draftReady: plan?.status == .draft)
         }
-        if notice != nil { ChangeSignal.post() }
+        if notice != nil { ChangeSignal.post(databasePath: db.path) }
         return notice
     }
 }

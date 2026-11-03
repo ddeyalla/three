@@ -1,18 +1,28 @@
 import Foundation
+import CryptoKit
 import GRDB
 import notify
 
 /// Cross-process "the database changed" ping. GRDB observation only sees writes from
 /// its own process, so every write posts this and the app reloads on receipt.
 public enum ChangeSignal {
-    static let name = "com.deyalla.three.changed"
+    static func name(for databasePath: String) -> String {
+        let path = URL(fileURLWithPath: databasePath).standardizedFileURL.resolvingSymlinksInPath().path
+        let standard = Store.standardURL.standardizedFileURL.resolvingSymlinksInPath().path
+        // Installed older helpers use this name for the standard database.
+        if path == standard { return "com.deyalla.three.changed" }
+        let digest = SHA256.hash(data: Data(path.utf8)).map { String(format: "%02x", $0) }.joined()
+        return "com.deyalla.three.changed.\(digest)"
+    }
 
-    public static func post() { notify_post(name) }
+    public static func post(databasePath: String = Store.defaultURL.path) {
+        notify_post(name(for: databasePath))
+    }
 
     /// Calls `handler` on the main queue after any process writes. Keep the token alive.
-    public static func observe(_ handler: @escaping () -> Void) -> Int32 {
+    public static func observe(databasePath: String = Store.defaultURL.path, _ handler: @escaping () -> Void) -> Int32 {
         var token: Int32 = 0
-        notify_register_dispatch(name, &token, .main) { _ in handler() }
+        notify_register_dispatch(name(for: databasePath), &token, .main) { _ in handler() }
         return token
     }
 }
@@ -85,7 +95,7 @@ extension Store {
     @discardableResult
     func write<T>(_ body: (Database) throws -> T) throws -> T {
         let result = try db.write(body)
-        ChangeSignal.post()
+        ChangeSignal.post(databasePath: db.path)
         return result
     }
 

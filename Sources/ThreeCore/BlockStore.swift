@@ -259,7 +259,7 @@ extension Store {
                            arguments: [UUID().uuidString, now, ruleId, policy.focus?.sessionId])
             return true
         }
-        if recorded { ChangeSignal.post() }
+        if recorded { ChangeSignal.post(databasePath: db.path) }
         return recorded
     }
 
