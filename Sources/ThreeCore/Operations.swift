@@ -356,20 +356,32 @@ extension Store {
     /// Moves an open task to tomorrow's plan; today keeps it as `carried`.
     @discardableResult
     public func pushToTomorrow(_ id: String, now: Date = Date()) throws -> FocusTask {
+        try carry(id, to: nil, now: now)
+    }
+
+    /// Accepts unfinished work onto a later day without moving its focus history.
+    @discardableResult
+    public func carryTask(_ id: String, to day: DayKey, now: Date = Date()) throws -> FocusTask {
+        try carry(id, to: day, now: now)
+    }
+
+    private func carry(_ id: String, to day: DayKey?, now: Date) throws -> FocusTask {
         try write { db in
             var t = try editableTask(id, db)
-            guard t.status.isOpen else { throw ThreeError.invalid("Only open tasks can be carried to tomorrow.") }
+            guard t.status.isOpen else { throw ThreeError.invalid("Only open tasks can be carried to another day.") }
             guard try runningSession(db)?.taskId != id else {
                 throw ThreeError.invalid("Finish the running block before moving its task.")
             }
             guard let planId = t.dayPlanId, let plan = try DayPlan.fetchOne(db, key: planId) else {
                 throw ThreeError.invalid("That task isn't planned for a day.")
             }
-            let tomorrow = try planRow(plan.day.adding(days: 1), source: .app, db)
+            let destination = day ?? plan.day.adding(days: 1)
+            guard destination > plan.day else { throw ThreeError.invalid("Carry unfinished work to a later day.") }
+            let target = try planRow(destination, source: .app, db)
             let copy = try insertTask(NewTask(title: t.title, category: t.categoryId, blockMinutes: t.blockMinutes,
                                               strict: t.strict, linearRef: t.linearRef, notes: t.notes,
                                               tags: try self.tags(for: [id], db)[id]?.map(\.name) ?? []),
-                                      plan: tomorrow, source: t.createdBy, db)
+                                      plan: target, source: t.createdBy, db)
             for var step in try Step.filter(Column("taskId") == id).fetchAll(db) {
                 step.id = UUID().uuidString
                 step.taskId = copy.id
