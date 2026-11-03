@@ -13,7 +13,7 @@ public struct DayKey: Hashable, Codable, Comparable, CustomStringConvertible, Se
     }
 
     public init(_ date: Date, calendar: Calendar = .current) {
-        var f = DayKey.formatter
+        let f = DayKey.formatter
         f.timeZone = calendar.timeZone
         rawValue = f.string(from: date)
     }
@@ -21,10 +21,19 @@ public struct DayKey: Hashable, Codable, Comparable, CustomStringConvertible, Se
     public static var today: DayKey { DayKey(Date()) }
 
     public func adding(days: Int) -> DayKey {
-        DayKey(Calendar.current.date(byAdding: .day, value: days, to: startDate)!)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return DayKey(calendar.date(byAdding: .day, value: days, to: Self.formatter.date(from: rawValue)!)!, calendar: calendar)
     }
 
-    public var startDate: Date { DayKey.formatter.date(from: rawValue)! }
+    public var startDate: Date {
+        var civil = Calendar(identifier: .gregorian)
+        civil.timeZone = TimeZone(secondsFromGMT: 0)!
+        let components = civil.dateComponents([.year, .month, .day], from: Self.formatter.date(from: rawValue)!)
+        var local = Calendar(identifier: .gregorian)
+        local.timeZone = .current
+        return local.date(from: components)!
+    }
     public var description: String { rawValue }
     public static func < (a: DayKey, b: DayKey) -> Bool { a.rawValue < b.rawValue }
 
@@ -46,6 +55,7 @@ public struct DayKey: Hashable, Codable, Comparable, CustomStringConvertible, Se
         let f = DateFormatter()
         f.calendar = Calendar(identifier: .gregorian)
         f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(secondsFromGMT: 0)!
         f.dateFormat = "yyyy-MM-dd"
         f.isLenient = false
         return f

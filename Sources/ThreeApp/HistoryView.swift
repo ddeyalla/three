@@ -1,6 +1,35 @@
 import SwiftUI
 import ThreeCore
 
+struct HistoryMonth {
+    let calendar: Calendar
+    let start: Date
+    let from: DayKey
+    let through: DayKey
+    var key: String { String(from.rawValue.prefix(7)) }
+
+    init?(containing date: Date, timeZone: TimeZone = .current) {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        guard let interval = calendar.dateInterval(of: .month, for: date),
+              let last = calendar.date(byAdding: .day, value: -1, to: interval.end) else { return nil }
+        self.calendar = calendar
+        start = interval.start
+        from = DayKey(interval.start, calendar: calendar)
+        through = DayKey(last, calendar: calendar)
+    }
+
+    func shifted(by amount: Int) -> Date? { calendar.date(byAdding: .month, value: amount, to: start) }
+
+    var title: String {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.setLocalizedDateFormatFromTemplate("MMMM yyyy")
+        return formatter.string(from: start)
+    }
+}
+
 struct HistoryView: View {
     @Environment(AppModel.self) private var model
     @State private var month = Date()
@@ -20,7 +49,7 @@ struct HistoryView: View {
         let refresh: Int
     }
 
-    private var monthKey: String { String(DayKey(month).rawValue.prefix(7)) }
+    private var monthKey: String { HistoryMonth(containing: month)?.key ?? "unavailable" }
     private var readKey: ReadKey { ReadKey(month: monthKey, revision: model.snapshot.takenAt, refresh: refresh) }
 
     var body: some View {
@@ -105,7 +134,7 @@ struct HistoryView: View {
             Button("Previous Month", systemImage: "chevron.left") { moveMonth(-1) }
                 .labelStyle(.iconOnly)
                 .buttonStyle(.glass)
-            Text(month.formatted(.dateTime.month(.wide).year()))
+            Text(HistoryMonth(containing: month)?.title ?? "Month unavailable")
                 .font(Typo.heading)
                 .fixedSize()
                 .monospacedDigit()
@@ -118,6 +147,7 @@ struct HistoryView: View {
     private var monthPicker: some View {
         HStack(spacing: Space.md) {
             DatePicker("Go to Month", selection: $month, displayedComponents: .date)
+                .environment(\.calendar, HistoryMonth(containing: month)?.calendar ?? Calendar(identifier: .gregorian))
                 .labelsHidden()
                 .accessibilityLabel("Go to month containing date")
                 .font(Typo.body)
@@ -129,9 +159,7 @@ struct HistoryView: View {
     }
 
     private func moveMonth(_ amount: Int) {
-        let calendar = Calendar.current
-        if let first = calendar.dateInterval(of: .month, for: month)?.start,
-           let next = calendar.date(byAdding: .month, value: amount, to: first) {
+        if let next = HistoryMonth(containing: month)?.shifted(by: amount) {
             month = next
         }
     }
@@ -186,14 +214,12 @@ struct HistoryView: View {
 
     private func load() async {
         guard !Task.isCancelled else { return }
-        let calendar = Calendar.current
         let store = model.store
-        guard let interval = calendar.dateInterval(of: .month, for: month),
-              let last = calendar.date(byAdding: .day, value: -1, to: interval.end) else {
+        guard let range = HistoryMonth(containing: month) else {
             state = .failed("This month is unavailable.")
             return
         }
-        let from = DayKey(interval.start), through = DayKey(last)
+        let from = range.from, through = range.through, calendar = range.calendar
         if selectedDay.map({ String($0.rawValue.prefix(7)) != monthKey }) == true { selectedDay = nil }
         state = .loading
         do {
