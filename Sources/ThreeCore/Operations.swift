@@ -166,17 +166,58 @@ extension Store {
         return task
     }
 
-    /// A live task on any day, or in the inbox, by its id or a unique id prefix (case-insensitive).
+    /// How the CLI names a task, in this order: "2" is the second visible task on `today`, "i2" the second
+    /// inbox task, and anything else a full id or an id prefix on any day. Short numbers (up to three digits,
+    /// optionally after "i") are always positions, so an out-of-range one never falls through to an id prefix.
+    /// `requireOpen` refuses done, dropped and carried tasks with a way forward instead of flipping them.
+    public func resolveTask(_ ref: String, today: DayKey = .today, requireOpen: Bool = false) throws -> TaskRow {
+        let key = ref.trimmingCharacters(in: .whitespaces).lowercased()
+        let digits = key.hasPrefix("i") ? key.dropFirst() : Substring(key)
+        let row: TaskRow
+        if (1...3).contains(digits.count), digits.allSatisfy({ ("0"..."9").contains($0) }), let n = Int(digits) {
+            let list = key.hasPrefix("i") ? try inbox() : try snapshot(for: today).tasks.filter { $0.task.status != .dropped }
+            guard n >= 1, n <= list.count else { throw ThreeError.noSuchTask(ref) }
+            row = list[n - 1]
+        } else {
+            row = try task(matching: key)
+        }
+        if requireOpen, !row.task.status.isOpen { throw try notOpen(row) }
+        return row
+    }
+
+    /// A live task on any day, or in the inbox, by its full id or an id prefix (case-insensitive).
+    /// A prefix shared by two or more live tasks is refused, wherever those tasks are.
     public func task(matching ref: String) throws -> TaskRow {
-        let prefix = ref.trimmingCharacters(in: .whitespaces).uppercased()
-        guard !prefix.isEmpty else { throw ThreeError.noSuchTask(ref) }
-        let pattern = prefix.replacingOccurrences(of: "\\", with: "\\\\")
+        let id = ref.trimmingCharacters(in: .whitespaces).uppercased()
+        guard !id.isEmpty else { throw ThreeError.noSuchTask(ref) }
+        let pattern = id.replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "%", with: "\\%").replacingOccurrences(of: "_", with: "\\_") + "%"
         return try db.read { db in
+            if let exact = try FocusTask.fetchOne(db, sql: "SELECT * FROM task WHERE deletedAt IS NULL AND upper(id) = ?", arguments: [id]) {
+                return try rows(for: [exact], db)[0]
+            }
             let matches = try FocusTask.fetchAll(db, sql: "SELECT * FROM task WHERE deletedAt IS NULL AND upper(id) LIKE ? ESCAPE '\\' LIMIT 2",
                                                  arguments: [pattern])
-            guard matches.count == 1 else { throw ThreeError.noSuchTask(ref) }
+            guard !matches.isEmpty else { throw ThreeError.noSuchTask(ref) }
+            guard matches.count == 1 else {
+                throw ThreeError.invalid("\"\(ref)\" matches more than one task. Use more of the id.")
+            }
             return try rows(for: matches, db)[0]
+        }
+    }
+
+    private func notOpen(_ row: TaskRow) throws -> ThreeError {
+        let title = row.task.title
+        switch row.task.status {
+        case .dropped:
+            return .invalid("\"\(title)\" was dropped. Schedule it on a day to reopen it first.")
+        case .carried:
+            if let decision = try carryDecision(for: row.id), let copy = decision.copyTaskId, let day = decision.destinationDay {
+                return .invalid("\"\(title)\" moved to \(day). Use its copy there: \(copy).")
+            }
+            return .invalid("\"\(title)\" already moved to another day.")
+        default:
+            return .invalid("\"\(title)\" is already \(row.task.status.rawValue).")
         }
     }
 
@@ -392,6 +433,16 @@ extension Store {
     @discardableResult
     public func pushToTomorrow(_ id: String, now: Date = Date()) throws -> FocusTask {
         try carry(id, to: nil, now: now)
+    }
+
+    /// "Tomorrow" from where you stand: work from today or an earlier day goes to `today` + 1, never to a
+    /// day that has already passed. Work planned after today moves to the day after its own.
+    @discardableResult
+    public func carryForward(_ id: String, today: DayKey = .today, now: Date = Date()) throws -> FocusTask {
+        let source = try db.read { db in
+            try DayKey.fetchOne(db, sql: "SELECT day FROM dayPlan JOIN task ON task.dayPlanId = dayPlan.id WHERE task.id = ?", arguments: [id])
+        }
+        return try carry(id, to: max(source ?? today, today).adding(days: 1), now: now)
     }
 
     /// Accepts unfinished work onto a later day without moving its focus history.

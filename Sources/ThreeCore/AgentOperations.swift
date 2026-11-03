@@ -4,13 +4,17 @@ import GRDB
 extension Store {
     /// Open tasks left on days before `day`, oldest day first. Undated tasks belong to `inbox()`.
     public func carryover(before day: DayKey) throws -> [TaskRow] {
-        try db.read { db in
+        let open = TaskStatus.allCases.filter(\.isOpen)
+        var arguments: StatementArguments = [day]
+        arguments += StatementArguments(open.map(\.rawValue))
+        return try db.read { db in
             let leftover = try FocusTask.fetchAll(db, sql: """
                 SELECT task.* FROM task JOIN dayPlan ON dayPlan.id = task.dayPlanId
                 WHERE dayPlan.day < ? AND dayPlan.deletedAt IS NULL AND task.deletedAt IS NULL
+                  AND task.status IN (\(databaseQuestionMarks(count: open.count)))
                 ORDER BY dayPlan.day, task.position
-                """, arguments: [day])
-            return try rows(for: leftover.filter { $0.status.isOpen }, db)
+                """, arguments: arguments)
+            return try rows(for: leftover, db)
         }
     }
 
