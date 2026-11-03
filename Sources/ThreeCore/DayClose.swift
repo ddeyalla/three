@@ -284,6 +284,15 @@ extension Store {
         }
     }
 
+    /// The closed days either side of `day`, for stepping through every close rather than a
+    /// recent window. `day` itself need not be closed.
+    public func closedDays(around day: DayKey) throws -> (previous: DayKey?, next: DayKey?) {
+        try db.read { db in
+            (try DayKey.fetchOne(db, sql: "SELECT MAX(day) FROM dayClose WHERE day < ?", arguments: [day]),
+             try DayKey.fetchOne(db, sql: "SELECT MIN(day) FROM dayClose WHERE day > ?", arguments: [day]))
+        }
+    }
+
     public func dayCloseReview(for day: DayKey) throws -> DayCloseReview? {
         try db.read { db in
             guard let summary = try dayCloseSummary(day, db) else { return nil }

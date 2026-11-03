@@ -337,47 +337,83 @@ private struct HistoryDayDetail: View {
 }
 
 private struct HistoryTaskDetail: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let row: HistoryTask
     let day: DayKey
+    @State private var expanded = false
 
     var body: some View {
-        DisclosureGroup {
-            VStack(alignment: .leading, spacing: Space.sm) {
-                Text("\(row.task.blockMinutes)m task block · \(row.task.strict ? "Strict" : "Standard")")
-                    .font(Typo.meta).foregroundStyle(.secondary).monospacedDigit()
-                if let planned = row.plannedDay, planned != day {
-                    Text("Currently planned for \(planned.rawValue). Focus shown here belongs to this day's sessions.")
-                        .font(Typo.meta).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 0) {
+            // The whole header toggles; the chevron sits trailing and centred on it, like a macOS disclosure row.
+            Button { expanded.toggle() } label: {
+                HStack(spacing: Space.md) {
+                    header
+                    Spacer(minLength: Space.sm)
+                    Image(systemName: "chevron.right")
+                        .font(Typo.meta)
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(expanded ? 90 : 0))
+                        .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: expanded)
+                        .accessibilityHidden(true)
                 }
-                if !row.tags.isEmpty {
-                    Text(row.tags.map { "@\($0.name)" }.joined(separator: " "))
-                        .font(Typo.meta).foregroundStyle(.secondary)
-                }
-                if !row.task.notes.isEmpty { Text(row.task.notes).font(Typo.body).textSelection(.enabled) }
-                ForEach(row.steps) { step in
-                    Label(step.title, systemImage: step.done ? "checkmark.circle" : "circle")
-                        .font(Typo.body)
-                }
-                if let reference = row.task.linearRef {
-                    if let issue = LinearIssueLink(reference) {
-                        Link(issue.title, destination: issue.url).font(Typo.body)
-                    } else {
-                        Text(reference).font(Typo.meta).foregroundStyle(.secondary).textSelection(.enabled)
-                    }
-                }
+                .contentShape(.rect)
             }
-            .padding(.top, Space.sm)
-        } label: {
-            VStack(alignment: .leading, spacing: Space.xs) {
-                Text(row.task.title).font(Typo.body)
-                Text("\(row.task.status == .todo ? "To do" : row.task.status.rawValue.capitalized)\(row.task.deletedAt == nil ? "" : " · Deleted") · \(row.category?.name ?? "Unknown category")\(row.category?.archived == true ? " · Archived category" : "")")
-                    .font(Typo.meta).foregroundStyle(.secondary)
-                Text("\(Format.duration(row.focusSeconds)) focused · \(Format.duration(TimeInterval(row.derivedPlannedSeconds))) derived planned")
-                    .font(Typo.meta).foregroundStyle(.secondary).monospacedDigit()
-            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(row.task.title), \(statusLine), \(focusLine)")
+            .accessibilityValue(expanded ? "Expanded" : "Collapsed")
+            .accessibilityHint(expanded ? "Hides task details" : "Shows task details")
+            .help(expanded ? "Hide details" : "Show details")
+            if expanded { details }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(Space.md)
         .glassEffect(.regular, in: .rect(cornerRadius: Radius.card))
+    }
+
+    private var statusLine: String {
+        "\(row.task.status == .todo ? "To do" : row.task.status.rawValue.capitalized)\(row.task.deletedAt == nil ? "" : " · Deleted") · \(row.category?.name ?? "Unknown category")\(row.category?.archived == true ? " · Archived category" : "")"
+    }
+
+    private var focusLine: String {
+        "\(Format.duration(row.focusSeconds)) focused · \(Format.duration(TimeInterval(row.derivedPlannedSeconds))) derived planned"
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: Space.xs) {
+            Text(row.task.title).font(Typo.body)
+            Text(statusLine)
+                .font(Typo.meta).foregroundStyle(.secondary)
+            Text(focusLine)
+                .font(Typo.meta).foregroundStyle(.secondary).monospacedDigit()
+        }
+    }
+
+    private var details: some View {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            Text("\(row.task.blockMinutes)m task block · \(row.task.strict ? "Strict" : "Standard")")
+                .font(Typo.meta).foregroundStyle(.secondary).monospacedDigit()
+            if let planned = row.plannedDay, planned != day {
+                Text("Currently planned for \(planned.rawValue). Focus shown here belongs to this day's sessions.")
+                    .font(Typo.meta).foregroundStyle(.secondary)
+            }
+            if !row.tags.isEmpty {
+                Text(row.tags.map { "@\($0.name)" }.joined(separator: " "))
+                    .font(Typo.meta).foregroundStyle(.secondary)
+            }
+            if !row.task.notes.isEmpty { Text(row.task.notes).font(Typo.body).textSelection(.enabled) }
+            ForEach(row.steps) { step in
+                Label(step.title, systemImage: step.done ? "checkmark.circle" : "circle")
+                    .font(Typo.body)
+            }
+            if let reference = row.task.linearRef {
+                if let issue = LinearIssueLink(reference) {
+                    Link(issue.title, destination: issue.url).font(Typo.body)
+                } else {
+                    Text(reference).font(Typo.meta).foregroundStyle(.secondary).textSelection(.enabled)
+                }
+            }
+        }
+        .padding(.top, Space.sm)
     }
 }
 

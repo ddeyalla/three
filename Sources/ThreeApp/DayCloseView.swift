@@ -1,3 +1,4 @@
+import os
 import SwiftUI
 import ThreeCore
 
@@ -39,35 +40,35 @@ struct ReviewSheet: View {
     }
 }
 
-/// Steps between closed days. Days come from `recentDayCloses`, newest first.
-enum ReviewDays {
-    static func previous(before day: DayKey, closed: [DayKey]) -> DayKey? { closed.filter { $0 < day }.max() }
-    static func next(after day: DayKey, closed: [DayKey]) -> DayKey? { closed.filter { $0 > day }.min() }
-}
-
 /// The Day section: one closed day at a time, newest first, with arrows to step through them.
+/// The arrows ask the store for the neighbouring close, so they reach every closed day rather
+/// than only the recent ones held in `dayCloses`.
 private struct DayReview: View {
     @Environment(AppModel.self) private var model
+    /// The closes either side of `day`, kept with the day they were read for.
+    private struct Neighbours { let day: DayKey; let previous: DayKey?; let next: DayKey? }
+    @State private var loaded: Neighbours?
 
-    private var closed: [DayKey] { model.dayCloses.map(\.day) }
-    private var day: DayKey { model.reviewingDay ?? closed.first ?? model.snapshot.day }
+    private var latest: DayKey? { model.dayCloses.first?.day }
+    private var day: DayKey { model.reviewingDay ?? latest ?? model.snapshot.day }
+    /// Nil until the neighbours of the shown day are read, so a quick second click never
+    /// steps from the day before.
+    private var neighbours: Neighbours? { loaded?.day == day ? loaded : nil }
 
     var body: some View {
-        let previous = ReviewDays.previous(before: day, closed: closed)
-        let next = ReviewDays.next(after: day, closed: closed)
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: Space.sm) {
-                Button("Previous Closed Day", systemImage: "chevron.left") { model.reviewingDay = previous }
+                Button("Previous Closed Day", systemImage: "chevron.left") { step(to: neighbours?.previous) }
                     .labelStyle(.iconOnly)
-                    .disabled(previous == nil)
+                    .disabled(neighbours?.previous == nil)
                 Text(historyDayTitle(day, full: true))
                     .font(Typo.focus)
                     .monospacedDigit()
-                Button("Next Closed Day", systemImage: "chevron.right") { model.reviewingDay = next }
+                Button("Next Closed Day", systemImage: "chevron.right") { step(to: neighbours?.next) }
                     .labelStyle(.iconOnly)
-                    .disabled(next == nil)
+                    .disabled(neighbours?.next == nil)
                 Spacer()
-                if let latest = closed.first, latest != day {
+                if let latest, latest != day {
                     Button("Latest") { model.reviewingDay = latest }
                         .font(Typo.body)
                 }
@@ -78,8 +79,31 @@ private struct DayReview: View {
             DayCloseView(day: day)
                 .id(day)
         }
+        // Read synchronously (two indexed lookups) whenever the shown day changes or a new day closes.
+        .onAppear(perform: loadNeighbours)
+        .onChange(of: day, loadNeighbours)
+        .onChange(of: latest, loadNeighbours)
+    }
+
+    private func step(to target: DayKey?) {
+        guard let target else { return }
+        model.reviewingDay = target
+        loadNeighbours()
+    }
+
+    /// On failure keeps what was last read; the arrows stay off until a read for this day succeeds.
+    private func loadNeighbours() {
+        let day = day
+        do {
+            let around = try model.store.closedDays(around: day)
+            loaded = Neighbours(day: day, previous: around.previous, next: around.next)
+        } catch {
+            reviewLog.error("Couldn't read the closed days around \(day.rawValue, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
     }
 }
+
+private let reviewLog = Logger(subsystem: "com.deyalla.three", category: "review")
 
 struct DayCloseView: View {
     @Environment(AppModel.self) private var model
