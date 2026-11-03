@@ -300,8 +300,9 @@ extension Store {
     }
 
     private func end(_ s: inout Session, reason: EndReason, at now: Date, _ db: Database) throws {
+        try trackRecoverySession(s, at: now, db)
         if let pausedAt = s.pausedAt {
-            s.pausedSeconds += Int(now.timeIntervalSince(pausedAt))
+            s.pausedSeconds += max(0, Int(now.timeIntervalSince(pausedAt)))
             s.pausedAt = nil
         }
         s.endedAt = now
@@ -345,6 +346,7 @@ extension Store {
                         startedAt: now, pausedAt: nil, pausedSeconds: 0, endedAt: nil, endReason: nil,
                         outcome: nil, focusRating: nil, note: nil, updatedAt: now)
         try s.insert(db)
+        try trackRecoverySession(s, at: now, db)
         task.status = .active
         task.updatedAt = now
         try task.update(db)
@@ -443,6 +445,7 @@ extension Store {
                 throw ThreeError.invalid("This timer changed. Use the current session's controls.")
             }
             guard s.pausedAt == nil else { return }
+            try trackRecoverySession(s, at: now, db)
             s.pausedAt = now; s.updatedAt = now
             try s.update(db)
         }
@@ -455,7 +458,8 @@ extension Store {
                 throw ThreeError.invalid("This timer changed. Use the current session's controls.")
             }
             guard let pausedAt = s.pausedAt else { return }
-            s.pausedSeconds += Int(now.timeIntervalSince(pausedAt))
+            try trackRecoverySession(s, at: now, db)
+            s.pausedSeconds += max(0, Int(now.timeIntervalSince(pausedAt)))
             s.pausedAt = nil; s.updatedAt = now
             try s.update(db)
         }
@@ -465,6 +469,7 @@ extension Store {
         guard (1...480).contains(minutes) else { throw ThreeError.invalid("Add 1 to 480 minutes.") }
         try write { db in
             guard var s = try runningSession(db) else { throw ThreeError.noRunningSession }
+            try trackRecoverySession(s, at: now, db)
             if let expectedSession, !ReflectionPrompt(session: expectedSession, openedAt: now).matches(s) {
                 throw ThreeError.invalid("This focus block changed. Open its reflection again.")
             }

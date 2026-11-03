@@ -139,7 +139,7 @@ public struct DayCloseReview: Sendable {
     public let decisions: [CarryDecision]
 }
 
-/// The recovery owner supplies a query against its durable records on this transaction's connection.
+/// An optional additional guard on the same transaction as the durable recovery check.
 public typealias DayCloseRecoveryCheck = (Database, DayKey) throws -> Bool
 
 extension Store {
@@ -196,11 +196,11 @@ extension Store {
     }
 
     public func dayCloseStatus(for day: DayKey, now: Date = Date(),
-                               pendingRecovery: DayCloseRecoveryCheck = { _, _ in false }) throws -> DayCloseResult {
+                               pendingRecovery: DayCloseRecoveryCheck? = nil) throws -> DayCloseResult {
         try db.read { try dayCloseStatus(day, now: now, pendingRecovery: pendingRecovery, $0) }
     }
 
-    private func dayCloseStatus(_ day: DayKey, now: Date, pendingRecovery: DayCloseRecoveryCheck,
+    private func dayCloseStatus(_ day: DayKey, now: Date, pendingRecovery: DayCloseRecoveryCheck?,
                                 _ db: Database) throws -> DayCloseResult {
         if let summary = try dayCloseSummary(day, db) { return .closed(summary) }
         guard let plan = try DayPlan.filter(Column("day") == day && Column("deletedAt") == nil).fetchOne(db) else {
@@ -219,7 +219,7 @@ extension Store {
             """, arguments: [start, end, plan.id])
         if affectingSessions.contains(where: \.isRunning) { return .deferred(.focus) }
         if !affectingSessions.isEmpty { return .deferred(.reflection) }
-        if try pendingRecovery(db, day) { return .deferred(.recovery) }
+        if try Self.hasPendingRecovery(db, day: day) || (pendingRecovery?(db, day) ?? false) { return .deferred(.recovery) }
         if tasks.allSatisfy({ !$0.status.isOpen }) { return .ready(.resolved) }
         let minute = try dayCloseSettings(db).closeMinute
         let due = Calendar.current.date(bySettingHour: minute / 60, minute: minute % 60, second: 0, of: start)!
@@ -228,13 +228,13 @@ extension Store {
 
     @discardableResult
     public func closeDay(_ day: DayKey = .today, now: Date = Date(),
-                         pendingRecovery: DayCloseRecoveryCheck = { _, _ in false }) throws -> DayCloseResult {
+                         pendingRecovery: DayCloseRecoveryCheck? = nil) throws -> DayCloseResult {
         let outcome = try db.write { try closeDay(day, now: now, pendingRecovery: pendingRecovery, $0) }
         if outcome.didClose { ChangeSignal.post() }
         return outcome.result
     }
 
-    private func closeDay(_ day: DayKey, now: Date, pendingRecovery: DayCloseRecoveryCheck,
+    private func closeDay(_ day: DayKey, now: Date, pendingRecovery: DayCloseRecoveryCheck?,
                           _ db: Database) throws -> (result: DayCloseResult, didClose: Bool) {
         let status = try dayCloseStatus(day, now: now, pendingRecovery: pendingRecovery, db)
         guard case .ready(let reason) = status else { return (status, false) }
@@ -256,7 +256,7 @@ extension Store {
 
     /// At most 31 plans per transaction. Feed nextAfter into the next tick, then restart from nil.
     public func closeEligibleDays(now: Date = Date(), limit: Int = 7, after: DayKey? = nil,
-                                  pendingRecovery: DayCloseRecoveryCheck = { _, _ in false }) throws -> DayCloseBatch {
+                                  pendingRecovery: DayCloseRecoveryCheck? = nil) throws -> DayCloseBatch {
         guard (1...31).contains(limit) else { throw ThreeError.invalid("Close 1 to 31 days at a time.") }
         let outcome = try db.write { db in
             let days = try DayKey.fetchAll(db, sql: """

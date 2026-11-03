@@ -165,12 +165,17 @@ public struct Session: Codable, Hashable, Identifiable, FetchableRecord, Persist
     public var note: String?
     public var updatedAt: Date
     public var reflectionPending: Bool = false
+    public var recoveryTrimSeconds: TimeInterval = 0
 
     public var isRunning: Bool { endedAt == nil }
     public var isPaused: Bool { pausedAt != nil }
 
     /// Seconds of actual work, excluding pauses, up to `now` (or the end).
     public func elapsed(at now: Date) -> TimeInterval {
+        max(0, recordedElapsed(at: now) - recoveryTrimSeconds)
+    }
+
+    func recordedElapsed(at now: Date) -> TimeInterval {
         let end = endedAt ?? pausedAt ?? now
         return max(0, end.timeIntervalSince(startedAt) - TimeInterval(pausedSeconds))
     }
@@ -182,7 +187,33 @@ public struct Session: Codable, Hashable, Identifiable, FetchableRecord, Persist
 
     /// Wall-clock moment the block ends, if it keeps running unpaused.
     public var plannedEnd: Date {
-        startedAt.addingTimeInterval(TimeInterval(plannedSeconds + pausedSeconds))
+        startedAt.addingTimeInterval(TimeInterval(plannedSeconds + pausedSeconds) + recoveryTrimSeconds)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, taskId, kind, plannedSeconds, startedAt, pausedAt, pausedSeconds, endedAt, endReason
+        case outcome, focusRating, note, updatedAt, reflectionPending, recoveryTrimSeconds
+    }
+}
+
+extension Session {
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(String.self, forKey: .id)
+        taskId = try values.decodeIfPresent(String.self, forKey: .taskId)
+        kind = try values.decode(SessionKind.self, forKey: .kind)
+        plannedSeconds = try values.decode(Int.self, forKey: .plannedSeconds)
+        startedAt = try values.decode(Date.self, forKey: .startedAt)
+        pausedAt = try values.decodeIfPresent(Date.self, forKey: .pausedAt)
+        pausedSeconds = try values.decode(Int.self, forKey: .pausedSeconds)
+        endedAt = try values.decodeIfPresent(Date.self, forKey: .endedAt)
+        endReason = try values.decodeIfPresent(EndReason.self, forKey: .endReason)
+        outcome = try values.decodeIfPresent(Outcome.self, forKey: .outcome)
+        focusRating = try values.decodeIfPresent(FocusRating.self, forKey: .focusRating)
+        note = try values.decodeIfPresent(String.self, forKey: .note)
+        updatedAt = try values.decode(Date.self, forKey: .updatedAt)
+        reflectionPending = try values.decodeIfPresent(Bool.self, forKey: .reflectionPending) ?? false
+        recoveryTrimSeconds = try values.decodeIfPresent(TimeInterval.self, forKey: .recoveryTrimSeconds) ?? 0
     }
 }
 

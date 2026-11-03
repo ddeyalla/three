@@ -305,6 +305,35 @@ public final class Store: @unchecked Sendable {
                 t.column("decidedAt", .datetime).notNull()
             }
         }
+        m.registerMigration("v12-sleep-recovery") { db in
+            try db.alter(table: "session") { t in
+                t.add(column: "recoveryTrimSeconds", .double).notNull().defaults(to: 0).check { $0 >= 0 }
+            }
+            try db.create(table: "recoveryGap") { t in
+                t.primaryKey("id", .text)
+                t.column("startedAt", .datetime).notNull()
+                t.column("endedAt", .datetime)
+                t.column("lastObservedAt", .datetime).notNull()
+                t.column("continuousSeconds", .double)
+                t.column("clockID", .text)
+                t.column("clockReliable", .boolean).notNull()
+                t.column("sleeping", .boolean).notNull()
+                t.column("locked", .boolean).notNull()
+                t.column("awaySeconds", .double).notNull().defaults(to: 0)
+                t.column("state", .text).notNull().check { ["observing", "review", "notRequired", "kept", "trimmed"].contains($0) }
+                t.column("decidedAt", .datetime)
+                t.check(sql: "(state = 'observing' AND endedAt IS NULL) OR (state <> 'observing' AND endedAt IS NOT NULL)")
+            }
+            try db.execute(sql: "CREATE UNIQUE INDEX recovery_one_observing ON recoveryGap(state) WHERE state = 'observing'")
+            try db.create(index: "recovery_pending", on: "recoveryGap", columns: ["state", "startedAt"])
+            try db.create(table: "recoveryImpact") { t in
+                t.column("gapId", .text).notNull().references("recoveryGap")
+                t.column("sessionId", .text).notNull().references("session").indexed()
+                t.column("baselineWork", .double).notNull().check { $0 >= 0 }
+                t.column("eligibleSeconds", .double).notNull().defaults(to: 0).check { $0 >= 0 }
+                t.primaryKey(["gapId", "sessionId"])
+            }
+        }
         return m
     }
 
