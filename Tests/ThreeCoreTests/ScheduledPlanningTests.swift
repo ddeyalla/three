@@ -56,6 +56,20 @@ struct ScheduledPlanningTests {
         #expect(try store.db.read { try PlanningRun.fetchAll($0).count } == 2)
     }
 
+    @Test func lastRunUsesAttemptOrderAfterClockRollback() throws {
+        let store = try store()
+        try enabled(store)
+        let firstTime = DayKey.today.startDate.addingTimeInterval(12 * 3600)
+        let first = try #require(try store.claimPlanningRun(trigger: .test, now: firstTime))
+        try store.finishPlanningRun(first.id, result: .init(status: .failed, stdout: "Old result", exitCode: 7), now: firstTime)
+        let secondTime = firstTime.addingTimeInterval(-60)
+        let second = try #require(try store.claimPlanningRun(trigger: .test, now: secondTime))
+        try store.finishPlanningRun(second.id, result: .init(status: .failed, stdout: "New result", exitCode: 9), now: secondTime)
+        let latest = try #require(try store.latestPlanningRun())
+        #expect(latest.id == second.id)
+        #expect(latest.stdout == "New result" && latest.exitCode == 9)
+    }
+
     @Test func migrationPreservesExistingWorkAndWakeDoesNotReplayMissedDates() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("three-schedule-migration-\(UUID().uuidString)/db.sqlite")
         let old = try Store(url: url, upTo: "v8-canonical-plan-dates")
@@ -77,6 +91,25 @@ struct ScheduledPlanningTests {
         #expect(try upgraded.claimPlanningRun(trigger: .scheduled, now: future.addingTimeInterval(86_400))?.day == DayKey(future.addingTimeInterval(86_400)))
     }
 
+    @Test func supervisorMigrationPreservesEarlierRunResults() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("three-supervisor-migration-\(UUID().uuidString)/db.sqlite")
+        let id = UUID().uuidString
+        let now = Date()
+        do {
+            let old = try Store(url: url, upTo: "v9-scheduled-planning")
+            try old.db.write { db in
+                try db.execute(sql: """
+                    INSERT INTO planningRun(id, day, trigger, status, startedAt, deadline, command, stdout, exitCode)
+                    VALUES(?, ?, 'test', 'failed', ?, ?, 'old command', 'old output', 7)
+                    """, arguments: [id, DayKey(now), now.timeIntervalSince1970, now.addingTimeInterval(600).timeIntervalSince1970])
+            }
+        }
+        let upgraded = try Store(url: url)
+        let run = try #require(try upgraded.latestPlanningRun())
+        #expect(run.id == id && run.stdout == "old output" && run.exitCode == 7)
+        #expect(run.supervisorPID == nil && run.status == .failed)
+    }
+
     @Test func recoveryReleasesOnlyProvenGoneGroupsAndKeepsCapturedOutput() throws {
         let store = try store()
         try enabled(store, command: "printf recovered-output")
@@ -94,6 +127,24 @@ struct ScheduledPlanningTests {
         #expect(try store.planningRun(run.id)?.stdout == "recovered-output")
         #expect(try store.claimPlanningRun(trigger: .scheduled) == nil)
         #expect(try store.claimPlanningRun(trigger: .test) != nil)
+    }
+
+    @Test func recoveryDoesNotStealALiveSupervisorsFinalResult() throws {
+        let store = try store()
+        try enabled(store, command: "printf completed")
+        let run = try #require(try store.claimPlanningRun(trigger: .test))
+        try store.recordPlanningSupervisor(run.id, pid: getpid())
+        let directory = URL(fileURLWithPath: store.db.path).deletingLastPathComponent()
+        let result = PlanningCommand().execute(run: run, directory: directory, environment: [:]) {
+            try store.recordPlanningProcess(run.id, group: $0)
+        }
+        #expect(result.cleanupConfirmed)
+        let observer = try Store(url: URL(fileURLWithPath: store.db.path))
+        try observer.recoverPlanningRun()
+        #expect(try store.planningRun(run.id)?.status == .running)
+        try store.finishPlanningRun(run.id, result: result)
+        #expect(try store.planningRun(run.id)?.stdout == "completed")
+        #expect(try store.planningRun(run.id)?.error?.contains("did not leave") == true)
     }
 
     @Test func atomicClaimsAcrossInstancesAndManualRaces() async throws {
@@ -281,10 +332,10 @@ struct ScheduledPlanningTests {
         try enabled(store, command: command)
         let run = try #require(try store.claimPlanningRun(trigger: .test))
         let directory = URL(fileURLWithPath: path).deletingLastPathComponent()
-        let environment = PlanningCommand.environment(run: run, helper: URL(fileURLWithPath: helper), database: URL(fileURLWithPath: path), directory: directory)
-        let result = PlanningCommand().execute(run: run, shell: "/bin/zsh", directory: directory, environment: environment) { try store.recordPlanningProcess(run.id, group: $0) }
-        try store.finishPlanningRun(run.id, result: result)
-        #expect(result.status == .succeeded)
+        let failure = PlanningSupervisor().execute(run: run, helper: URL(fileURLWithPath: helper),
+                                                  database: URL(fileURLWithPath: path), directory: directory)
+        if let failure { try store.finishPlanningRun(run.id, result: failure) }
+        #expect(failure == nil)
         #expect(try store.planningRun(run.id)?.status == .succeeded)
         #expect(try store.snapshot().plan?.source == .routine)
         #expect(try store.snapshot().plan?.status == .draft)

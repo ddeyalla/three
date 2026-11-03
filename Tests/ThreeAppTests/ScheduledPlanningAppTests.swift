@@ -4,10 +4,18 @@ import Testing
 import ThreeCore
 @testable import ThreeApp
 
+private final class PlanningTestBundle: NSObject {}
+
 @MainActor
 struct ScheduledPlanningAppTests {
     private func store() throws -> Store {
         try Store(url: FileManager.default.temporaryDirectory.appendingPathComponent("three-planning-app-\(UUID().uuidString)/db.sqlite"))
+    }
+
+    private func helper() throws -> URL {
+        let url = Bundle(for: PlanningTestBundle.self).bundleURL.deletingLastPathComponent().appendingPathComponent("three")
+        #expect(FileManager.default.isExecutableFile(atPath: url.path))
+        return url
     }
 
     @Test func testShowsOutputAndFailureAndDoesNotRepeatNudgeOnReload() async throws {
@@ -16,7 +24,7 @@ struct ScheduledPlanningAppTests {
         settings.command = "printf 'fixture stdout'; printf 'fixture stderr' >&2; exit 6"
         try store.setPlanningSettings(settings)
         var notices: [PlanningNotice] = []
-        let planning = try PlanningController(store: store) { notices.append($0) }
+        let planning = try PlanningController(store: store, helper: try helper()) { notices.append($0) }
         planning.check(now: Date(), test: true)
         #expect(planning.checking)
         await planning.task?.value
@@ -26,7 +34,7 @@ struct ScheduledPlanningAppTests {
         #expect(planning.lastRun?.stderr == "fixture stderr")
         #expect(planning.lastRun?.exitCode == 6)
         #expect(notices.count == 1 && !notices[0].draftReady)
-        let restarted = try PlanningController(store: store) { notices.append($0) }
+        let restarted = try PlanningController(store: store, helper: try helper()) { notices.append($0) }
         restarted.check(now: Date())
         await restarted.task?.value
         #expect(notices.count == 1)
@@ -38,7 +46,7 @@ struct ScheduledPlanningAppTests {
         var settings = PlanningSettings()
         settings.command = "printf should-not-run"
         try store.setPlanningSettings(settings)
-        let planning = try PlanningController(store: store, deliverNotice: { _ in })
+        let planning = try PlanningController(store: store, helper: try helper(), deliverNotice: { _ in })
         planning.check(now: Date(), test: true)
         planning.cancel()
         await planning.task?.value
@@ -55,7 +63,7 @@ struct ScheduledPlanningAppTests {
         var timer = try store.preferences()
         timer.sessionMinutes = 25
         try store.setPreferences(timer)
-        let planning = try PlanningController(store: store, deliverNotice: { _ in })
+        let planning = try PlanningController(store: store, helper: try helper(), deliverNotice: { _ in })
         var settings = planning.settings
         settings.localTime = "14:45"
         settings.command = "echo local-only"
@@ -80,7 +88,7 @@ struct ScheduledPlanningAppTests {
         var settings = PlanningSettings()
         settings.command = "printf ready > '\(fifo.path)'; /bin/sleep 60"
         try store.setPlanningSettings(settings)
-        let planning = try PlanningController(store: store, deliverNotice: { _ in })
+        let planning = try PlanningController(store: store, helper: try helper(), deliverNotice: { _ in })
         planning.check(now: Date(), test: true)
         let ready = await Task.detached {
             var event = pollfd(fd: descriptor, events: Int16(POLLIN), revents: 0)

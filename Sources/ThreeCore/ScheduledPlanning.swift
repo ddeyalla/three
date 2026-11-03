@@ -55,6 +55,7 @@ public struct PlanningRun: Codable, FetchableRecord, PersistableRecord, Identifi
     public var exitCode: Int32?
     public var error: String?
     public var processGroup: Int32?
+    public var supervisorPID: Int32?
     public var draftPlanId: String?
     public var notifiedAt: Date?
 }
@@ -102,7 +103,7 @@ extension Store {
     }
 
     public func latestPlanningRun() throws -> PlanningRun? {
-        try db.read { try PlanningRun.order(Column("startedAt").desc, Column("rowid").desc).fetchOne($0) }
+        try db.read { try PlanningRun.order(Column("rowid").desc).fetchOne($0) }
     }
 
     public func activePlanningRun() throws -> PlanningRun? {
@@ -146,6 +147,17 @@ extension Store {
         }
         if run != nil { ChangeSignal.post() }
         return run
+    }
+
+    public func recordPlanningSupervisor(_ id: String, pid: Int32) throws {
+        try write { db in
+            guard pid > 0, var run = try PlanningRun.fetchOne(db, key: id),
+                  run.status == .running, run.supervisorPID == nil, run.processGroup == nil else {
+                throw ThreeError.invalid("Planning already has a supervisor or its claim is inactive.")
+            }
+            run.supervisorPID = pid
+            try run.update(db)
+        }
     }
 
     public func recordPlanningProcess(_ id: String, group: Int32) throws {
@@ -215,6 +227,9 @@ extension Store {
     /// Never signal a recovered PID. A missing process group proves only that the old command is gone.
     public func recoverPlanningRun() throws {
         guard let run = try activePlanningRun(), let group = run.processGroup else { return }
+        if let supervisor = run.supervisorPID {
+            guard kill(supervisor, 0) == -1, errno == ESRCH else { return }
+        }
         guard kill(-group, 0) == -1, errno == ESRCH else { return }
         try finishPlanningRun(run.id, result: .init(status: .interrupted, stdout: run.stdout, stderr: run.stderr,
                                                   outputTruncated: run.outputTruncated, exitCode: run.exitCode,

@@ -13,13 +13,15 @@ final class PlanningController {
     var error: String?
     @ObservationIgnored private(set) var task: Task<Void, Never>?
     @ObservationIgnored private let deliverNotice: @MainActor (PlanningNotice) -> Void
-    @ObservationIgnored private var command: PlanningCommand?
+    @ObservationIgnored private var command: PlanningSupervisor?
+    @ObservationIgnored private let helper: URL
     @ObservationIgnored private var lastCheck: Date?
     @ObservationIgnored private var shuttingDown = false
     @ObservationIgnored private var cancellationRequested = false
 
-    init(store: Store, deliverNotice: @escaping @MainActor (PlanningNotice) -> Void = PlanningController.notify) throws {
+    init(store: Store, helper: URL? = nil, deliverNotice: @escaping @MainActor (PlanningNotice) -> Void = PlanningController.notify) throws {
         self.store = store
+        self.helper = helper ?? Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/three")
         self.deliverNotice = deliverNotice
         settings = try store.planningSettings()
         lastRun = try store.latestPlanningRun()
@@ -60,19 +62,18 @@ final class PlanningController {
                 refresh()
                 if let run, run.status == .running {
                     error = nil
-                    let command = PlanningCommand()
+                    let command = PlanningSupervisor()
                     self.command = command
                     if shuttingDown || cancellationRequested { command.cancel() }
                     let directory = FileManager.default.homeDirectoryForCurrentUser
-                    let helper = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/three")
-                    let environment = PlanningCommand.environment(run: run, helper: helper,
-                                                                 database: URL(fileURLWithPath: store.db.path), directory: directory)
+                    let helper = self.helper
                     let result = await Task.detached {
-                        command.execute(run: run, directory: directory, environment: environment) {
-                            try store.recordPlanningProcess(run.id, group: $0)
-                        }
+                        command.execute(run: run, helper: helper,
+                                        database: URL(fileURLWithPath: store.db.path), directory: directory)
                     }.value
-                    try await Task.detached { try store.finishPlanningRun(run.id, result: result) }.value
+                    if let result {
+                        try await Task.detached { try store.finishPlanningRun(run.id, result: result) }.value
+                    }
                     refresh()
                 }
                 if let notice = try store.takePlanningNotice(day: .today) { deliverNotice(notice) }

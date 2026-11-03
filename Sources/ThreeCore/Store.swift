@@ -272,6 +272,9 @@ public final class Store: @unchecked Sendable {
             }
             try db.execute(sql: "CREATE UNIQUE INDEX planning_one_running ON planningRun(status) WHERE status = 'running'")
         }
+        m.registerMigration("v10-planning-supervisor") { db in
+            try db.alter(table: "planningRun") { $0.add(column: "supervisorPID", .integer) }
+        }
         return m
     }
 
