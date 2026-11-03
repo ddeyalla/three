@@ -59,10 +59,11 @@ struct ListTaskCard: View {
     @Environment(AppModel.self) private var model
     let row: TaskRow
     @State private var hovering = false
+    @State private var editing = false
 
     var body: some View {
         TaskCard(row: row, selected: model.expandedTaskId == row.id, expanded: model.expandedTaskId == row.id,
-                 onTap: { model.toggleExpanded(row) }) {
+                 onTap: { model.toggleExpanded(row) }, showsMenuButton: false) {
             HStack(spacing: Space.md) {
                 if hovering, row.task.status.isOpen {
                     let today = model.snapshot.day
@@ -80,9 +81,11 @@ struct ListTaskCard: View {
                 Text(row.task.status == .done ? Format.duration(row.focusedSeconds) : "\(row.task.blockMinutes)m")
             }
             .buttonStyle(.plain)
+        } actions: {
+            TaskMenuItems(row: row, customBlock: { editing = true })
         }
         .onHover { hovering = $0 }
-        .contextMenu { TaskMenuItems(row: row) }
+        .sheet(isPresented: $editing) { TaskEditor(row: row) }
     }
 }
 

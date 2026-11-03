@@ -456,28 +456,17 @@ private struct TodayTaskCard: View {
                  },
                  reorder: model.isTodayClosed ? nil : CardReorder(dragging: dragging,
                                       moveUp: index > 0 ? { model.moveTodayTask(row.id, by: -1) } : nil,
-                                      moveDown: index < count - 1 ? { model.moveTodayTask(row.id, by: 1) } : nil)) {
+                                      moveDown: index < count - 1 ? { model.moveTodayTask(row.id, by: 1) } : nil),
+                 canRename: !model.isTodayClosed) {
             TaskDurationLabel(row: row)
-            Button { editing = true } label: { Image(systemName: "pencil") }
-                .disabled(model.isTodayClosed)
-                .buttonStyle(.plain)
-                .help("Edit task")
-                .accessibilityLabel("Edit \(row.task.title)")
-            Menu { actions } label: { Image(systemName: "ellipsis") }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                .accessibilityLabel("Actions for \(row.task.title)")
+        } actions: {
+            TaskMenuItems(row: row, customBlock: model.isTodayClosed ? nil : { editing = true })
+            Divider()
+            Button("Move Up") { model.moveTodayTask(row.id, by: -1) }.disabled(model.isTodayClosed || index == 0)
+            Button("Move Down") { model.moveTodayTask(row.id, by: 1) }.disabled(model.isTodayClosed || index == count - 1)
         }
         .sheet(isPresented: $editing) { TaskEditor(row: row) }
-        .contextMenu { actions }
         .focusedValue(\.todayFocus, .card(row.id))
-    }
-
-    @ViewBuilder private var actions: some View {
-        TaskMenuItems(row: row)
-        Divider()
-        Button("Move Up") { model.moveTodayTask(row.id, by: -1) }.disabled(model.isTodayClosed || index == 0)
-        Button("Move Down") { model.moveTodayTask(row.id, by: 1) }.disabled(model.isTodayClosed || index == count - 1)
     }
 }
 
