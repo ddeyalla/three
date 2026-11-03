@@ -497,7 +497,7 @@ private struct CarryoverReview: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Space.sm) {
             Text("Unfinished from earlier days").font(Typo.heading)
-            Text("Accept adds a copy to today and keeps the earlier record. Dismiss drops the earlier task. Nothing moves until you choose.")
+            Text("Accept adds a copy to today or a later day and keeps the earlier record. Dismiss drops the earlier task. Nothing moves until you choose.")
                 .font(Typo.meta)
                 .foregroundStyle(.secondary)
             ForEach(model.carryover) { row in
@@ -509,6 +509,16 @@ private struct CarryoverReview: View {
                         Spacer()
                         Button("Dismiss") { model.perform { _ = try model.store.dismissCarry(row.id) } }
                             .help("Drop \(row.task.title) on its original day")
+                        Menu("Accept on") {
+                            let today = model.snapshot.day
+                            ForEach(1..<7, id: \.self) { offset in
+                                let day = today.adding(days: offset)
+                                Button(Format.dayName(day, today: today)) { model.schedule(row, on: day) }
+                            }
+                        }
+                        .fixedSize()
+                        .disabled(model.running?.taskId == row.id)
+                        .help("Add a copy of \(row.task.title) to a later day")
                         Button("Accept today") { model.perform { try model.store.carryTask(row.id, to: model.snapshot.day) } }
                             .disabled(model.snapshot.activeTaskCount >= Rules.maxTasks || model.running?.taskId == row.id)
                     }

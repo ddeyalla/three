@@ -22,6 +22,8 @@ final class AppModel {
     var dialOverride: Int?
     var selectedTaskId: String?
     private(set) var inbox: [TaskRow] = []
+    /// Open tasks from days before today, awaiting Accept or Dismiss. Never also in `inbox`.
+    private(set) var carryover: [TaskRow] = []
     private(set) var upcoming: [DaySnapshot] = []
     private(set) var logbook: [LoggedDay] = []
     private(set) var tagSummaries: [TagSummary] = []
@@ -89,6 +91,7 @@ final class AppModel {
             nextCloseCheck = date.addingTimeInterval(60)
             snapshot = try store.snapshot(for: DayKey(date))
             inbox = try store.inbox()
+            carryover = try store.carryover(before: DayKey(date))
             upcoming = try store.upcoming()
             logbook = try store.logbook()
             tagSummaries = try store.tagSummaries()
@@ -203,8 +206,6 @@ final class AppModel {
     /// Today's list in the order `Store.moveTask` counts: every task except dropped ones.
     var todayRows: [TaskRow] { snapshot.tasks.filter { $0.task.status != .dropped } }
 
-    var carryover: [TaskRow] { inbox.filter { $0.task.dayPlanId != nil } }
-
     /// "2 of 3 done", "1h 28m focused": the day so far, for Today's summary and Now's all-done state.
     var dayProgress: [String] {
         var parts: [String] = []
@@ -282,6 +283,7 @@ final class AppModel {
                 invalidateRecovery([running.id])
             }
             inbox = try store.inbox()
+            carryover = try store.carryover(before: snapshot.day)
             upcoming = try store.upcoming()
             logbook = try store.logbook()
             tagSummaries = try store.tagSummaries()
@@ -590,8 +592,8 @@ final class AppModel {
         expandedTaskId = expandedTaskId == row.id ? nil : row.id
     }
 
-    /// Every task the app knows about: today, the inbox and the week ahead.
-    var allTasks: [TaskRow] { snapshot.tasks + inbox + upcoming.flatMap(\.tasks) }
+    /// Every task the app knows about: today, the inbox, earlier unfinished work and the week ahead.
+    var allTasks: [TaskRow] { snapshot.tasks + inbox + carryover + upcoming.flatMap(\.tasks) }
 
     func task(_ id: String?) -> TaskRow? {
         guard let id else { return nil }

@@ -51,18 +51,6 @@ func parseMinutes(_ s: String) throws -> Int {
     return m
 }
 
-/// A task by its 1-based position in today's list, "i2" for the inbox, or an id prefix.
-func resolveTask(_ ref: String, in snap: DaySnapshot, inbox: [TaskRow] = []) throws -> TaskRow {
-    let visible = snap.tasks.filter { $0.task.status != .dropped }
-    if let n = Int(ref), (1...max(1, visible.count)).contains(n), n <= visible.count { return visible[n - 1] }
-    if ref.lowercased().hasPrefix("i"), let n = Int(ref.dropFirst()), (1...max(1, inbox.count)).contains(n), n <= inbox.count {
-        return inbox[n - 1]
-    }
-    let matches = (snap.tasks + inbox).filter { $0.id.lowercased().hasPrefix(ref.lowercased()) }
-    guard matches.count == 1 else { throw ThreeError.noSuchTask(ref) }
-    return matches[0]
-}
-
 func parseDay(_ s: String) throws -> DayKey? {
     switch s.lowercased() {
     case "inbox", "someday", "none": return nil
@@ -284,7 +272,7 @@ struct Start: ParsableCommand {
 
     func run() throws {
         let s = try store()
-        let id = try task.map { try resolveTask($0, in: s.snapshot()).id }
+        let id = try task.map { try s.resolveTask($0).id }
         try s.startFocus(taskId: id, minutes: min.map(parseMinutes))
         ensureAppRunning()
         printStatus(try s.snapshot())
@@ -317,17 +305,19 @@ struct Stop: ParsableCommand {
 
 struct Done: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Mark a task done (ends its running session).")
-    @Argument(help: "Task number or id.") var task: String
+    @Argument(help: "Task number, or id on any day.") var task: String
     @Option(help: "One-line note for the session.") var note: String?
 
     func run() throws {
         let s = try store()
-        let row = try resolveTask(task, in: s.snapshot())
-        if try s.snapshot().running?.taskId == row.id {
+        let today = try s.snapshot()
+        let row = try s.resolveTask(task, today: today.day, requireOpen: true)
+        if today.running?.taskId == row.id {
             try s.finishFocus(outcome: .done, rating: .okay, note: note, markTaskDone: true)
         } else {
             try s.setTaskStatus(row.id, .done)
         }
+        if !today.tasks.contains(where: { $0.id == row.id }) { print("Done: \(row.task.title) [\(row.id)].") }
         printDay(try s.snapshot())
     }
 }
@@ -337,7 +327,7 @@ struct Drop: ParsableCommand {
     @Argument(help: "Task number or id.") var task: String
     func run() throws {
         let s = try store()
-        try s.removeTask(resolveTask(task, in: s.snapshot()).id)
+        try s.removeTask(s.resolveTask(task).id)
         printDay(try s.snapshot())
     }
 }
@@ -347,7 +337,7 @@ struct Tomorrow: ParsableCommand {
     @Argument(help: "Task number or id.") var task: String
     func run() throws {
         let s = try store()
-        try s.pushToTomorrow(resolveTask(task, in: s.snapshot()).id)
+        try s.carryForward(s.resolveTask(task).id)
         printDay(try s.snapshot())
     }
 }
@@ -408,7 +398,7 @@ struct Schedule: ParsableCommand {
 
     func run() throws {
         let s = try store()
-        let row = try resolveTask(task, in: s.snapshot(), inbox: s.inbox())
+        let row = try s.resolveTask(task)
         let day = try parseDay(when)
         try s.schedule(row.id, on: day)
         if let day { printDay(try s.snapshot(for: day)) } else { printInbox(try s.inbox()) }
@@ -437,7 +427,7 @@ struct Steps: ParsableCommand {
 
     struct Ref: ParsableArguments {
         @Argument(help: "Task number, i-number, or id.") var task: String
-        func row(_ s: Store) throws -> TaskRow { try resolveTask(task, in: s.snapshot(), inbox: s.inbox()) }
+        func row(_ s: Store) throws -> TaskRow { try s.resolveTask(task) }
     }
 
     struct AddStep: ParsableCommand {
@@ -716,7 +706,7 @@ struct Tags: ParsableCommand {
         @Argument var names: [String]
         func run() throws {
             let s = try store()
-            let row = try resolveTask(task, in: s.snapshot(), inbox: s.inbox())
+            let row = try s.resolveTask(task)
             for name in names { try s.addTag(name, to: row.id) }
             printDay(try s.snapshot())
         }
@@ -728,7 +718,7 @@ struct Tags: ParsableCommand {
         @Argument var name: String
         func run() throws {
             let s = try store()
-            let row = try resolveTask(task, in: s.snapshot(), inbox: s.inbox())
+            let row = try s.resolveTask(task)
             try s.removeTag(id(name, s), from: row.id)
             printDay(try s.snapshot())
         }

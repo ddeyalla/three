@@ -30,17 +30,13 @@ extension Store {
 
     // MARK: Inbox
 
-    /// Open tasks with no day yet, plus open tasks left behind on earlier days (those first, oldest day first).
-    public func inbox(today: DayKey = .today) throws -> [TaskRow] {
+    /// Open tasks with no day yet. Open tasks left on earlier days wait in `carryover(before:)` for an
+    /// explicit accept or dismiss instead, so each task has exactly one home.
+    public func inbox() throws -> [TaskRow] {
         try db.read { db in
-            let leftover = try FocusTask.fetchAll(db, sql: """
-                SELECT task.* FROM task JOIN dayPlan ON dayPlan.id = task.dayPlanId
-                WHERE dayPlan.day < ? AND dayPlan.deletedAt IS NULL AND task.deletedAt IS NULL
-                ORDER BY dayPlan.day, task.position
-                """, arguments: [today])
             let unplanned = try FocusTask.filter(Column("dayPlanId") == nil && Column("deletedAt") == nil)
                 .order(Column("position")).fetchAll(db)
-            return try rows(for: (leftover + unplanned).filter { $0.status.isOpen }, db)
+            return try rows(for: unplanned.filter { $0.status.isOpen }, db)
         }
     }
 
