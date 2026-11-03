@@ -383,7 +383,36 @@ private func statsEvent(_ store: Store, rule: String, session: String?, at: Stri
     #expect(max.days.count == 366)
     #expect(throws: ThreeError.self) { try store.stats(from: DayKey("2025-11-02")!, through: max.through) }
     #expect(throws: ThreeError.self) { try store.stats(from: max.through, through: max.from) }
-    #expect(throws: ThreeError.self) { try store.stats(through: DayKey("2026-11-04")!, now: statsDate("2026-11-03T12:00:00Z")) }
+    #expect(throws: ThreeError.self) {
+        try store.stats(through: DayKey("2026-11-04")!, now: statsDate("2026-11-03T12:00:00Z"), calendar: statsCalendar())
+    }
+}
+
+@Test func statsResolvesMovedCommitmentsWithoutAnOriginalDaySession() throws {
+    let original = DayKey("2026-11-01")!
+    for destination in [DayKey("2026-11-02"), nil] {
+        for hasSession in [false, true] {
+            let store = try statsStore()
+            let task = try statsTask(store, day: original.rawValue, tags: ["Three"])
+            try store.commit(day: original)
+            try store.schedule(task.id, on: destination)
+            try store.setTaskStatus(task.id, .done)
+            if hasSession {
+                try statsSession(store, task: task, at: "2026-11-01T09:00:00Z", seconds: 600)
+            }
+            let report = try store.stats(from: original, through: original, calendar: statsCalendar())
+            #expect(report.metrics.completion.value == 1)
+            #expect(report.metrics.completion.denominator == 1)
+            #expect(report.metrics.committedPlannedSeconds == 1800)
+            #expect(report.metrics.focusSeconds == (hasSession ? 600 : 0))
+            #expect(report.weeks.first?.metrics.completion.value == 1)
+            #expect(report.missingData.committedTasksMissingCurrentReferences == 0)
+            let tagged = try #require(report.tags.first { $0.tag.name == "Three" })
+            #expect(tagged.metrics.committedPlannedSeconds == 1800)
+            #expect(tagged.metrics.completion.value == 1)
+            #expect(tagged.days.first?.metrics.completion.value == 1)
+        }
+    }
 }
 
 @Test func statsFreezesRunningAndPausedWorkAndAllowsAccuracyAboveOneHundredPercent() throws {

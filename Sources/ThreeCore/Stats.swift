@@ -210,26 +210,29 @@ extension Store {
                                   unresolvedSession: sessionId != nil && (row["sessionKind"] as String?) == nil,
                                   tagIds: Set(linked?.tags.map(\.id) ?? []))
             }
-            let doneRows = try SQLRequest<Row>("SELECT id, doneAt FROM task WHERE id IN \(history.days.flatMap(\.tasks).map(\.id)) AND doneAt IS NOT NULL").fetchAll(db)
-            let doneAt = Dictionary(uniqueKeysWithValues: doneRows.map { ($0["id"] as String, $0["doneAt"] as Date) })
             let commitmentRows = try SQLRequest<Row>("SELECT * FROM planCommitment WHERE planId IN \(history.days.compactMap(\.plan?.id))").fetchAll(db)
             let commitments = try Dictionary(uniqueKeysWithValues: commitmentRows.map { row in
                 let tasks = try JSONDecoder().decode([CommittedTask].self, from: Data((row["tasksJSON"] as String).utf8))
                 return (row["planId"] as String, PlanCommitment(capturedAt: row["capturedAt"], tasks: tasks))
             })
+            let taskIds = Set(history.days.flatMap(\.tasks).map(\.id))
+                .union(commitments.values.flatMap(\.tasks).map(\.taskId))
+            let taskRows = try Dictionary(uniqueKeysWithValues: FocusTask.filter(taskIds.contains(Column("id"))).fetchAll(db).map { ($0.id, $0) })
+            let tagsByTask = try self.tags(for: Array(taskIds), db)
+            let doneRows = try SQLRequest<Row>("SELECT id, doneAt FROM task WHERE id IN \(taskIds) AND doneAt IS NOT NULL").fetchAll(db)
+            let doneAt = Dictionary(uniqueKeysWithValues: doneRows.map { ($0["id"] as String, $0["doneAt"] as Date) })
             let closeRows = try SQLRequest<Row>("SELECT day, summaryJSON FROM dayClose WHERE day IN \(range.days)").fetchAll(db)
             let closes = try Dictionary(uniqueKeysWithValues: closeRows.map { row in
                 let summary = try JSONDecoder().decode(DayCloseSummary.self, from: Data((row["summaryJSON"] as String).utf8))
                 return (row["day"] as DayKey, summary)
             })
             let breaks = try RecordedBreakDecision.filter(focusIds.contains(Column("sessionId"))).fetchAll(db)
-            let taskRows = Dictionary(history.days.flatMap(\.tasks).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
             let evidence = StatsEvidence(commitments: commitments, closes: closes,
                                          breakDecisions: Dictionary(uniqueKeysWithValues: breaks.map { ($0.sessionId, $0.decision) }),
-                                         tasks: taskRows)
+                                         tasks: taskRows, tags: tagsByTask)
             let days = statsDays(history.days, events: events, evidence: evidence, tagId: nil, today: today, doneAt: doneAt, calendar: range.calendar)
             let metrics = statsMetrics(history.days, events: events, evidence: evidence, tagId: nil)
-            let tags = Dictionary(grouping: history.days.flatMap { $0.tasks.flatMap(\.tags) + $0.sessions.flatMap(\.tags) }, by: \.id)
+            let tags = Dictionary(grouping: tagsByTask.values.flatMap { $0 }, by: \.id)
                 .values.compactMap(\.first).sorted { ($0.name, $0.id) < ($1.name, $1.id) }
                 .map { tag in
                     StatsTag(tag: tag, metrics: statsMetrics(history.days, events: events, evidence: evidence, tagId: tag.id),
@@ -244,7 +247,7 @@ extension Store {
                                                             missingCategoryReferenceCount: focus.filter { $0.category == nil }.count,
                                                             unresolvedBlockSessionEventCount: metrics.blocks.unresolvedSessionEventCount,
                                                             missingBreakDecisionCount: metrics.breaks.missingDecisionCount,
-                                                            missingCompletionTimestampCount: taskRows.values.filter { $0.task.status == .done && doneAt[$0.id] == nil }.count,
+                                                            missingCompletionTimestampCount: taskRows.values.filter { $0.status == .done && doneAt[$0.id] == nil }.count,
                                                             committedTasksMissingCurrentReferences: commitments.values.flatMap(\.tasks).filter { taskRows[$0.taskId] == nil }.count),
                                metrics: metrics, days: days,
                                weeks: statsWeeks(history.days, events: events, evidence: evidence, tagId: nil, today: today), tags: tags,
@@ -268,11 +271,12 @@ private struct StatsEvidence {
     var commitments: [String: PlanCommitment]
     var closes: [DayKey: DayCloseSummary]
     var breakDecisions: [String: BreakDecision]
-    var tasks: [String: HistoryTask]
+    var tasks: [String: FocusTask]
+    var tags: [String: [Tag]]
 
     func includes(taskId: String, tagId: String?) -> Bool {
         guard let tagId else { return true }
-        return tasks[taskId]?.tags.contains { $0.id == tagId } == true
+        return tags[taskId]?.contains { $0.id == tagId } == true
     }
 }
 
@@ -303,7 +307,8 @@ private func statsMetrics(_ days: [HistoryDay], events: [StatsEvent], evidence: 
         if let summary = evidence.closes[day.day] {
             doneIds = Set(summary.tasks.filter { $0.status == .done }.map(\.id))
         } else {
-            doneIds = Set(day.tasks.filter { $0.task.status == .done && $0.task.deletedAt == nil }.map(\.id))
+            doneIds = Set(commitment.tasks.compactMap { evidence.tasks[$0.taskId] }
+                .filter { $0.status == .done && $0.deletedAt == nil }.map(\.id))
         }
         return total + commitment.tasks.filter { doneIds.contains($0.taskId) && evidence.includes(taskId: $0.taskId, tagId: tagId) }.count
     }

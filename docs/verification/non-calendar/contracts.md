@@ -47,3 +47,13 @@ A separate native-setup worker receives exclusive temporary ownership of AppMode
 The sole Terra desktop owner verifies the frozen integrated candidate independently of both implementation workers. A fresh Sol reviewer checks day-close, notch and the two History date fixes. All implementation and review workers use Sol 6.1 High with no nested delegates.
 
 A verified P2 notch race required a narrow coordinator exception to the temporary grants. The coordinator adds only expected-session ID parameters/guards to Operations.pause/resume and passes the validated Session through AppModel.togglePause. Both active owners were notified before the edits and will integrate the exact fix commit while preserving their recovery/setup work. Their remaining ownership stays unchanged.
+
+## Final integration ownership
+
+The initial recovery and native-setup workers have completed and been stopped. A fresh lifecycle worker exclusively owns AppModel, ThreeApp, RootView, MenuBarView, SettingsView, TimerNotifications, the recovery controller/review views, and focused App integration tests. It composes v12 with native setup and preserves the current ChangeSignal observer until the coordinator resolves the separate native diagnosis.
+
+A fresh protocol worker owns ThreeCLI/Three.swift, MCP.swift, recovery Codable conformances only in SleepRecovery.swift, protocol documentation, packaged recovery tests, and a new Core test file for recovery-adjusted History/Stats. It exposes explicit manual-channel reads and decisions, never raw sleep/lock simulation tools or scheduled access. Stats, History, Models, Store, and Operations remain outside its ownership.
+
+A fresh performance worker owns only the measured event-date reuse in Stats.swift, read-performance.py/swift, and its report. It starts after the coordinator's moved-commitment fix. It preserves all corrected commitment logic and validates equivalent v12 fixture results before and after the change. It makes no native latency claim.
+
+The coordinator owns final schema discovery and cross-unit integration. One fresh Sol reviewer examines the frozen recovery Core and native setup diff. Terra remains the sole desktop owner and is investigating the submenu collapse on its separately frozen candidate. No worker delegates further.
