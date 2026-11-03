@@ -13,22 +13,41 @@ struct NotchGeometryTests {
                     auxiliaryRight: CGRect(x: origin.x + 862, y: origin.y + 950, width: 650, height: 32))
     }
 
-    @Test func panelIsCenteredBelowCameraAndInsideVisibleSafeArea() throws {
-        let display = screen()
+    /// Geometry read from a 14-inch MacBook Pro (Built-in Retina Display, 1512x982 points).
+    private let macBookPro14 = NotchScreen(id: 1, name: "Built-in Retina Display", isBuiltIn: true,
+                                           frame: CGRect(x: 0, y: 0, width: 1512, height: 982),
+                                           visibleFrame: CGRect(x: 0, y: 0, width: 1512, height: 949), safeTop: 32,
+                                           auxiliaryLeft: CGRect(x: 0, y: 950, width: 663.5, height: 32),
+                                           auxiliaryRight: CGRect(x: 848.5, y: 950, width: 663.5, height: 32))
+
+    @Test func surfaceHugsTheCameraHousingOnTheTopEdge() throws {
+        let display = macBookPro14
         let placement = try #require(NotchGeometry.placement(screens: [display]))
-        #expect(placement.frame == CGRect(x: 576, y: 798, width: 360, height: 144))
-        #expect(display.visibleFrame.contains(placement.frame))
-        #expect(!placement.frame.intersects(display.auxiliaryLeft))
-        #expect(!placement.frame.intersects(display.auxiliaryRight))
-        #expect(placement.frame.maxY < display.frame.maxY - display.safeTop)
+        #expect(placement.layout == NotchLayout(notchWidth: 185, notchHeight: 32))
+        // Panel: flush with the top edge, centred on the camera, sized for the expanded state.
+        #expect(placement.frame == CGRect(x: 550, y: 854, width: 412, height: 128))
+        #expect(placement.frame.maxY == display.frame.maxY)
+        #expect(placement.frame.midX == 756)
+        // Collapsed: exactly the notch height, the notch plus one wing either side.
+        #expect(placement.collapsedRect == CGRect(x: 599.5, y: 950, width: 313, height: 32))
+        let notch = CGRect(x: display.auxiliaryLeft.maxX, y: 950, width: 185, height: 32)
+        #expect(placement.collapsedRect.contains(notch))
+        // Wings stay inside the menu-bar areas beside the camera.
+        let leftWing = CGRect(x: placement.collapsedRect.minX, y: 950, width: NotchLayout.wingWidth, height: 32)
+        let rightWing = CGRect(x: notch.maxX, y: 950, width: NotchLayout.wingWidth, height: 32)
+        #expect(display.auxiliaryLeft.contains(leftWing))
+        #expect(display.auxiliaryRight.contains(rightWing))
+        #expect(placement.collapsedRect.width <= 2 * NotchLayout.wingWidth + 185)
+        #expect(placement.expandedRect == placement.frame.insetBy(dx: NotchLayout.ear, dy: 0))
     }
 
     @Test func negativeScreenOriginsPreserveGlobalPlacement() throws {
         for origin in [CGPoint(x: -2000, y: -1000), CGPoint(x: 1512, y: -982), CGPoint(x: -1512, y: 982)] {
             let display = screen(origin: origin)
-            let frame = try #require(NotchGeometry.placement(screens: [display])).frame
-            #expect(frame == CGRect(x: origin.x + 576, y: origin.y + 798, width: 360, height: 144))
-            #expect(display.visibleFrame.contains(frame))
+            let placement = try #require(NotchGeometry.placement(screens: [display]))
+            #expect(placement.frame == CGRect(x: origin.x + 550, y: origin.y + 854, width: 412, height: 128))
+            #expect(placement.collapsedRect == CGRect(x: origin.x + 586, y: origin.y + 950, width: 340, height: 32))
+            #expect(display.frame.contains(placement.frame))
         }
     }
 
@@ -38,10 +57,32 @@ struct NotchGeometryTests {
                                  visibleFrame: CGRect(x: -100, y: 80, width: 1800, height: 1010), safeTop: 48,
                                  auxiliaryLeft: CGRect(x: -100, y: 1102, width: 750, height: 48),
                                  auxiliaryRight: CGRect(x: 950, y: 1102, width: 750, height: 48))
-        let frame = try #require(NotchGeometry.placement(screens: [display])).frame
-        #expect(frame == CGRect(x: 620, y: 938, width: 360, height: 144))
-        #expect(display.visibleFrame.contains(frame))
-        #expect(frame.maxY < 1102)
+        let placement = try #require(NotchGeometry.placement(screens: [display]))
+        // A wide notch widens the expanded surface so it never gets narrower than collapsed.
+        #expect(placement.layout.expandedSize == CGSize(width: 428, height: 144))
+        #expect(placement.frame == CGRect(x: 580, y: 1006, width: 440, height: 144))
+        #expect(placement.collapsedRect == CGRect(x: 586, y: 1102, width: 428, height: 48))
+    }
+
+    @Test func hoverExpandsFromTheNotchAndCollapsesOnlyAfterLeavingTheSurface() throws {
+        let placement = try #require(NotchGeometry.placement(screens: [macBookPro14]))
+        func wants(_ x: CGFloat, _ y: CGFloat, expanded: Bool) -> Bool {
+            NotchGeometry.wantsExpanded(mouse: CGPoint(x: x, y: y), expanded: expanded, placement: placement)
+        }
+        // Collapsed: the camera, either wing, and the very top pixel row all expand.
+        #expect(wants(756, 970, expanded: false))
+        #expect(wants(610, 960, expanded: false))
+        #expect(wants(900, 960, expanded: false))
+        #expect(wants(756, 982, expanded: false))
+        // Collapsed: menu-bar items beside the wings and the area under the notch do not.
+        #expect(!wants(590, 970, expanded: false))
+        #expect(!wants(920, 970, expanded: false))
+        #expect(!wants(756, 900, expanded: false))
+        // Expanded: moving down into the controls keeps it open; leaving the surface collapses.
+        #expect(wants(756, 900, expanded: true))
+        #expect(wants(560, 870, expanded: true))
+        #expect(!wants(756, 840, expanded: true))
+        #expect(!wants(500, 900, expanded: true))
     }
 
     @Test func supportedBuiltInWinsOverExternalAndDisconnectFallsBack() throws {
@@ -63,8 +104,9 @@ struct NotchGeometryTests {
             (base.visibleFrame, 32, base.auxiliaryRight, base.auxiliaryLeft),
             (base.visibleFrame, 32, CGRect(x: 0, y: 900, width: 650, height: 32), base.auxiliaryRight),
             (base.visibleFrame, .nan, base.auxiliaryLeft, base.auxiliaryRight),
-            (CGRect(x: 0, y: 0, width: 350, height: 950), 32, base.auxiliaryLeft, base.auxiliaryRight),
-            (CGRect(x: 0, y: 0, width: 1512, height: 150), 32, base.auxiliaryLeft, base.auxiliaryRight),
+            (base.visibleFrame, 32, CGRect(x: 0, y: 950, width: 650, height: 32),
+             CGRect(x: 1460, y: 950, width: 52, height: 32)),
+            (base.visibleFrame, 32, CGRect(x: 600, y: 950, width: 50, height: 32), base.auxiliaryRight),
             (CGRect(x: -1, y: 0, width: 1512, height: 950), 32, base.auxiliaryLeft, base.auxiliaryRight),
         ]
         for (visible, top, left, right) in invalid {
