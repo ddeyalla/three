@@ -50,13 +50,13 @@ struct NotchShape: Shape {
 
         let bodyHeight = (full.height - neck.height) * p
         guard bodyHeight > 0 else { return shape }
-        // Body: overlaps the neck by a point so the two never show a seam.
+        // Body: starts exactly at the bottom of the menu bar, never inside it.
         let width = neck.width + (full.width - neck.width) * p
         let side = (width - neck.width) / 2
         let bottomRadius = min(Self.collapsedRadius + (Self.expandedRadius - Self.collapsedRadius) * p,
                                width / 2, bodyHeight / 2)
         let topRadius = min(bottomRadius, side, bodyHeight / 2)
-        let body = CGRect(x: rect.midX - width / 2, y: neckBottom - 1, width: width, height: bodyHeight + 1)
+        let body = CGRect(x: rect.midX - width / 2, y: neckBottom, width: width, height: bodyHeight)
         shape = shape.union(UnevenRoundedRectangle(topLeadingRadius: topRadius, bottomLeadingRadius: bottomRadius,
                                                    bottomTrailingRadius: bottomRadius, topTrailingRadius: topRadius,
                                                    style: .continuous).path(in: body))

@@ -27,8 +27,9 @@ struct NotchLayout: Equatable {
     static let edgeMargin: CGFloat = Space.sm
     /// Concave flare where the shape meets the top edge, so it reads as part of the bezel.
     static let ear: CGFloat = 6
-    /// Concave flare where the neck widens into the body, just below the menu bar.
-    static let shoulder: CGFloat = Space.md
+    /// Concave flare where the neck widens into the body. It sits in the bottom of the menu-bar
+    /// row, so it reaches no further past the neck than the ears do.
+    static let shoulder: CGFloat = ear
     static let expandedWidth: CGFloat = 400
     static let expandedBodyHeight: CGFloat = 96
 
@@ -101,14 +102,14 @@ enum NotchGeometry {
 
     /// Whether `mouse` (global coordinates) is over the surface in its collapsed or expanded shape.
     /// Expanded, the menu-bar row only counts within the collapsed footprint, so moving onto a
-    /// status item leaves the surface. The top screen row reports y == maxY, so rects grow up a point.
+    /// status item leaves the surface.
     static func contains(_ mouse: CGPoint, expanded: Bool, placement: NotchPlacement) -> Bool {
-        func hit(_ rect: CGRect, slop: CGFloat) -> Bool {
-            CGRect(x: rect.minX - slop, y: rect.minY, width: rect.width + slop * 2, height: rect.height + 1)
-                .contains(mouse)
-        }
-        guard expanded else { return hit(placement.collapsedRect, slop: 0) }
-        return hit(placement.collapsedRect, slop: Space.xs) || hit(placement.bodyRect, slop: Space.xs)
+        // The top screen row reports y == maxY, so the neck (only) grows up a point to include it.
+        let slop = expanded ? Space.xs : 0
+        let neck = placement.collapsedRect
+        if CGRect(x: neck.minX - slop, y: neck.minY, width: neck.width + slop * 2, height: neck.height + 1)
+            .contains(mouse) { return true }
+        return expanded && placement.bodyRect.insetBy(dx: -slop, dy: 0).contains(mouse)
     }
 }
 

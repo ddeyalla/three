@@ -79,7 +79,7 @@ struct NotchGeometryTests {
         for display in displays {
             let placement = try #require(NotchGeometry.placement(screens: [display]))
             let neck = placement.collapsedRect.insetBy(dx: -Space.xs, dy: 0)
-            for y in stride(from: display.frame.maxY - 1, through: display.frame.maxY - display.safeTop + 1, by: -1) {
+            for y in stride(from: display.frame.maxY - 0.5, through: display.frame.maxY - display.safeTop + 0.5, by: -0.5) {
                 for x in stride(from: display.frame.minX, through: display.frame.maxX, by: 1) {
                     let point = CGPoint(x: x, y: y)
                     if NotchGeometry.contains(point, expanded: true, placement: placement) {
@@ -181,8 +181,8 @@ struct NotchGeometryTests {
             let path = NotchShape(progress: progress, layout: layout).path(in: panel)
             let height = layout.notchHeight + NotchLayout.expandedBodyHeight * progress
             #expect(abs(path.boundingRect.maxY - height) < 0.01)
-            for y in stride(from: 0.5, to: layout.notchHeight - 1, by: 1) {
-                for x in [panel.midX - neckHalf - 1, panel.midX + neckHalf + 1] {
+            for y in stride(from: 0.25, to: layout.notchHeight, by: 0.5) {
+                for x in [panel.midX - neckHalf - 0.5, panel.midX + neckHalf + 0.5] {
                     #expect(!path.contains(CGPoint(x: x, y: y)))
                 }
             }
