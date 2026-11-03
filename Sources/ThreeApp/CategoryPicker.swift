@@ -63,8 +63,9 @@ private struct CategoryChoices: View {
                             Button { onSelect(category) } label: {
                                 CategoryChoiceLabel(category: category, selected: category.id == selectedID)
                             }
-                            .buttonStyle(CategoryChoiceStyle())
+                            .buttonStyle(CategoryChoiceStyle(focused: focusedID == category.id))
                             .focusable()
+                            .focusEffectDisabled()
                             .focused($focusedID, equals: category.id)
                             .accessibilityLabel(category.name)
                             .accessibilityAddTraits(category.id == selectedID ? .isSelected : [])
@@ -118,7 +119,7 @@ private struct CategoryChoiceLabel: View {
 }
 
 private struct CategoryChoiceStyle: ButtonStyle {
-    @Environment(\.isFocused) private var focused
+    let focused: Bool
     @State private var hovering = false
 
     func makeBody(configuration: Configuration) -> some View {
