@@ -80,6 +80,7 @@ struct NotchView: View {
     @Environment(AppModel.self) private var model
     let commands: NotchCommands
     let surface: NotchSurface
+    let showControls: () -> Void
     let dismiss: () -> Void
 
     private var expanded: Bool { surface.isExpanded }
@@ -95,6 +96,10 @@ struct NotchView: View {
                 VStack(spacing: 0) {
                     wings(session)
                         .frame(height: layout.notchHeight)
+                        // Without a pointer: VoiceOver opens and pins the controls from here.
+                        // Pause and Finish are also in the Focus menu and the menu-bar item.
+                        .accessibilityElement(children: .combine)
+                        .accessibilityAction(named: "Show controls", showControls)
                     if expanded {
                         controls(session)
                             .padding(.horizontal, Space.lg)

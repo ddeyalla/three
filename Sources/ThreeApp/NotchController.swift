@@ -15,8 +15,13 @@ struct NotchScreen: Equatable {
 }
 
 /// Sizes of the Dynamic-Island-style surface. The collapsed shape is the hardware notch plus a
-/// narrow wing either side. Expanding keeps that footprint in the menu-bar row (so status items
-/// are never covered) and grows downward; the wider body only begins below the menu bar.
+/// narrow wing either side. Expanding keeps that footprint in the menu-bar row and grows downward;
+/// the wider body only begins below the menu bar.
+///
+/// Status items aren't visible to the app, so clearance is not measured. The guarantee is a fixed
+/// reach: a wing of at most 44pt plus its 6pt ear, so nothing is drawn more than 50pt past either
+/// side of the camera, collapsed or expanded. A status item macOS places closer than that is still
+/// overlapped by the wing (which never takes its clicks, see `NotchGeometry.capturesClick`).
 struct NotchLayout: Equatable {
     /// Widest a wing may be: the progress ring, or `25:00` in Heading (39pt) with a little air.
     /// Kept short because the leftmost status item can sit close to the camera housing.
@@ -24,6 +29,8 @@ struct NotchLayout: Equatable {
     /// Below this the time no longer fits even at its minimum scale, so the surface stays off.
     static let minWingWidth: CGFloat = 32
     /// Clear space kept between a wing's ear and the edge of the menu-bar area beside the camera.
+    /// Only bites on unusually narrow areas; on real notched Macs each side is hundreds of points
+    /// wide, so `maxWingWidth` is what keeps the wings short, not this.
     static let edgeMargin: CGFloat = Space.sm
     /// Concave flare where the shape meets the top edge, so it reads as part of the bezel.
     static let ear: CGFloat = 6
@@ -61,6 +68,8 @@ struct NotchPlacement: Equatable {
         return CGRect(x: frame.midX - size.width / 2, y: frame.minY,
                       width: size.width, height: size.height - layout.notchHeight)
     }
+    /// The camera housing alone (the collapsed shape without its wings), in global coordinates.
+    var cameraRect: CGRect { collapsedRect.insetBy(dx: layout.wingWidth, dy: 0) }
 }
 
 enum NotchGeometry {
@@ -102,7 +111,8 @@ enum NotchGeometry {
 
     /// Whether `mouse` (global coordinates) is over the surface in its collapsed or expanded shape.
     /// Expanded, the menu-bar row only counts within the collapsed footprint, so moving onto a
-    /// status item leaves the surface.
+    /// status item beside the wings leaves the surface.
+    /// Hover uses this; clicks use the narrower `capturesClick`.
     static func contains(_ mouse: CGPoint, expanded: Bool, placement: NotchPlacement) -> Bool {
         // The top screen row reports y == maxY, so the neck (only) grows up a point to include it.
         let slop = expanded ? Space.xs : 0
@@ -110,6 +120,16 @@ enum NotchGeometry {
         if CGRect(x: neck.minX - slop, y: neck.minY, width: neck.width + slop * 2, height: neck.height + 1)
             .contains(mouse) { return true }
         return expanded && placement.bodyRect.insetBy(dx: -slop, dy: 0).contains(mouse)
+    }
+
+    /// Whether a click at `mouse` belongs to the surface: the camera housing, plus the body when
+    /// expanded. The wings sit over the menu bar and may overlap a status item, so they never take
+    /// a click and a click there neither opens the surface nor is swallowed by the panel.
+    static func capturesClick(_ mouse: CGPoint, expanded: Bool, placement: NotchPlacement) -> Bool {
+        let camera = placement.cameraRect
+        if CGRect(x: camera.minX, y: camera.minY, width: camera.width, height: camera.height + 1)
+            .contains(mouse) { return true }
+        return expanded && placement.bodyRect.contains(mouse)
     }
 }
 
@@ -223,7 +243,8 @@ final class NotchController {
         for (center, names) in [
             (local, [NSApplication.didChangeScreenParametersNotification,
                      NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification]),
-            (workspace, [NSWorkspace.activeSpaceDidChangeNotification, NSWorkspace.didWakeNotification]),
+            (workspace, [NSWorkspace.activeSpaceDidChangeNotification, NSWorkspace.didWakeNotification,
+                         NSWorkspace.screensDidWakeNotification]),
         ] {
             for name in names {
                 let token = center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
@@ -232,6 +253,12 @@ final class NotchController {
                 observers.append((center, token))
             }
         }
+        // Displays asleep: nobody is looking, so drop any pin or pending transition.
+        let sleep = workspace.addObserver(forName: NSWorkspace.screensDidSleepNotification, object: nil,
+                                          queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.collapseNow() }
+        }
+        observers.append((workspace, sleep))
         observeState()
     }
 
@@ -248,7 +275,8 @@ final class NotchController {
         presentation.reveal()
         reconcile()
         guard isVisible else { return }
-        intent.pin()
+        // VoiceOver navigation sends no key events, so a timeout would close it mid-read.
+        intent.pin(now: now, timeout: NSWorkspace.shared.isVoiceOverEnabled ? nil : NotchHoverIntent.pinTimeout)
         apply(mouse: NSEvent.mouseLocation)
         panel?.makeKeyAndOrderFront(nil)
     }
@@ -276,13 +304,19 @@ final class NotchController {
 
     private func reconcile() {
         guard observing else { return }
-        placement = NotchGeometry.placement(screens: NSScreen.screens.compactMap { screen -> NotchScreen? in
+        let measured = NotchGeometry.placement(screens: NSScreen.screens.compactMap { screen -> NotchScreen? in
             guard let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea else { return nil }
             let id = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0
             return NotchScreen(id: id, name: screen.localizedName, isBuiltIn: CGDisplayIsBuiltin(id) != 0,
                                frame: screen.frame, visibleFrame: screen.visibleFrame,
                                safeTop: screen.safeAreaInsets.top, auxiliaryLeft: left, auxiliaryRight: right)
         })
+        // Assign only on change: `placement` is observed by Settings. A different screen or
+        // geometry also drops any pin or pending transition, which were measured on the old one.
+        if measured != placement {
+            if placement != nil { collapseNow() }
+            placement = measured
+        }
         guard presentation.shouldShow(enabled: preference.isEnabled, session: model.running,
                                       reflecting: model.reflectionPresentation != nil, supported: placement != nil),
               let placement else {
@@ -301,13 +335,18 @@ final class NotchController {
 
     private func hide() {
         removeMouseMonitors()
+        collapseNow()
+        panel?.orderOut(nil)
+        isVisible = false
+    }
+
+    /// Close without animation and forget any pin or pending transition.
+    private func collapseNow() {
         wake?.cancel()
         wake = nil
         intent.reset()
         setExpanded(false, animated: false)
         panel?.ignoresMouseEvents = true
-        panel?.orderOut(nil)
-        isVisible = false
     }
 
     // MARK: Hover
@@ -335,6 +374,15 @@ final class NotchController {
             MainActor.assumeIsolated { self?.click() }
             return event
         }) { mouseMonitors.append(monitor) }
+        // Keyboard use of a pinned surface (Tab, Space, Return) keeps it open.
+        if let monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { [weak self] event in
+            MainActor.assumeIsolated {
+                guard let self, let panel = self.panel, event.window === panel else { return }
+                self.intent.interacted(now: self.now)
+                self.scheduleWake()
+            }
+            return event
+        }) { mouseMonitors.append(monitor) }
     }
 
     private func removeMouseMonitors() {
@@ -357,18 +405,19 @@ final class NotchController {
     private func click() {
         guard isVisible, let placement else { return }
         let mouse = NSEvent.mouseLocation
-        intent.click(inside: NotchGeometry.contains(mouse, expanded: intent.isExpanded, placement: placement))
+        intent.click(inside: NotchGeometry.capturesClick(mouse, expanded: intent.isExpanded, placement: placement))
         apply(mouse: mouse)
     }
 
     /// Bring the drawn state, click capture and pending wake in line with the hover intent.
     private func apply(mouse: CGPoint) {
         setExpanded(intent.isExpanded)
-        // Capture clicks only over the drawn shape. The panel's transparent corners sit over status
-        // items, and an explicit `ignoresMouseEvents = false` would swallow clicks there too.
-        let overShape = intent.isExpanded
-            && placement.map { NotchGeometry.contains(mouse, expanded: true, placement: $0) } == true
-        if panel?.ignoresMouseEvents != !overShape { panel?.ignoresMouseEvents = !overShape }
+        // Capture clicks only over the camera and the body. The wings and the panel's transparent
+        // corners sit over the menu bar, and an explicit `ignoresMouseEvents = false` would swallow
+        // status-item clicks there.
+        let capturing = intent.isExpanded
+            && placement.map { NotchGeometry.capturesClick(mouse, expanded: true, placement: $0) } == true
+        if panel?.ignoresMouseEvents != !capturing { panel?.ignoresMouseEvents = !capturing }
         scheduleWake()
     }
 
@@ -410,6 +459,7 @@ final class NotchController {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         panel.dismiss = { [weak self] in self?.dismiss() }
         let host = NotchHostingView(rootView: NotchView(commands: commands, surface: surface,
+                                                        showControls: { [weak self] in self?.showControls() },
                                                         dismiss: { [weak self] in self?.dismiss() })
             .environment(model))
         host.sizingOptions = []

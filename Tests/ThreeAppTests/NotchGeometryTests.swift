@@ -170,6 +170,36 @@ struct NotchGeometryTests {
         }
     }
 
+    /// Only the camera housing (and the body when open) takes clicks; the wings over the menu bar
+    /// never do, so a status item under a wing keeps working and a click there doesn't open it.
+    @Test func onlyTheCameraAndBodyTakeClicks() throws {
+        let placement = try #require(NotchGeometry.placement(screens: [macBookPro14]))
+        #expect(placement.cameraRect == CGRect(x: 663.5, y: 950, width: 185, height: 32))
+        func clicks(_ x: CGFloat, _ y: CGFloat, expanded: Bool) -> Bool {
+            NotchGeometry.capturesClick(CGPoint(x: x, y: y), expanded: expanded, placement: placement)
+        }
+        for expanded in [false, true] {
+            #expect(clicks(756, 970, expanded: expanded))
+            #expect(clicks(756, 982, expanded: expanded))
+            #expect(!clicks(630, 960, expanded: expanded))
+            #expect(!clicks(880, 960, expanded: expanded))
+            #expect(!clicks(920, 970, expanded: expanded))
+        }
+        #expect(!clicks(756, 900, expanded: false))
+        #expect(clicks(756, 900, expanded: true))
+        #expect(clicks(560, 870, expanded: true))
+        #expect(!clicks(756, 840, expanded: true))
+        // Every point that takes a click is also on the hover surface.
+        for x in stride(from: 540.0, through: 972, by: 2) {
+            for y in stride(from: 850.0, through: 982, by: 2) {
+                let point = CGPoint(x: x, y: y)
+                if NotchGeometry.capturesClick(point, expanded: true, placement: placement) {
+                    #expect(NotchGeometry.contains(point, expanded: true, placement: placement))
+                }
+            }
+        }
+    }
+
     /// The drawn shape, at every step of the animation, stays within the neck and its ears in the
     /// menu-bar row, and matches the collapsed and expanded sizes at the ends.
     @Test func drawnShapeGrowsDownWithoutCrossingIntoStatusItems() throws {

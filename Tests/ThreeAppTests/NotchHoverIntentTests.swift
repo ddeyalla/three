@@ -2,110 +2,122 @@ import Foundation
 import Testing
 @testable import ThreeApp
 
-/// The hover intent is pure; these tests are its clock.
+/// The hover intent is pure; these tests are its clock. They assert only what the user sees,
+/// `isExpanded`, at given times, sampling the way the controller does (on pointer events, and
+/// again whenever a pending transition is due).
 struct NotchHoverIntentTests {
-    private let open = NotchHoverIntent.expandDelay
-    private let close = NotchHoverIntent.collapseDelay
-
-    @Test func delaysAreShortEnoughToFeelDirect() {
-        #expect((0.25...0.3).contains(open))
-        #expect((0.35...0.45).contains(close))
+    /// A pointer that stays put from `from` to `to`, sampled every 10ms like a pending wake would.
+    private func rest(_ intent: inout NotchHoverIntent, inside: Bool, buttonDown: Bool = false,
+                      from: TimeInterval, to: TimeInterval) {
+        for time in stride(from: from, through: to, by: 0.01) {
+            intent.pointer(inside: inside, buttonDown: buttonDown, now: time)
+        }
     }
 
     @Test func passingOverTheNotchNeverOpensIt() {
         var intent = NotchHoverIntent()
-        intent.pointer(inside: true, buttonDown: false, now: 10)
+        rest(&intent, inside: true, from: 10, to: 10.2)
         #expect(!intent.isExpanded)
-        #expect(intent.deadline == 10 + open)
-        intent.pointer(inside: true, buttonDown: false, now: 10 + open - 0.01)
-        #expect(!intent.isExpanded)
-        intent.pointer(inside: false, buttonDown: false, now: 10 + open - 0.005)
-        #expect(intent.phase == .collapsed)
-        #expect(intent.deadline == nil)
-        // A late wake after leaving does nothing.
-        intent.pointer(inside: false, buttonDown: false, now: 10 + open)
+        rest(&intent, inside: false, from: 10.21, to: 12)
         #expect(!intent.isExpanded)
     }
 
-    @Test func restingOpensAtTheDeadlineAndMovingInsideDoesNotRestartTheDwell() {
+    @Test func restingOpensItWithinAThirdOfASecond() {
         var intent = NotchHoverIntent()
-        intent.pointer(inside: true, buttonDown: false, now: 0)
-        intent.pointer(inside: true, buttonDown: false, now: 0.1)
-        #expect(intent.deadline == open)
-        intent.pointer(inside: true, buttonDown: false, now: open)
+        rest(&intent, inside: true, from: 0, to: 0.24)
+        #expect(!intent.isExpanded)
+        rest(&intent, inside: true, from: 0.25, to: 0.3)
         #expect(intent.isExpanded)
-        #expect(intent.deadline == nil)
     }
 
-    @Test func reEnteringWithinTheCollapseDelayStaysOpen() {
+    @Test func leavingClosesItAfterADelayAndReturningKeepsItOpen() {
         var intent = NotchHoverIntent()
         intent.click(inside: true)
-        intent.pointer(inside: false, buttonDown: false, now: 5)
+        rest(&intent, inside: false, from: 5, to: 5.3)
         #expect(intent.isExpanded)
-        #expect(intent.deadline == 5 + close)
-        intent.pointer(inside: true, buttonDown: false, now: 5 + close - 0.01)
-        #expect(intent.phase == .expanded)
-        #expect(intent.deadline == nil)
-        // Leaving again restarts the full collapse delay.
-        intent.pointer(inside: false, buttonDown: false, now: 6)
-        intent.pointer(inside: false, buttonDown: false, now: 6 + close - 0.01)
+        rest(&intent, inside: true, from: 5.31, to: 5.4)
         #expect(intent.isExpanded)
-        intent.pointer(inside: false, buttonDown: false, now: 6 + close)
-        #expect(intent.phase == .collapsed)
+        // Leaving again restarts the full delay.
+        rest(&intent, inside: false, from: 6, to: 6.3)
+        #expect(intent.isExpanded)
+        rest(&intent, inside: false, from: 6.31, to: 6.5)
+        #expect(!intent.isExpanded)
     }
 
-    @Test func aHeldButtonNeverStartsOrFinishesOpening() {
+    @Test func aHeldButtonNeverOpensItAndReleasingStartsTheDwell() {
         var intent = NotchHoverIntent()
-        intent.pointer(inside: true, buttonDown: true, now: 0)
-        #expect(intent.phase == .collapsed)
-        intent.pointer(inside: true, buttonDown: false, now: 1)
-        #expect(intent.deadline == 1 + open)
-        // Pressing during the dwell (starting a drag across the menu bar) cancels it.
-        intent.pointer(inside: true, buttonDown: true, now: 1 + open)
-        #expect(intent.phase == .collapsed)
-        // Releasing on the notch starts a fresh dwell.
-        intent.pointer(inside: true, buttonDown: false, now: 3)
-        intent.pointer(inside: true, buttonDown: false, now: 3 + open)
+        rest(&intent, inside: true, buttonDown: true, from: 0, to: 2)
+        #expect(!intent.isExpanded)
+        // Pressing partway through the dwell (starting a drag) cancels it.
+        rest(&intent, inside: true, from: 3, to: 3.15)
+        rest(&intent, inside: true, buttonDown: true, from: 3.16, to: 4)
+        #expect(!intent.isExpanded)
+        rest(&intent, inside: true, from: 5, to: 5.3)
         #expect(intent.isExpanded)
-        // Already open: a held button (pressing a control) does not close it.
-        intent.pointer(inside: true, buttonDown: true, now: 4)
-        #expect(intent.phase == .expanded)
+        // Already open: holding a button (pressing a control) does not close it.
+        rest(&intent, inside: true, buttonDown: true, from: 6, to: 8)
+        #expect(intent.isExpanded)
     }
 
     @Test func clicksActImmediately() {
         var intent = NotchHoverIntent()
         intent.pointer(inside: true, buttonDown: false, now: 0)
         intent.click(inside: true)
-        #expect(intent.phase == .expanded)
+        #expect(intent.isExpanded)
         intent.click(inside: false)
-        #expect(intent.phase == .collapsed)
+        #expect(!intent.isExpanded)
+        // A click elsewhere while a close is pending closes at once, and nothing reopens later.
         intent.click(inside: true)
         intent.pointer(inside: false, buttonDown: false, now: 1)
         intent.click(inside: false)
-        #expect(intent.phase == .collapsed)
-        #expect(intent.deadline == nil)
+        #expect(!intent.isExpanded)
+        rest(&intent, inside: false, from: 1, to: 3)
+        #expect(!intent.isExpanded)
     }
 
-    @Test func pinnedStaysOpenUntilThePointerVisitsOrAClickElsewhere() {
+    @Test func pinnedStaysOpenWhileThePointerIsAwayThenTimesOut() {
         var intent = NotchHoverIntent()
-        intent.pin()
-        for time in stride(from: 0.0, through: 5, by: 0.5) {
-            intent.pointer(inside: false, buttonDown: false, now: time)
-            #expect(intent.phase == .expanded)
-        }
-        intent.pointer(inside: true, buttonDown: false, now: 6)
-        #expect(!intent.pinned)
-        intent.pointer(inside: false, buttonDown: false, now: 7)
-        intent.pointer(inside: false, buttonDown: false, now: 7 + close)
-        #expect(intent.phase == .collapsed)
+        intent.pin(now: 0)
+        #expect(intent.deadline == NotchHoverIntent.pinTimeout)
+        rest(&intent, inside: false, from: 0, to: 5.9)
+        #expect(intent.isExpanded)
+        rest(&intent, inside: false, from: 6, to: 6.1)
+        #expect(!intent.isExpanded)
+    }
 
-        intent.pin()
+    @Test func keyboardUseKeepsAPinOpen() {
+        var intent = NotchHoverIntent()
+        intent.pin(now: 0)
+        intent.interacted(now: 5)
+        rest(&intent, inside: false, from: 5, to: 10.9)
+        #expect(intent.isExpanded)
+        rest(&intent, inside: false, from: 11, to: 11.1)
+        #expect(!intent.isExpanded)
+    }
+
+    @Test func visitingAPinnedSurfaceHandsItBackToHover() {
+        var intent = NotchHoverIntent()
+        intent.pin(now: 0)
+        rest(&intent, inside: true, from: 1, to: 2)
+        rest(&intent, inside: false, from: 2.01, to: 2.3)
+        #expect(intent.isExpanded)
+        rest(&intent, inside: false, from: 2.31, to: 2.5)
+        #expect(!intent.isExpanded)
+    }
+
+    @Test func aPinWithoutTimeoutEndsOnlyByVisitClickOrReset() {
+        var intent = NotchHoverIntent()
+        intent.pin(now: 0, timeout: nil)
+        rest(&intent, inside: false, from: 0, to: 30)
+        #expect(intent.isExpanded)
         intent.click(inside: false)
-        #expect(intent.phase == .collapsed)
-        #expect(!intent.pinned)
+        #expect(!intent.isExpanded)
 
-        intent.pin()
+        // Display sleep or a screen change resets, dropping the pin.
+        intent.pin(now: 40, timeout: nil)
         intent.reset()
-        #expect(intent == NotchHoverIntent())
+        #expect(!intent.isExpanded)
+        rest(&intent, inside: false, from: 40, to: 41)
+        #expect(!intent.isExpanded)
     }
 }
