@@ -39,7 +39,7 @@ struct BlockingSettings: View {
                               now: state.now)
         Form {
             Section {
-                LabeledContent("Block during focus") {
+                LabeledContent("Blocking") {
                     Text(state.value).monospacedDigit()
                 }
                 Text(state.detail)
@@ -593,8 +593,8 @@ private struct ChromeSetupSheet: View {
                 Text("Three writes a copy of the extension and a file that lets only it ask Three what to block:")
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                bullet(path: setup.manifestURL.path)
                 bullet(path: setup.extensionFolder.path)
+                bullet(path: setup.manifestURL.path)
                 DisclosureGroup("Show connection file") {
                     Text((try? setup.manifestData()).flatMap { String(data: $0, encoding: .utf8) } ?? "")
                         .font(Typo.code)
@@ -628,7 +628,7 @@ private struct ChromeSetupSheet: View {
                     Button("Show Folder in Finder") { NSWorkspace.shared.activateFileViewerSelecting([setup.extensionFolder]) }
                         .disabled(!FileManager.default.fileExists(atPath: setup.extensionFolder.path))
                 }
-                Text("Chrome warns that the extension can read and change data on all websites. That's how it stops a blocked site; addresses never leave your Mac.")
+                Text("Chrome warns that the extension can read and change data on all websites. That's how it stops a blocked site. It checks each address on your Mac and tells Three only which rule matched.")
                     .font(Typo.meta)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
