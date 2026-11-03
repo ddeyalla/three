@@ -33,14 +33,24 @@ Other nearby backups did not match the full baseline. `tmutil listlocalsnapshots
 
 ## Proposed restoration, not executed
 
-The recommended recovery is the exact baseline-matching v7 copy, with the post-incident state retained for audit. Before any live restoration, an independent review must verify the candidate and the procedure.
+The recommended recovery is the exact baseline-matching v7 copy, with the post-incident state retained for audit. The independent review below validated the candidate and required stronger replacement gates. This revised procedure remains unexecuted.
 
-1. Recheck the live database against the saved post-incident fingerprint. If it has changed, reconcile those changes before replacement.
-2. Capture another consistent current backup and revalidate the candidate's hash, integrity, schema, and all baseline fingerprints.
-3. Quit only the installed Three process and confirm it has exited. Verify that no process still has the database open.
-4. Preserve the live database and its WAL/SHM files together in a new recovery directory. Restore the verified candidate without replaying the upgraded WAL.
-5. Reopen the unchanged installed app. Verify its executable hash, the restored database schema and contents, and normal startup. Preserve the Manual Test app and data throughout.
+1. Obtain approval for the production stop, replacement, and restart. Establish an exclusive maintenance interval with no app, CLI, MCP, native-host, planning, or other database writes. If writer exclusion cannot be maintained, do not replace the database.
+2. Verify the exact installed app path and its pre-incident executable hash before stopping or reopening it. Revalidate the candidate's hash, schema, integrity, foreign keys, complete table set, and all baseline fingerprints. Keep the original backup and candidate unchanged as sources. Record the production files' owner, group, access mode, ACLs, flags, extended attributes, and file identity. Confirm space for retained evidence and a same-filesystem replacement copy.
+3. Capture the current live state, then quit only the authorized installed Three process. Confirm that every database owner has exited and no handle remains to the main database, WAL, SHM, or an old/renamed database inode. Stop if another owner needs an action outside the approval. Prevent relaunch and new connections throughout replacement.
+4. **After all owners exit**, take a fresh consistent capture and compare the complete logical contents and schema with the independently reviewed post-incident state. This comparison includes graceful-shutdown writes. Any inserted, deleted, or changed data stops replacement for reconciliation. A match before quitting is not sufficient. Close the capture connection and reconfirm writer exclusion and file identity before replacement.
+5. Preserve the quiescent original main/WAL/SHM set and the validated consistent pre-replacement snapshot. Stage a separate copy of the verified v7 candidate with the intended production metadata. Do not use the noncoherent `raw-current` files for rollback. Stop on unexpected sidecars, metadata differences, identity changes, or inability to preserve the current state.
+6. Replace the database on the same filesystem while writer exclusion holds. The restored database must not inherit the upgraded WAL/SHM or unrelated candidate sidecars. Verify the restored hash, integrity, schema, table set, baseline fingerprints, metadata, and absence of old handles before reopening anything.
+7. Reopen only the unchanged installed app. Verify its executable, database path, expected schema, contents, and startup. Stop further acceptance on unexpected migration, data differences, or startup failure. Do not automatically roll back over subsequent user work. Any rollback requires another no-new-writes comparison and must remain within the user's actual approval. Preserve Manual Test app/data and all recovery evidence throughout.
 
 This procedure replaces production data and requires stopping and restarting the installed app. The [handoff](../../plans/2026-11-03-non-calendar-handoff-prompt.md) explicitly requires preserving its data and running process. That instruction does not authorize this recovery action. The coordinator will request approval for the concrete restoration after validation; it will not infer approval from the earlier permission to use disposable QA apps.
 
 No further ticket is closed on the strength of this pass. The isolated acceptance evidence remains available, but the production incident takes precedence over the remaining native backlog.
+
+## Independent review and current checkpoint
+
+Codex Sol 6.1 High independently passed 82 captured-artifact checks. The coordinator inspected `/Users/divyanshudv/.t3/worktrees/adhd/t3-402455b5/.audit/production-recovery-review/report.md` and its command/probe receipts. It confirmed the complete 13-table baseline match, original-row differences, added schema/data, candidate integrity, foreign keys, and identical installed-helper results on owned copies. It did not access production or approve a live restoration.
+
+The reviewer found a P1 race in the original proposal because the comparison preceded process shutdown. It also required explicit handle/WAL exclusion and identity/metadata/rollback gates. The revised sequence above incorporates those requirements. These are required execution preconditions, not completed live checks. The reviewer is stopped with no pending children or owned persistent processes.
+
+A fresh read-only coordinator capture at `2026-11-03 14:40:21 UTC` still matches the reviewed post-incident schema and all table fingerprints. The installed executable hash still matches, and PID 92331 retains its original start time. The capture's temporary read-only Python connection exited; a subsequent handle check found only the installed process. No production stop, restoration, or restart has occurred. This checkpoint does not substitute for the required post-shutdown comparison.
