@@ -191,7 +191,8 @@ struct HistoryView: View {
         if let day = report.days.first(where: { $0.day == shownDay(report) }) {
             ScrollView {
                 VStack(alignment: .leading, spacing: Space.xl) {
-                    HistoryDayDetail(day: day, closed: model.dayCloses.contains { $0.day == day.day },
+                    // The plan's own status reaches closed days older than the recent summaries the model keeps.
+                    HistoryDayDetail(day: day, closed: day.plan?.status == .closed || model.dayCloses.contains { $0.day == day.day },
                                      openDayReview: { model.reviewingDay = day.day })
                     Text("As of \(report.takenAt.formatted(date: .abbreviated, time: .shortened)) · \(report.timeZoneIdentifier). Planned time is derived from current task records; dropped, carried and deleted tasks are excluded.")
                         .font(Typo.meta)
