@@ -296,9 +296,12 @@ final class AppModel {
         dialOverride = nil
     }
 
-    func togglePause() {
-        guard let running else { return start() }
-        perform { running.isPaused ? try store.resume() : try store.pause() }
+    func togglePause(expectedSession: Session? = nil) {
+        guard let session = expectedSession ?? running else { return start() }
+        perform {
+            if session.isPaused { try store.resume(expectedSessionID: session.id) }
+            else { try store.pause(expectedSessionID: session.id) }
+        }
     }
 
     func extend(_ minutes: Int) { perform { try store.extend(minutes: minutes) } }

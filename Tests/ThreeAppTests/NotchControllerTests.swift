@@ -69,9 +69,9 @@ struct NotchControllerTests {
             let session = try store.startFocus(taskId: task.id)
             var finishRequests = 0
             var openRequests = 0
-            let commands = NotchCommands(currentSession: { try? store.snapshot().running }, togglePause: {
-                if (try? store.snapshot().running?.isPaused) == true { try! store.resume() }
-                else { try! store.pause() }
+            let commands = NotchCommands(currentSession: { try? store.snapshot().running }, togglePause: { session in
+                if session.isPaused { try! store.resume(expectedSessionID: session.id) }
+                else { try! store.pause(expectedSessionID: session.id) }
             }, finishEarly: { finishRequests += 1 }, openMain: { openRequests += 1 })
             commands.perform(.pauseResume, sessionID: session.id)
             #expect(try store.snapshot().running?.isPaused == true)
@@ -101,6 +101,36 @@ struct NotchControllerTests {
             #expect(finishRequests == 1)
             commands.perform(.openMain, sessionID: session.id)
             #expect(openRequests == 2)
+        }
+    }
+
+    @Test(arguments: [false, true], [SessionKind.focus, .break])
+    func aReplacementBetweenReadAndActionCannotBePausedOrResumed(resuming: Bool, kind: SessionKind) throws {
+        try withStore { store in
+            let peer = try Store(url: URL(fileURLWithPath: store.db.path))
+            let task = try store.addTask(NewTask(title: "Displayed focus", category: "Coding", blockMinutes: 60), source: .app)
+            let displayed = try store.startFocus(taskId: task.id)
+            if resuming { try store.pause() }
+            var replacement: Session?
+            var refused = false
+            let commands = NotchCommands(currentSession: {
+                let captured = try! store.snapshot().running
+                try! peer.stop()
+                if kind == .focus { _ = try! peer.startFocus(taskId: task.id) }
+                else { _ = try! peer.startBreak() }
+                if resuming { try! peer.pause() }
+                replacement = try! peer.snapshot().running
+                return captured
+            }, togglePause: { session in
+                do {
+                    if session.isPaused { try store.resume(expectedSessionID: session.id) }
+                    else { try store.pause(expectedSessionID: session.id) }
+                } catch { refused = true }
+            }, finishEarly: {}, openMain: {})
+            commands.perform(.pauseResume, sessionID: displayed.id)
+            #expect(refused)
+            #expect(replacement?.id != displayed.id)
+            #expect(try store.snapshot().running == replacement)
         }
     }
 }

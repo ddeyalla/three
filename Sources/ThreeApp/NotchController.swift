@@ -62,7 +62,7 @@ enum NotchAction {
 @MainActor
 struct NotchCommands {
     let currentSession: () -> Session?
-    let togglePause: () -> Void
+    let togglePause: (Session) -> Void
     let finishEarly: () -> Void
     let openMain: () -> Void
 
@@ -74,7 +74,7 @@ struct NotchCommands {
         guard let session = currentSession(), session.id == sessionID,
               session.isRunning, session.kind == .focus else { return }
         switch action {
-        case .pauseResume: togglePause()
+        case .pauseResume: togglePause(session)
         case .finish: finishEarly()
         case .openMain: break
         }
@@ -134,7 +134,9 @@ final class NotchController {
         commands = NotchCommands(currentSession: { [weak model] in
             model?.reload()
             return model?.reflectionPresentation == nil ? model?.running : nil
-        }, togglePause: { [weak model] in model?.togglePause() },
+        }, togglePause: { [weak model] session in
+            model?.togglePause(expectedSession: session)
+        },
         finishEarly: { [weak model] in model?.finishEarly() }, openMain: openMain)
     }
 

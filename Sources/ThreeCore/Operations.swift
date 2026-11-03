@@ -436,18 +436,24 @@ extension Store {
         }
     }
 
-    public func pause(now: Date = Date()) throws {
+    public func pause(expectedSessionID: String? = nil, now: Date = Date()) throws {
         try write { db in
             guard var s = try runningSession(db) else { throw ThreeError.noRunningSession }
+            if let expectedSessionID, s.id != expectedSessionID {
+                throw ThreeError.invalid("This timer changed. Use the current session's controls.")
+            }
             guard s.pausedAt == nil else { return }
             s.pausedAt = now; s.updatedAt = now
             try s.update(db)
         }
     }
 
-    public func resume(now: Date = Date()) throws {
+    public func resume(expectedSessionID: String? = nil, now: Date = Date()) throws {
         try write { db in
             guard var s = try runningSession(db) else { throw ThreeError.noRunningSession }
+            if let expectedSessionID, s.id != expectedSessionID {
+                throw ThreeError.invalid("This timer changed. Use the current session's controls.")
+            }
             guard let pausedAt = s.pausedAt else { return }
             s.pausedSeconds += Int(now.timeIntervalSince(pausedAt))
             s.pausedAt = nil; s.updatedAt = now
