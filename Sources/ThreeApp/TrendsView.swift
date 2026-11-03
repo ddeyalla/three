@@ -149,6 +149,8 @@ private struct TrendsFocusChart: View {
                         .accessibilityValue("\(average.formatted(.number.precision(.fractionLength(1)))) minutes")
                 }
             }
+            .chartXScale(domain: days.map { $0.day.rawValue })
+            .chartXAxis { trendsDateAxis(days.map(\.day)) }
             .chartYAxisLabel("Minutes")
             .frame(height: 190)
             DisclosureGroup("Daily focus values") {
@@ -178,6 +180,8 @@ private struct TrendsCompletionChart: View {
                         .accessibilityValue("\(ratioText(week.metrics.completion)), \(week.metrics.completedTaskCount) of \(week.metrics.committedPlannedTaskCount) tasks")
                 }
             }
+            .chartXScale(domain: weeks.map { $0.weekStarting.rawValue })
+            .chartXAxis { trendsDateAxis(weeks.map(\.weekStarting)) }
             .chartYScale(domain: 0...100)
             .chartYAxisLabel("Percent")
             .frame(height: 170)
@@ -215,6 +219,8 @@ private struct TrendsAccuracyChart: View {
                     }
                 }
             }
+            .chartXScale(domain: days.map { $0.day.rawValue })
+            .chartXAxis { trendsDateAxis(days.map(\.day)) }
             .chartYAxisLabel("Percent")
             .frame(height: 170)
             if metrics.actualToPlanned.value == nil {
@@ -247,6 +253,8 @@ private struct TrendsQualityChart: View {
                         .accessibilityValue(qualityText(week.metrics.quality))
                 }
             }
+            .chartXScale(domain: weeks.map { $0.weekStarting.rawValue })
+            .chartXAxis { trendsDateAxis(weeks.map(\.weekStarting)) }
             .chartYScale(domain: 0...100)
             .chartYAxisLabel("Percent focused among recorded ratings")
             .frame(height: 190)
@@ -296,6 +304,8 @@ private struct TrendsBlocksChart: View {
                         .accessibilityValue(rateText(week.metrics.blocks.unblocksPerFocusHour))
                 }
             }
+            .chartXScale(domain: weeks.map { $0.weekStarting.rawValue })
+            .chartXAxis { trendsDateAxis(weeks.map(\.weekStarting)) }
             .chartYAxisLabel("Events per focus hour")
             .frame(height: 190)
             if metrics.blocks.hitsPerFocusHour.value == nil {
@@ -318,6 +328,21 @@ private struct TrendsBlocksChart: View {
                     Text("\(dayLabel(day)) · \(rateText(day.metrics.blocks.hitsPerFocusHour)) hits / hour · \(rateText(day.metrics.blocks.unblocksPerFocusHour)) unblocks / hour · \(day.metrics.blocks.associatedHits) linked hits · \(day.metrics.blocks.associatedUnblocks) linked unblocks · \(Format.duration(day.metrics.focusSeconds)) focus")
                         .font(Typo.meta).monospacedDigit()
                 }
+            }
+        }
+    }
+}
+
+private func trendsDateAxis(_ dates: [DayKey]) -> some AxisContent {
+    let interval = dates.count > 7 ? 7 : 1
+    let ticks = dates.enumerated().filter { $0.offset % interval == 0 || $0.offset == dates.count - 1 }
+        .map { $0.element.rawValue }
+    return AxisMarks(values: ticks) { value in
+        AxisGridLine()
+        AxisTick()
+        AxisValueLabel {
+            if let date = value.as(String.self) {
+                Text(String(date.suffix(5))).monospacedDigit()
             }
         }
     }
