@@ -656,6 +656,7 @@ struct TaskMenuItems: View {
     }
 }
 
+/// The title and an exact block length, opened from Block → Custom… in a card's menu.
 struct TaskEditor: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -671,7 +672,7 @@ struct TaskEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.md) {
-            Text("Edit task").font(Typo.heading)
+            Text("Task details").font(Typo.heading)
             TextField("Title", text: $title).textFieldStyle(.roundedBorder)
             Stepper("Block · \(minutes) min", value: $minutes, in: 5...480, step: 5)
             ErrorNote()
