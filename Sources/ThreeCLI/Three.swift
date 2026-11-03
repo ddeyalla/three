@@ -58,6 +58,11 @@ func resolveTask(_ ref: String, in snap: DaySnapshot, inbox: [TaskRow] = [], sto
     if ref.lowercased().hasPrefix("i"), let n = Int(ref.dropFirst()), (1...max(1, inbox.count)).contains(n), n <= inbox.count {
         return inbox[n - 1]
     }
+    let visibleMatches = (snap.tasks + inbox).filter { $0.id.lowercased().hasPrefix(ref.lowercased()) }
+    if visibleMatches.count == 1 { return visibleMatches[0] }
+    // An out-of-range number or i-number is a position, never an id prefix on some other day.
+    let looksPositional = Int(ref) != nil || (ref.lowercased().hasPrefix("i") && Int(ref.dropFirst()) != nil)
+    guard visibleMatches.isEmpty, !looksPositional else { throw ThreeError.noSuchTask(ref) }
     return try store.task(matching: ref)
 }
 
