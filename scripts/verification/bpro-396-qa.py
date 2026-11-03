@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 AUDIT = ROOT / "build/verification/bpro-396"
 RUN = AUDIT / "native"
 EXE = "ThreeB396QA"
+SOURCE_APP = ROOT / "build/Three.app"
 
 
 def command(*args, **kwargs):
@@ -63,7 +64,7 @@ def prepare():
         raise SystemExit(f"Refusing to overwrite {RUN}")
     RUN.mkdir(parents=True)
     app = RUN / "Three B396 QA.app"
-    shutil.copytree(ROOT / "build/Three.app", app)
+    shutil.copytree(SOURCE_APP, app)
     plist = app / "Contents/Info.plist"
     info = plistlib.loads(plist.read_bytes())
     info.update(CFBundleName="Three B396 QA", CFBundleDisplayName="Three B396 QA",
@@ -73,7 +74,7 @@ def prepare():
     for target in [app / "Contents/Helpers/three-native-host", app / "Contents/Helpers/three", app]:
         command("codesign", "--force", "--sign", "-", target)
     command("codesign", "--verify", "--deep", "--strict", app)
-    original = command("otool", "-s", "__TEXT", "__text", ROOT / "build/Three.app/Contents/MacOS/ThreeApp").splitlines()[2:]
+    original = command("otool", "-s", "__TEXT", "__text", SOURCE_APP / "Contents/MacOS/ThreeApp").splitlines()[2:]
     relabelled = command("otool", "-s", "__TEXT", "__text", app / f"Contents/MacOS/{EXE}").splitlines()[2:]
     assert original == relabelled, "Relabelling changed executable instructions"
     binary = RUN / "fixture"
@@ -105,6 +106,8 @@ def prepare():
     manifest = {"app": str(app), "executable": str(app / f"Contents/MacOS/{EXE}"),
                 "cli": str(cli), "database": env["THREE_DB"], "chrome": str(chrome), "fixtures": fixtures,
                 "source": command("git", "rev-parse", "HEAD", cwd=ROOT).strip(),
+                "sourceApp": str(SOURCE_APP),
+                "sourceExecutableSHA256": hashlib.sha256((SOURCE_APP / "Contents/MacOS/ThreeApp").read_bytes()).hexdigest(),
                 "textSHA256": hashlib.sha256("\n".join(original).encode()).hexdigest()}
     (RUN / "run.json").write_text(json.dumps(manifest, indent=2) + "\n")
     print(json.dumps(manifest, indent=2))
@@ -135,7 +138,9 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("action", choices=["prepare", "capture", "inspect"])
 parser.add_argument("label", nargs="?", default="before")
 parser.add_argument("--run-name", default="native")
+parser.add_argument("--source-app", type=Path, default=SOURCE_APP)
 args = parser.parse_args()
+SOURCE_APP = args.source_app.resolve(strict=True) if args.action == "prepare" else args.source_app
 if Path(args.run_name).name != args.run_name or args.run_name in {".", ".."}:
     parser.error("run-name must be one directory name inside the audit directory")
 RUN = AUDIT / args.run_name
