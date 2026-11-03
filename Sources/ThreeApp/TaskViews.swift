@@ -47,6 +47,18 @@ struct TaskCard<Trailing: View>: View {
                     .foregroundStyle(.secondary)
             }
             .modifier(CardDragSource(row: row, reorder: reorder) { dragPreview })
+            if let reference = row.task.linearRef {
+                Group {
+                    if let issue = LinearIssueLink(reference) {
+                        Link(destination: issue.url) { Label(issue.title, systemImage: "arrow.up.right") }
+                            .help(issue.url.absoluteString)
+                    } else {
+                        Text(reference).foregroundStyle(.secondary).textSelection(.enabled)
+                    }
+                }
+                .font(Typo.meta)
+                .padding(.leading, Space.xl + Space.md)
+            }
             if expanded {
                 VStack(alignment: .leading, spacing: Space.sm) {
                     StepList(row: row)
@@ -487,7 +499,45 @@ struct TaskMenuItems: View {
             }
         }
         Divider()
+        if row.task.status.isOpen {
+            Button("Drop task") { model.perform { try model.store.setTaskStatus(row.id, .dropped) } }
+        }
         Button("Delete", role: .destructive) { model.perform { try model.store.removeTask(row.id) } }
+    }
+}
+
+struct TaskEditor: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let row: TaskRow
+    @State private var title: String
+    @State private var minutes: Int
+
+    init(row: TaskRow) {
+        self.row = row
+        _title = State(initialValue: row.task.title)
+        _minutes = State(initialValue: row.task.blockMinutes)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.md) {
+            Text("Edit task").font(Typo.heading)
+            TextField("Title", text: $title).textFieldStyle(.roundedBorder)
+            Stepper("Block · \(minutes) min", value: $minutes, in: 5...480, step: 5)
+            ErrorNote()
+            HStack {
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("Save") {
+                    if model.perform({ try model.store.updateTask(row.id, title: title, blockMinutes: minutes) }) { dismiss() }
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .font(Typo.body)
+        .padding(Space.xl)
+        .frame(width: 360)
     }
 }
 

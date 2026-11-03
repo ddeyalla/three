@@ -29,7 +29,7 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "MCP", package: "swift-sdk"),
             ],
-            resources: [.copy("Resources/PlanDay.md")]
+            resources: [.copy("Resources/PlanDay.md"), .copy("Resources/plan-day"), .copy("Resources/CodexPrompt.md")]
         ),
         .testTarget(
             name: "ThreeCoreTests",

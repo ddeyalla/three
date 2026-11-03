@@ -157,21 +157,30 @@ extension Color {
 // MARK: Connect
 
 private struct ConnectSettings: View {
+    @Environment(AppModel.self) private var model
     @State private var linked = FileManager.default.fileExists(atPath: ConnectSettings.linkPath)
     @State private var copied: String?
 
     static let linkPath = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".local/bin/three").path
     static let helperPath = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/three").path
 
-    private let agentNote = """
-    I use Three (a focus planner) through its `three` CLI. Useful commands:
-    three today --json | three inbox | three upcoming
-    three capture "Title #category 45m tomorrow"   (no day goes to the inbox)
-    three plan "Title:Category:60" … --commit | three schedule i1 today
-    three start [n] | pause | resume | extend 10 | stop | done n
-    three step add n "first small step" | three step done n 1
-    Keep a day to three tasks (five at most). Only tighten my plan, never loosen it.
-    """
+    private var mcpConfig: String {
+        let config = ["mcpServers": ["three": ["command": Self.helperPath, "args": ["mcp"]] as [String: Any]]]
+        let data = try! JSONSerialization.data(withJSONObject: config, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    private var codexConfig: String {
+        let command = String(decoding: try! JSONEncoder().encode(Self.helperPath), as: UTF8.self)
+        return "[mcp_servers.three]\ncommand = \(command)\nargs = [\"mcp\"]"
+    }
+
+    private func resource(_ name: String, subdirectory: String? = nil) -> String? {
+        guard let resources = Bundle.main.resourceURL,
+              let bundle = Bundle(url: resources.appendingPathComponent("Three_ThreeCLI.bundle")),
+              let url = bundle.url(forResource: name, withExtension: "md", subdirectory: subdirectory) else { return nil }
+        return try? String(contentsOf: url, encoding: .utf8)
+    }
 
     var body: some View {
         Form {
@@ -188,27 +197,41 @@ private struct ConnectSettings: View {
                 Text("The CLI and this app share one database, so changes show up instantly in both.")
                     .foregroundStyle(.secondary)
             }
-            Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Paste this into CLAUDE.md or AGENTS.md so Claude Code or Codex can plan and run your day.")
-                        .foregroundStyle(.secondary)
-                    Text(agentNote)
-                        .font(Typo.code)
-                        .textSelection(.enabled)
-                        .padding(10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(.black.opacity(0.25), in: .rect(cornerRadius: 8))
-                    Button(copied == "agent" ? "Copied" : "Copy instructions") { copy(agentNote, id: "agent") }
-                }
-            } header: {
-                Text("AI agents")
+            Section("MCP connection") {
+                DisclosureGroup("Claude Code or Claude Desktop JSON") { snippet(mcpConfig, id: "claude-config") }
+                DisclosureGroup("Codex TOML") { snippet(codexConfig, id: "codex-config") }
+                Text("Copy the entry into your chosen client's MCP configuration. These snippets use the bundled helper and do not require the CLI symlink. Three never writes your agent configuration.")
+                    .font(Typo.meta)
+                    .foregroundStyle(.secondary)
             }
-            Section("Coming next") {
-                LabeledContent("MCP server", value: "v0.4")
+            Section("Plan with an agent") {
+                if let guide = resource("PlanDay"), let prompt = resource("CodexPrompt"),
+                   let skill = resource("SKILL", subdirectory: "plan-day") {
+                    DisclosureGroup("Planning guide") { snippet(guide, id: "guide") }
+                    DisclosureGroup("Codex prompt") { snippet(prompt, id: "codex-prompt") }
+                    DisclosureGroup("Claude plan-day skill") { snippet(skill, id: "claude-skill") }
+                    Text("Both prompts read three://plan-day-guide so the rules stay in one place. Copy the skill into a plan-day/SKILL.md file only if you want to install it.")
+                        .font(Typo.meta)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Label("Planning guidance is missing. Rebuild or replace this app bundle.", systemImage: "exclamationmark.circle")
+                        .foregroundStyle(Theme.overrun)
+                }
+            }
+            Section("Calendar") {
                 LabeledContent("Calendar sync", value: "v0.5")
             }
+            ErrorNote()
         }
         .formStyle(.grouped)
+    }
+
+    private func snippet(_ text: String, id: String) -> some View {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            Text(text).font(Typo.code).textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button(copied == id ? "Copied" : "Copy") { copy(text, id: id) }
+        }
     }
 
     private func copyRow(_ title: String, value: String) -> some View {
@@ -226,9 +249,15 @@ private struct ConnectSettings: View {
 
     private func install() {
         let link = URL(fileURLWithPath: Self.linkPath)
-        try? FileManager.default.createDirectory(at: link.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? FileManager.default.removeItem(at: link)
-        try? FileManager.default.createSymbolicLink(atPath: link.path, withDestinationPath: Self.helperPath)
-        linked = FileManager.default.fileExists(atPath: Self.linkPath)
+        do {
+            let files = FileManager.default
+            try files.createDirectory(at: link.deletingLastPathComponent(), withIntermediateDirectories: true)
+            if (try? files.destinationOfSymbolicLink(atPath: link.path)) != nil { try files.removeItem(at: link) }
+            try files.createSymbolicLink(atPath: link.path, withDestinationPath: Self.helperPath)
+            linked = files.fileExists(atPath: Self.linkPath)
+            model.error = nil
+        } catch {
+            model.error = error.localizedDescription
+        }
     }
 }

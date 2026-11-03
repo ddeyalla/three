@@ -111,6 +111,8 @@ final class AppModel {
     /// Today's list in the order `Store.moveTask` counts: every task except dropped ones.
     var todayRows: [TaskRow] { snapshot.tasks.filter { $0.task.status != .dropped } }
 
+    var carryover: [TaskRow] { inbox.filter { $0.task.dayPlanId != nil } }
+
     /// "2 of 3 done", "1h 28m focused": the day so far, for Today's summary and Now's all-done state.
     var dayProgress: [String] {
         var parts: [String] = []

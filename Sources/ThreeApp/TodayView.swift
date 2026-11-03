@@ -333,6 +333,16 @@ struct TodayList: View {
         let rows = model.todayRows
         return GlassEffectContainer(spacing: Space.sm) {
             VStack(alignment: .leading, spacing: Space.sm) {
+                if let summary = model.snapshot.draftSummary {
+                    VStack(alignment: .leading, spacing: Space.xs) {
+                        Text(summary).font(Typo.body)
+                        Text("Review each task. Edit its title or block, drag to reorder, or drop it from the menu. Commit when ready. Starting focus also commits this draft.")
+                            .font(Typo.meta)
+                            .foregroundStyle(.secondary)
+                    }
+                    .textSelection(.enabled)
+                    .padding(.bottom, Space.sm)
+                }
                 ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                     TodayTaskCard(row: row, index: index, count: rows.count, dragging: $draggingTaskId)
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: {
@@ -352,6 +362,7 @@ struct TodayList: View {
                         .padding(.horizontal, Space.xs)
                         .padding(.top, Space.xs)
                 }
+                if !model.carryover.isEmpty { CarryoverReview() }
             }
             .coordinateSpace(.named(Self.space))
             .overlay(alignment: .topLeading) { insertionMark(rows.map(\.id)) }
@@ -415,6 +426,7 @@ private struct TodayTaskCard: View {
     let index: Int
     let count: Int
     let dragging: Binding<String?>
+    @State private var editing = false
 
     private var isRunning: Bool { model.running?.taskId == row.id }
     private var isSelected: Bool { model.running == nil && model.selectedTask?.id == row.id }
@@ -430,14 +442,25 @@ private struct TodayTaskCard: View {
                                       moveUp: index > 0 ? { model.moveTodayTask(row.id, by: -1) } : nil,
                                       moveDown: index < count - 1 ? { model.moveTodayTask(row.id, by: 1) } : nil)) {
             trailing
+            Button { editing = true } label: { Image(systemName: "pencil") }
+                .buttonStyle(.plain)
+                .help("Edit task")
+                .accessibilityLabel("Edit \(row.task.title)")
+            Menu { actions } label: { Image(systemName: "ellipsis") }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .accessibilityLabel("Actions for \(row.task.title)")
         }
-        .contextMenu {
-            TaskMenuItems(row: row)
-            Divider()
-            Button("Move Up") { model.moveTodayTask(row.id, by: -1) }.disabled(index == 0)
-            Button("Move Down") { model.moveTodayTask(row.id, by: 1) }.disabled(index == count - 1)
-        }
+        .sheet(isPresented: $editing) { TaskEditor(row: row) }
+        .contextMenu { actions }
         .focusedValue(\.todayFocus, .card(row.id))
+    }
+
+    @ViewBuilder private var actions: some View {
+        TaskMenuItems(row: row)
+        Divider()
+        Button("Move Up") { model.moveTodayTask(row.id, by: -1) }.disabled(index == 0)
+        Button("Move Down") { model.moveTodayTask(row.id, by: 1) }.disabled(index == count - 1)
     }
 
     @ViewBuilder private var trailing: some View {
@@ -454,5 +477,36 @@ private struct TodayTaskCard: View {
                 Text("\(row.task.blockMinutes)m")
             }
         }
+    }
+}
+
+private struct CarryoverReview: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            Text("Unfinished from earlier days").font(Typo.heading)
+            Text("Accept adds a copy to today and keeps the earlier record. Dismiss drops the earlier task. Nothing moves until you choose.")
+                .font(Typo.meta)
+                .foregroundStyle(.secondary)
+            ForEach(model.carryover) { row in
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    Text(row.task.title).font(Typo.body)
+                    TaskDetailLine(row: row)
+                    HStack {
+                        Text("\(row.task.blockMinutes)m").foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Dismiss") { model.perform { try model.store.setTaskStatus(row.id, .dropped) } }
+                            .help("Drop \(row.task.title) on its original day")
+                        Button("Accept today") { model.perform { try model.store.carryTask(row.id, to: model.snapshot.day) } }
+                            .disabled(model.snapshot.activeTaskCount >= Rules.maxTasks || model.running?.taskId == row.id)
+                    }
+                    .font(Typo.body)
+                }
+                .padding(Space.sm)
+                .glassEffect(.regular, in: .rect(cornerRadius: Radius.card))
+            }
+        }
+        .padding(.top, Space.md)
     }
 }

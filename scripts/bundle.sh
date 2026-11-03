@@ -17,6 +17,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Helpers" "$APP/Contents/Resources"
 cp "$BIN/ThreeApp" "$APP/Contents/MacOS/ThreeApp"
 # The CLI lives in Helpers: "three" and "Three" collide on a case-insensitive disk.
 cp "$BIN/three" "$APP/Contents/Helpers/three"
+cp -R "$BIN/Three_ThreeCLI.bundle" "$APP/Contents/Resources/Three_ThreeCLI.bundle"
 # Chrome starts its native host with the extension's origin as the only argument. This launcher maps that
 # calling convention onto `three native-host`, so the CLI's own argument parsing stays as it is.
 cat > "$APP/Contents/Helpers/three-native-host" <<'EOF'
