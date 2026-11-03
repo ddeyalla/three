@@ -4,6 +4,8 @@
 
 Status: draft v1 · 2026-11-02
 
+This draft includes future capabilities. [MCP documentation](docs/MCP.md) describes the implemented agent contract. The [non-calendar backlog](docs/plans/2026-11-03-non-calendar-backlog.md) and its [verification reports](docs/verification/non-calendar/) track the current unreleased implementation and remaining acceptance checks.
+
 ---
 
 ## 1. The problem
@@ -83,7 +85,7 @@ Two surfaces: a **menu-bar item** that is always there, and a **main window** fo
 
 Now is one centred column: the task (up to two lines), its category and next step; the dial, time left and a plain status line; then the controls. The dial grows from 240 to 400pt with the pane. Today's order is its priority: drag a card by its title row, or use Move Up and Move Down in the card menu, Edit (⌥⌘↑/↓) or VoiceOver. See [docs/focus-design.md](docs/focus-design.md).
 
-**Tags (0.2.4).** A tag (`@onboarding`) marks a thread of work that runs for days or weeks, such as a product, project or feature. A task can carry several. A tag's time is every focus block on every task that carried it, including copies carried to later days. The Tags view shows the total, the past week, days worked and each task's share. This is the first piece of §5.4 and §5.5; per-tag trends belong in v0.6.
+**Tags (0.2.4).** A tag (`@onboarding`) marks a thread of work that runs for days or weeks, such as a product, project or feature. A task can carry several. A tag's time is every focus block on every task that carried it, including copies carried to later days. The Tags view shows the total, the past week, days worked and each task's share. The non-calendar implementation adds per-tag results in Trends (§5.5). Tag membership reflects current records; overlapping tags do not multiply the global focus total.
 
 ### 5.1 Today (main window, default)
 
@@ -239,7 +241,7 @@ This is the core of the product. The CLI and the MCP server are the same binary,
   { "mcpServers": { "three": { "command": "three", "args": ["mcp"] } } }
   ```
 - **Division of work.** The app is the only process that touches EventKit, notifications and the timer. The `three` binary only reads the database and writes rows. Plan, task and timer edits go in directly: the timer is a `Session` row with timestamps, so the CLI can start or pause it and the app reacts by rescheduling notifications. Calendar actions (`commit_day` writing events, from v0.5) go in as `Command` rows, which the app executes.
-- **If the app isn't running,** any command that needs it launches it in the background first (`open -g -b <bundle id>`). Launch at login is on by default.
+- **If the app isn't running,** timer commands launch it in the background when needed (`open -g -b <bundle id>`), except when `THREE_DB` selects a test database. Launch at login is opt-in and follows the operating system's enabled, approval-needed, or error state.
 - **Reads come from the database only.** Meetings come from the `MeetingCache` the app refreshes, so the CLI never needs calendar permission.
 
 ### 8.2 MCP tools
@@ -300,7 +302,7 @@ The app also ships a `plan-day` skill/prompt file (for Claude Code at `~/.claude
 |---|---|---|
 | UI | SwiftUI on macOS 27, Liquid Glass (`glassEffect`, `GlassEffectContainer`), `MenuBarExtra` | Native look and the "current macOS glass" you asked for; the menu bar comes for free |
 | Storage | SQLite via **GRDB** at `~/Library/Application Support/Three/three.sqlite` | One database shared by the app and the `three` CLI/MCP binary (the app itself isn't sandboxed; only the Safari extension uses an App Group, for its small block-state file); WAL mode handles concurrent writes; the app observes changes live |
-| Sync (later) | **CKSyncEngine** to a private CloudKit database | Mac now, iPhone later. Rows already have UUIDs and `updatedAt`. |
+| Sync (later) | **CKSyncEngine** to a private CloudKit database | The recommended first slice has one writing Mac and read-only replicas. Account partitions, durable outbox entries, revisions, and missing deletion metadata require migration before transport is enabled. |
 | Calendar | EventKit | One permission covers every calendar account on the Mac |
 | Notifications | UserNotifications with actions (Start, +5, Skip break) | Notifications become actionable from the lock screen and banners |
 | Process roles | The **app** owns the timer, notifications, EventKit, the meeting cache and blocker enforcement, and executes `Command` rows. The **CLI/MCP** reads the database and writes plan rows and commands only. | One owner per side effect; a CLI launched by Claude never needs calendar or notification permission |
@@ -339,7 +341,7 @@ Timeline history (month/day/detail), Trends charts, day-close summary.
 Sleep/wake handling, global hotkey, onboarding (permissions, CLI install, MCP config copy), app icon.
 
 **Later**
-CloudKit sync. It's deferred so v0.1 can ship sooner; the data model is ready for it, and it can move earlier if you want it. Then an iPhone/Watch companion (timer plus today view); optional two-way Linear sync; a network content filter as a system-wide blocking backstop; phone blocking through iOS Screen Time, driven by the same focus state.
+The [sync and companion design](docs/plans/2026-11-03-sync-companion-design.md) audits the actual schema and defines separate implementation slices. It recommends local sync preparation followed by a private, read-only Mac replica, then read-first iPhone and Watch companions. Remote timer commands, two-way Linear, and iOS Screen Time each need their own scope and acceptance. A network content filter remains a separate possible blocking backstop. No sync transport or companion is implemented by this discovery work.
 
 ## 13. Success measures (for you)
 
