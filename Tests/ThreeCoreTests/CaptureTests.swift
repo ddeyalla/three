@@ -15,7 +15,7 @@ private func task(_ title: String, _ minutes: Int = 60, _ category: String = "Co
     let url = freshURL()
     do {
         let old = try Store(url: url, upTo: "v2-calm-colors")
-        let t = try old.addTask(task("Ship it"), source: .cli)
+        let t = try old.addLegacyTaskFixture(task("Ship it"), source: .cli)
         try old.db.write { db in
             try db.execute(sql: """
                 INSERT INTO session(id, taskId, kind, plannedSeconds, startedAt, pausedSeconds, endedAt, endReason, updatedAt)
@@ -114,7 +114,7 @@ private func task(_ title: String, _ minutes: Int = 60, _ category: String = "Co
     let pausedAt = Date(timeIntervalSince1970: Date().timeIntervalSince1970.rounded(.down) - 600)
     do {
         let old = try Store(url: url, upTo: "v3-inbox-steps-prefs")
-        let t = try old.addTask(task("woek"), source: .cli)
+        let t = try old.addLegacyTaskFixture(task("woek"), source: .cli)
         try old.db.write { db in
             try db.execute(sql: """
                 INSERT INTO session(id, taskId, kind, plannedSeconds, startedAt, pausedAt, pausedSeconds, updatedAt)

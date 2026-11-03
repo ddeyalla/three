@@ -10,11 +10,18 @@ import Testing
     let sessionId: String
     do {
         let old = try Store(url: url, upTo: "v7-blocker")
-        let task = try old.addTask(NewTask(title: "Legacy task", category: "Coding", blockMinutes: 30), day: day, source: .cli)
+        let task = try old.addLegacyTaskFixture(NewTask(title: "Legacy task", category: "Coding", blockMinutes: 30), day: day, source: .cli)
         taskId = task.id
         let start = day.startDate.addingTimeInterval(3600)
-        sessionId = try old.startFocus(taskId: taskId, now: start).id
-        try old.stop(now: start.addingTimeInterval(60))
+        sessionId = UUID().uuidString
+        try old.db.write { db in
+            try db.execute(sql: """
+                INSERT INTO session(id, taskId, kind, plannedSeconds, startedAt, pausedSeconds, endedAt, endReason, updatedAt)
+                VALUES(?, ?, 'focus', 1800, ?, 0, ?, 'stopped', ?)
+                """, arguments: [sessionId, taskId, start, start.addingTimeInterval(60), start.addingTimeInterval(60)])
+            try db.execute(sql: "UPDATE task SET status = 'partial' WHERE id = ?", arguments: [taskId])
+            try db.execute(sql: "UPDATE dayPlan SET status = 'committed', committedAt = ? WHERE id = ?", arguments: [start, task.dayPlanId])
+        }
         try old.addStep(to: taskId, title: "Keep this step")
         try old.addTag("keep", to: taskId)
         try old.db.write { try $0.execute(sql: "UPDATE dayPlan SET day = '2026-1-01'") }
@@ -41,13 +48,13 @@ import Testing
         let old = try Store(url: url, upTo: "v7-blocker")
         for offset in 0...1 {
             for index in 0..<5 {
-                let task = try old.addTask(NewTask(title: "Group \(offset) task \(index)", category: "Coding", blockMinutes: 30),
+                let task = try old.addLegacyTaskFixture(NewTask(title: "Group \(offset) task \(index)", category: "Coding", blockMinutes: 30),
                                            day: day.adding(days: offset), source: .cli)
                 taskIds.append(task.id)
             }
         }
         canonicalPlanId = try old.snapshot(for: day).plan?.id
-        try old.commit(day: day.adding(days: 1))
+        try old.db.write { try $0.execute(sql: "UPDATE dayPlan SET status = 'committed', committedAt = ? WHERE day = ?", arguments: [Date(), day.adding(days: 1)]) }
         try old.db.write { try $0.execute(sql: "UPDATE dayPlan SET day = '2026-1-01' WHERE day = '2026-01-02'") }
     }
     let store = try Store(url: url)
@@ -70,8 +77,8 @@ import Testing
     let liveId: String
     do {
         let old = try Store(url: url, upTo: "v7-blocker")
-        liveId = try old.addTask(NewTask(title: "Live work", category: "Coding", blockMinutes: 30), day: day, source: .app).id
-        try old.addTask(NewTask(title: "Deleted work", category: "Coding", blockMinutes: 30), day: day.adding(days: 1), source: .app)
+        liveId = try old.addLegacyTaskFixture(NewTask(title: "Live work", category: "Coding", blockMinutes: 30), day: day, source: .app).id
+        try old.addLegacyTaskFixture(NewTask(title: "Deleted work", category: "Coding", blockMinutes: 30), day: day.adding(days: 1), source: .app)
         try old.db.write { db in
             try db.execute(sql: "UPDATE dayPlan SET day = '2026-1-01', status = 'closed', deletedAt = CURRENT_TIMESTAMP WHERE day = '2026-01-02'")
         }

@@ -23,7 +23,7 @@ private func reviewStore() throws -> Store {
     let store = try reviewStore()
     let task = try store.addTask(NewTask(title: "Draft", category: "Writing", blockMinutes: 30), source: .app)
     let copy = try store.pushToTomorrow(task.id)
-    #expect(throws: ThreeError.self) { try store.pushToTomorrow(task.id) }
+    #expect(try store.pushToTomorrow(task.id).id == copy.id)
     #expect(try store.snapshot(for: .today.adding(days: 1)).tasks.map(\.id) == [copy.id])
 }
 

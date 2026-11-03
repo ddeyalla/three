@@ -24,7 +24,7 @@ private func startFocus(_ store: Store, strict: Bool = false, at now: Date = mon
     let url = freshURL()
     do {
         let old = try Store(url: url, upTo: "v6-deferred-reflections")
-        try old.addTask(NewTask(title: "Keep me", category: "Coding", blockMinutes: 30), source: .cli)
+        try old.addLegacyTaskFixture(NewTask(title: "Keep me", category: "Coding", blockMinutes: 30), source: .cli)
     }
     let store = try Store(url: url)
     let status = try store.blockStatus(now: monday, calendar: utc)

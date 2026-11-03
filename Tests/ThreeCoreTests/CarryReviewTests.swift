@@ -43,7 +43,7 @@ private func carryWork(_ title: String) -> NewTask {
     #expect(try store.snapshot(for: oldDay).tasks.first?.task.status == .carried)
     #expect(try store.snapshot().plan?.status == .draft)
     #expect(try store.carryover(before: .today).isEmpty)
-    #expect(throws: ThreeError.self) { try store.carryTask(original.id, to: .today) }
+    #expect(try store.carryTask(original.id, to: .today).id == copy.id)
     #expect(try store.snapshot().tasks.count == 1)
 }
 
@@ -70,9 +70,10 @@ private func carryWork(_ title: String) -> NewTask {
     try store.db.write { try $0.execute(sql: "UPDATE dayPlan SET status = 'closed' WHERE day = ?", arguments: [DayKey.today]) }
     #expect(throws: ThreeError.self) { try store.carryTask(task.id, to: .today) }
     try store.db.write { try $0.execute(sql: "UPDATE dayPlan SET status = 'closed' WHERE day = ?", arguments: [oldDay]) }
-    #expect(throws: ThreeError.self) { try store.carryTask(task.id, to: freeDay) }
-    #expect(try store.snapshot(for: freeDay).plan == nil)
-    #expect(try store.snapshot(for: oldDay).tasks.first?.task.status == .partial)
+    let copy = try store.carryTask(task.id, to: freeDay)
+    #expect(try store.snapshot(for: freeDay).tasks.map(\.id) == [copy.id])
+    #expect(copy.carriedFromTaskId == task.id)
+    #expect(try store.snapshot(for: oldDay).tasks.first?.task.status == .carried)
 }
 
 @Test func dismissingCarryoverLeavesItOnItsOriginalDay() throws {

@@ -202,7 +202,11 @@ extension Store {
             for new in tasks { _ = try insertTask(new, plan: plan, source: source, db) }
             plan.source = source
             plan.updatedAt = Date()
-            if commit { plan.status = .committed; plan.committedAt = Date() }
+            if commit {
+                try captureCommitment(plan, at: plan.updatedAt, db)
+                plan.status = .committed
+                plan.committedAt = plan.committedAt ?? plan.updatedAt
+            }
             try plan.update(db)
         }
     }
@@ -213,6 +217,7 @@ extension Store {
                 throw ThreeError.invalid("No plan for \(day).")
             }
             try requireEditable(plan)
+            try captureCommitment(plan, at: Date(), db)
             plan.status = .committed
             plan.committedAt = plan.committedAt ?? Date()
             plan.updatedAt = Date()
@@ -290,7 +295,7 @@ extension Store {
 
     // MARK: Timer
 
-    private func runningSession(_ db: Database) throws -> Session? {
+    func runningSession(_ db: Database) throws -> Session? {
         try Session.filter(Column("endedAt") == nil).fetchOne(db)
     }
 
@@ -345,6 +350,7 @@ extension Store {
         try task.update(db)
         // Starting work on a draft is the commitment.
         if let planId = task.dayPlanId, var plan = try DayPlan.fetchOne(db, key: planId), plan.status == .draft {
+            try captureCommitment(plan, at: now, db)
             plan.status = .committed
             plan.committedAt = now
             plan.updatedAt = now
@@ -367,27 +373,50 @@ extension Store {
 
     private func carry(_ id: String, to day: DayKey?, now: Date) throws -> FocusTask {
         try write { db in
-            var t = try editableTask(id, db)
-            guard t.status.isOpen else { throw ThreeError.invalid("Only open tasks can be carried to another day.") }
-            guard try runningSession(db)?.taskId != id else {
-                throw ThreeError.invalid("Finish the running block before moving its task.")
+            if let decision = try CarryDecision.fetchOne(db, key: id) {
+                guard decision.decision == .accepted, let copyId = decision.copyTaskId,
+                      let copy = try FocusTask.fetchOne(db, key: copyId) else {
+                    throw ThreeError.invalid("That work has already been dismissed.")
+                }
+                let destination: DayKey
+                if let day {
+                    destination = day
+                } else {
+                    guard let sourceDay = try DayKey.fetchOne(db, sql: "SELECT day FROM dayPlan JOIN task ON task.dayPlanId = dayPlan.id WHERE task.id = ?", arguments: [id]) else {
+                        throw ThreeError.noSuchTask(id)
+                    }
+                    destination = sourceDay.adding(days: 1)
+                }
+                if decision.destinationDay != destination {
+                    throw ThreeError.invalid("That work has already been accepted onto another day.")
+                }
+                return copy
             }
-            guard let planId = t.dayPlanId, let plan = try DayPlan.fetchOne(db, key: planId) else {
-                throw ThreeError.invalid("That task isn't planned for a day.")
-            }
+            var (t, plan) = try carrySource(id, db)
             let destination = day ?? plan.day.adding(days: 1)
             guard destination > plan.day else { throw ThreeError.invalid("Carry unfinished work to a later day.") }
             let target = try planRow(destination, source: .app, db)
-            let copy = try insertTask(NewTask(title: t.title, category: t.categoryId, blockMinutes: t.blockMinutes,
-                                              strict: t.strict, linearRef: t.linearRef, notes: t.notes,
-                                              tags: try self.tags(for: [id], db)[id]?.map(\.name) ?? []),
-                                      plan: target, source: t.createdBy, db)
+            try requireEditable(target)
+            let existing = try liveTasks(target.id, db)
+            try checkCap(existing)
+            var copy = t
+            copy.id = UUID().uuidString
+            copy.dayPlanId = target.id
+            copy.position = (existing.map(\.position).max() ?? -1) + 1
+            copy.scheduledStart = nil
+            copy.status = .todo
+            copy.updatedAt = now
+            copy.carriedFromTaskId = id
+            try copy.insert(db)
+            try db.execute(sql: "INSERT INTO taskTag(taskId, tagId) SELECT ?, tagId FROM taskTag WHERE taskId = ?", arguments: [copy.id, id])
             for var step in try Step.filter(Column("taskId") == id).fetchAll(db) {
                 step.id = UUID().uuidString
                 step.taskId = copy.id
                 step.updatedAt = now
                 try step.insert(db)
             }
+            try CarryDecision(sourceTaskId: id, decision: .accepted, copyTaskId: copy.id,
+                              destinationDay: destination, decidedAt: now).insert(db)
             t.status = .carried
             t.updatedAt = now
             try t.update(db)
@@ -456,6 +485,7 @@ extension Store {
     /// Ends the running focus session with the reflection answers.
     public func finishFocus(outcome: Outcome, rating: FocusRating, note: String?, markTaskDone: Bool,
                             expectedSession: Session? = nil, continuation: FocusContinuation = .stop,
+                            breakDecision: BreakDecision? = nil,
                             now: Date = Date()) throws {
         try write { db in
             guard var s = try runningSession(db), s.kind == .focus else { throw ThreeError.noRunningSession }
@@ -467,6 +497,20 @@ extension Store {
             case .stop: break
             case .break: try startBreak(minutes: nil, now: now, db)
             case .task(let id): try startFocus(taskId: id, now: now, db)
+            }
+            let decision: BreakDecision? = switch continuation {
+            case .break: .taken
+            case .task: .skipped
+            case .stop: breakDecision
+            }
+            if case .stop = continuation, breakDecision == .taken {
+                throw ThreeError.invalid("Start a break to record it as taken.")
+            }
+            if let breakDecision, let decision, breakDecision != decision {
+                throw ThreeError.invalid("The break decision does not match the continuation.")
+            }
+            if let decision {
+                try RecordedBreakDecision(sessionId: s.id, decision: decision, decidedAt: now).insert(db)
             }
         }
     }

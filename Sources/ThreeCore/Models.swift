@@ -113,6 +113,7 @@ public struct FocusTask: Codable, Hashable, Identifiable, FetchableRecord, Persi
     public var createdBy: Source
     public var updatedAt: Date
     public var deletedAt: Date?
+    public var carriedFromTaskId: String? = nil
 }
 
 public enum SessionKind: String, Codable, Sendable, DatabaseValueConvertible {

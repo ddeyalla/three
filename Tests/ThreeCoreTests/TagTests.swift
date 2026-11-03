@@ -84,7 +84,7 @@ private func work(_ store: Store, _ taskId: String, minutes: Int, now: Date = Da
     let url = freshURL()
     do {
         let old = try Store(url: url, upTo: "v4-close-orphaned-sessions")
-        try old.addTask(NewTask(title: "Old task", category: "Coding", blockMinutes: 60), source: .cli)
+        try old.addLegacyTaskFixture(NewTask(title: "Old task", category: "Coding", blockMinutes: 60), source: .cli)
     }
     let store = try Store(url: url)
     let row = try #require(try store.snapshot().tasks.first)

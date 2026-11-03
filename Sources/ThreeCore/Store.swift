@@ -275,6 +275,36 @@ public final class Store: @unchecked Sendable {
         m.registerMigration("v10-planning-supervisor") { db in
             try db.alter(table: "planningRun") { $0.add(column: "supervisorPID", .integer) }
         }
+        m.registerMigration("v11-day-close") { db in
+            try db.alter(table: "task") { t in
+                t.add(column: "carriedFromTaskId", .text).references("task")
+            }
+            try db.execute(sql: "CREATE UNIQUE INDEX task_carry_source ON task(carriedFromTaskId) WHERE carriedFromTaskId IS NOT NULL")
+            try db.create(table: "planCommitment") { t in
+                t.primaryKey("planId", .text).references("dayPlan")
+                t.column("capturedAt", .datetime).notNull()
+                t.column("tasksJSON", .text).notNull()
+            }
+            try db.create(table: "dayClose") { t in
+                t.primaryKey("planId", .text).references("dayPlan")
+                t.column("day", .text).notNull().unique()
+                t.column("closedAt", .datetime).notNull()
+                t.column("summaryJSON", .text).notNull()
+            }
+            try db.create(table: "carryDecision") { t in
+                t.primaryKey("sourceTaskId", .text).references("task")
+                t.column("decision", .text).notNull().check { ["accepted", "dismissed"].contains($0) }
+                t.column("copyTaskId", .text).unique().references("task")
+                t.column("destinationDay", .text)
+                t.column("decidedAt", .datetime).notNull()
+                t.check(sql: "(decision = 'accepted' AND copyTaskId IS NOT NULL AND destinationDay IS NOT NULL) OR (decision = 'dismissed' AND copyTaskId IS NULL AND destinationDay IS NULL)")
+            }
+            try db.create(table: "breakDecision") { t in
+                t.primaryKey("sessionId", .text).references("session")
+                t.column("decision", .text).notNull().check { ["taken", "skipped"].contains($0) }
+                t.column("decidedAt", .datetime).notNull()
+            }
+        }
         return m
     }
 

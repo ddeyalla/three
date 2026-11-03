@@ -73,7 +73,7 @@ struct ScheduledPlanningTests {
     @Test func migrationPreservesExistingWorkAndWakeDoesNotReplayMissedDates() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("three-schedule-migration-\(UUID().uuidString)/db.sqlite")
         let old = try Store(url: url, upTo: "v8-canonical-plan-dates")
-        let task = try old.addTask(task("Keep legacy work"), source: .app)
+        let task = try old.addLegacyTaskFixture(task("Keep legacy work"), source: .app)
         var timer = try old.preferences()
         timer.sessionMinutes = 25
         try old.setPreferences(timer)
