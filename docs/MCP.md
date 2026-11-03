@@ -80,6 +80,8 @@ A `?` marks an optional field. All other fields are required unless a row says o
 | `start_break` | `minutes?` | The new break session. Explicit minutes range from 1 through 120. |
 | `finish_focus` | `outcome`, `rating`, `mark_task_done`, `note?` | `{ok:true}`. Outcome is `done`, `progress`, or `stuck`. Rating is 1, 2, or 3. `mark_task_done` is a boolean. Records reflection and ends focus without continuation. |
 | `get_status` | none | The running timer summary or `null`. Includes `remainingSeconds`, which is negative during overrun. |
+| `get_recovery` | none | Shared `RecoveryStatus` with an optional observing gap, pending reviews, affected sessions, saved eligible trim seconds, and sorted unresolved session IDs. Read-only. Manual channel only. |
+| `decide_recovery` | `id`, `decision` | Shared `RecoveryGap` after explicit `keep` or `trim`. Requires an exact gap UUID with its original spelling. The first durable decision wins, including contradictory retries. Trim refuses an unreliable clock or an interruption still being observed. Corrects only the saved affected sessions. Manual channel only. |
 | `get_carryover` | `date` | Task rows for unfinished planned tasks before the given date, oldest day first. Undated inbox tasks are excluded. Reads do not move tasks. Closed-day work remains read-only. |
 | `get_history` | `from`, `to` | Session records, including reflections. Inclusive local start dates. The range must be ordered and span at most 366 days. |
 | `get_history_report` | `from`, `to` | Typed month/day/task/session report with empty dates, category totals, and deleted references. Uses the same bounded dates and shared accounting as native History and `three history --from DATE --to DATE --json`. Planned totals are explicitly derived from current task rows. |
@@ -102,7 +104,7 @@ Mutations are not globally replay-safe. Repeating `add_task` creates another tas
 
 The app's local planning runner supplies `THREE_PLANNING_RUN`, `THREE_PLANNING_DATE`, and an absolute `THREE_DB` to its MCP helper. A partial or malformed environment fails startup. The run must exist, remain active, and match today's local target date and deadline.
 
-This mode lists only read tools and `plan_day`. It refuses all other mutation names even when called directly. `plan_day` requires the exact target date, at least one task, and `commit=false`. It creates one new draft with source `routine`. Existing plans, running timers, a prior draft write, expiry, or a completed claim refuse the write atomically. No commit or timer tool is exposed in this mode.
+This mode retains exactly eight tools. They are `get_today`, `get_day`, `plan_day`, `list_categories`, `get_status`, `get_carryover`, `get_history`, and `get_block_status`. It refuses every other registered name even when called directly, including `get_recovery`, `decide_recovery`, `get_stats`, `get_history_report`, and day-close tools. `plan_day` requires the exact target date, at least one task, and `commit=false`. It creates one new draft with source `routine`. Existing plans, running timers, a prior draft write, expiry, or a completed claim refuse the write atomically. No commit or timer tool is exposed in this mode.
 
 The normal MCP channel retains the manual tools listed above. The configured shell command is trusted and can invoke other programs or channels. This protocol restriction does not sandbox its external actions. See [Scheduled planning](scheduled-planning.md) for settings, limits, crash recovery, and fixture verification.
 
@@ -111,6 +113,10 @@ Successful tool results contain one text content item with JSON and `isError=fal
 A day object contains `date`, `plan`, `tasks`, `sessions`, `running`, `runningTask`, `takenAt`, and `plannedMinutes`. Optional nil properties are omitted. Each task row contains its complete `task` and `category` records, `focusedSeconds`, `steps`, and `tags`. `plan.source` and `task.createdBy` preserve provenance. Dropped and carried rows remain available in these reads.
 
 `get_status` returns `id`, `kind`, optional `taskId`, `startedAt`, `plannedEnd`, `paused`, and `remainingSeconds`. A session returned by history or a timer mutation contains the Store session fields, including optional `outcome`, `focusRating`, `note`, and the `reflectionPending` flag.
+
+`get_recovery` returns the existing Core `RecoveryStatus`. `observing` is omitted when no interruption is open. `reviews` contains ordered `{gap,sessions}` records. Each session review contains the complete `session`, optional `taskTitle`, and saved `eligibleSeconds`. `unresolvedSessionIDs` is a sorted array. Gap states are `observing`, `review`, `notRequired`, `kept`, and `trimmed`. A decision returns the gap with its saved state and optional `decidedAt`. An unknown gap fails with `invalid_input`. A retry on a settled gap returns its original result. A `notRequired` gap stays unchanged. Status reads neither close an observing gap nor decide it.
+
+The human CLI exposes the same results through `three recovery --json` and `three recovery-decide ID --decision keep|trim --json`. Decisions have no default. Keep preserves recorded work. Trim subtracts the saved eligible absence once through `Session.elapsed`, so History, Stats, and task totals share the correction. An ended session stays ended. A newer timer stays unchanged. Unresolved recovery defers day-close at the Store boundary. Native sleep and lock observation belongs to the app. No public MCP tool or CLI command simulates physical events.
 
 `resources/list` publishes two resources. `three://today` returns the same JSON day object as `get_today`. `three://plan-day-guide` returns the bundled `Resources/PlanDay.md` as markdown. Resources have no subscriptions or change notifications. Read them again after edits.
 
@@ -145,6 +151,8 @@ python3 scripts/test-mcp.py --binary "$(./scripts/swift.sh build --show-bin-path
 ./scripts/swift.sh test --filter ThreeCoreTests
 ```
 
-The script verifies real initialize, list, call and resource messages; malformed and unknown input; repeated reads; persistence across restart; cross-process CLI reads and writes; the Darwin signal used by the app; transaction rollback; two-server five-task and timer admission; focus controls; category edits; carry-over with steps and tags; and tightening-only blocker operations. It does not prove a native window refresh, physical menu bar, notification delivery, Chrome redirects, or app hiding.
+After packaging with `./scripts/bundle.sh`, `python3 scripts/test-recovery.py --binary build/Three.app/Contents/Helpers/three` checks explicit recovery decisions and shared History/Stats accounting through the packaged helper. It uses disposable recovery fixtures and launches no app.
+
+`scripts/test-mcp.py` verifies real initialize, list, call and resource messages; malformed and unknown input; repeated reads; persistence across restart; cross-process CLI reads and writes; the Darwin signal used by the app; transaction rollback; two-server five-task and timer admission; focus controls; category edits; carry-over with steps and tags; and tightening-only blocker operations. It does not prove a native window refresh, physical menu bar, notification delivery, Chrome redirects, or app hiding.
 
 SwiftPM builds `Three_ThreeCLI.bundle` beside `three`. Distribution must preserve that resource bundle beside the CLI or in the bundle resource location. BPRO-398 owns app packaging and installation of the canonical planning guide.

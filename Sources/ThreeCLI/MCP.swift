@@ -85,6 +85,7 @@ private enum MCPTool: String, CaseIterable {
     case getStatus = "get_status", getCarryover = "get_carryover", getHistory = "get_history"
     case getHistoryReport = "get_history_report"
     case getStats = "get_stats"
+    case getRecovery = "get_recovery", decideRecovery = "decide_recovery"
     case getDayClose = "get_day_close", closeDay = "close_day", dismissCarry = "dismiss_carry"
     case getBlockStatus = "get_block_status", addBlockRule = "add_block_rule", setTaskStrict = "set_task_strict"
 
@@ -138,6 +139,10 @@ private enum MCPTool: String, CaseIterable {
             (text, fields, required, readOnly) = ("Finish the current focus session with reflection. Does not start another session.", ["outcome": .object(["type": "string", "enum": ["done", "progress", "stuck"]]), "rating": integerField(1, 3), "note": stringField, "mark_task_done": boolField], ["outcome", "rating", "mark_task_done"], false)
         case .getStatus:
             (text, fields, required, readOnly) = ("Read the running timer and remaining seconds, or null.", [:], [], true)
+        case .getRecovery:
+            (text, fields, required, readOnly) = ("Read observed interruptions and pending Keep or Trim reviews with affected sessions and eligible seconds. Does not observe events, decide, or change timers. Manual channel only.", [:], [], true)
+        case .decideRecovery:
+            (text, fields, required, readOnly) = ("Explicitly keep recorded work or trim the saved eligible absence for an exact gap UUID. The first durable decision wins across retries. Unreliable clocks permit Keep only. Never changes a newer timer. Manual channel only.", ["id": recoveryIDField, "decision": ["type": "string", "enum": ["keep", "trim"]]], ["id", "decision"], false)
         case .getCarryover:
             (text, fields, required, readOnly) = ("Read unfinished planned tasks before date. Excludes undated inbox tasks. Does not move anything.", ["date": dateField], ["date"], true)
         case .getHistory:
@@ -161,6 +166,7 @@ private enum MCPTool: String, CaseIterable {
 private let stringField: Value = ["type": "string"]
 private let boolField: Value = ["type": "boolean"]
 private let idField: Value = ["type": "string", "minLength": 1, "description": "Exact Store UUID, never a list position or prefix."]
+private let recoveryIDField: Value = ["type": "string", "pattern": "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$", "description": "Exact recovery gap UUID from get_recovery. Preserve its spelling."]
 private let dateField: Value = ["type": "string", "description": "today, tomorrow, yesterday, or a real yyyy-MM-dd local date."]
 private let blockField = integerField(5, 480)
 private let timestampPattern = #"^[0-9]{4}-[0-9]{2}-[0-9]{2}T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\.[0-9]+)?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])$"#
@@ -279,6 +285,9 @@ private struct ThreeMCP: Sendable {
         case .finishFocus:
             try store.finishFocus(outcome: Outcome(rawValue: a.requiredString("outcome"))!, rating: FocusRating(rawValue: a.requiredInt("rating"))!, note: a.string("note"), markTaskDone: a.bool("mark_task_done")!)
         case .getStatus: return try result(dayJSON(store.snapshot()).running)
+        case .getRecovery: return try result(store.recoveryStatus())
+        case .decideRecovery:
+            return try result(store.decideRecovery(a.requiredString("id"), decision: parseRecoveryDecision(a.requiredString("decision"))))
         case .getCarryover: return try result(store.carryover(before: a.day("date")).map(MCPTask.init))
         case .getHistory: return try result(store.history(from: a.day("from"), through: a.day("to")))
         case .getHistoryReport: return try result(store.historyReport(from: a.day("from"), through: a.day("to")))

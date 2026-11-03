@@ -11,7 +11,8 @@ struct Three: AsyncParsableCommand {
         subcommands: [Today.self, Status.self, Add.self, Plan.self, Commit.self, Start.self, Pause.self,
                       Resume.self, Extend.self, Stop.self, Done.self, Drop.self, Tomorrow.self, Capture.self, Inbox.self,
                       Schedule.self, Upcoming.self, Logbook.self, HistoryCommand.self, StatsCommand.self, DayReviewCommand.self, CloseDayCommand.self,
-                      CarryCommand.self, DismissCarryCommand.self, Steps.self, Tags.self, Categories.self, Settings.self,
+                      CarryCommand.self, DismissCarryCommand.self, RecoveryCommand.self, RecoveryDecideCommand.self,
+                      Steps.self, Tags.self, Categories.self, Settings.self,
                       Block.self, NativeHost.self, MCPCommand.self, PlanningRunCommand.self]
     )
 }
@@ -177,6 +178,51 @@ struct Status: ParsableCommand {
     func run() throws {
         let snap = try store().snapshot()
         common.json ? try emit(dayJSON(snap).running) : printStatus(snap)
+    }
+}
+
+func parseRecoveryGapID(_ raw: String) throws -> String {
+    guard UUID(uuidString: raw) != nil else { throw ValidationError("Use an exact recovery gap UUID, without a prefix or position.") }
+    return raw
+}
+
+func parseRecoveryDecision(_ raw: String) throws -> RecoveryDecision {
+    switch raw {
+    case "keep": return .keep
+    case "trim": return .trim
+    default: throw ThreeError.invalid("Recovery decision must be keep or trim.")
+    }
+}
+
+struct RecoveryCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "recovery", abstract: "Read observed interruptions and pending Keep or Trim reviews.")
+    @OptionGroup var common: Common
+
+    func run() throws {
+        let status = try store().recoveryStatus()
+        if common.json { return try emit(status) }
+        if let gap = status.observing { print("Interruption in progress · \(gap.id)") }
+        if status.reviews.isEmpty { print("No recovery reviews pending.") }
+        for review in status.reviews {
+            print("\(review.id) · \(clock(review.gap.awaySeconds)) away · \(review.gap.clockReliable ? "Keep or Trim" : "Keep only, clock changed")")
+            for item in review.sessions {
+                print("  \(item.session.id) · \(item.taskTitle ?? "Focus") · \(clock(item.eligibleSeconds)) eligible trim")
+            }
+        }
+    }
+}
+
+struct RecoveryDecideCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "recovery-decide", abstract: "Explicitly Keep or Trim one recovery gap. The first saved decision wins.")
+    @Argument(help: "Exact gap UUID from three recovery.") var id: String
+    @Option(help: "keep or trim. No default decision.") var decision: String
+    @OptionGroup var common: Common
+
+    func run() throws {
+        let gapID = try parseRecoveryGapID(id)
+        let choice = try parseRecoveryDecision(decision)
+        let gap = try store().decideRecovery(gapID, decision: choice)
+        common.json ? try emit(gap) : print("\(gap.id) · \(gap.state.rawValue)")
     }
 }
 

@@ -91,24 +91,33 @@ private struct RecoveryImpact: Codable, FetchableRecord, PersistableRecord {
     var eligibleSeconds: TimeInterval = 0
 }
 
-public struct RecoverySessionReview: Identifiable, Sendable {
+public struct RecoverySessionReview: Codable, Identifiable, Sendable {
     public let session: Session
     public let taskTitle: String?
     public let eligibleSeconds: TimeInterval
     public var id: String { session.id }
 }
 
-public struct RecoveryReview: Identifiable, Sendable {
+public struct RecoveryReview: Codable, Identifiable, Sendable {
     public let gap: RecoveryGap
     public let sessions: [RecoverySessionReview]
     public var id: String { gap.id }
     public var eligibleSeconds: TimeInterval { sessions.reduce(0) { $0 + $1.eligibleSeconds } }
 }
 
-public struct RecoveryStatus: Sendable {
+public struct RecoveryStatus: Codable, Sendable {
     public let observing: RecoveryGap?
     public let reviews: [RecoveryReview]
     public let unresolvedSessionIDs: Set<String>
+
+    private enum CodingKeys: String, CodingKey { case observing, reviews, unresolvedSessionIDs }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(observing, forKey: .observing)
+        try container.encode(reviews, forKey: .reviews)
+        try container.encode(unresolvedSessionIDs.sorted(), forKey: .unresolvedSessionIDs)
+    }
 
     public func suspendsReconciliation(for sessionID: String) -> Bool {
         unresolvedSessionIDs.contains(sessionID)
