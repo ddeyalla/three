@@ -93,6 +93,10 @@ components:
 
 # Design System: Three
 
+## App icon
+
+`Resources/AppIcon.png` is the 1024 × 1024 source for the macOS app icon. It preserves the supplied retriever illustration inside its rounded tile, with transparent space outside the rim. The build creates the standard 16–1024 pixel icon representations with macOS `sips` and `iconutil`, then bundles `AppIcon.icns`. This bitmap icon uses the existing SwiftPM packaging and needs no Xcode asset catalog.
+
 ## Overview
 
 **Creative North Star: "The Quiet Instrument"**
