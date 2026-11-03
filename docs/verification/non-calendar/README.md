@@ -4,6 +4,8 @@ Work is on `dv/non-calendar-backlog`, based on the committed handoff at `81e5a96
 
 This index separates implemented behavior from required acceptance. Historical receipts retain their exact candidate revisions. Later passes do not rewrite earlier failures.
 
+**Production preservation failed in the latest desktop pass.** A QA launch without its disposable environment migrated the production database and closed one past plan. The coordinator stopped desktop QA, preserved read-only evidence, and found an exact baseline-matching backup. No restoration or production restart has occurred. See the [incident assessment and proposed recovery](production-preservation-incident.md). The installed executable and original process remain present; the data-preservation claim does not pass.
+
 | Ticket | Implementation commits | Verified behavior and remaining gate |
 | --- | --- | --- |
 | BPRO-402 | `9d1bb33`, `d0a9118`, `9921b03` | Shared bounded History, civil-date fixes, CLI/MCP parity, native two-month drill-down, date picker, narrow detail/back, external refresh and error/retry passed. Keyboard-only day selection and larger-fixture native timing remain unproved after recorded automation failures. [Evidence](402.md), [read-view receipt](readviews-native.md). |
@@ -32,7 +34,7 @@ One initial concurrent `test-planning-supervisor.py` run failed its existing dea
 
 ## Preserved state and local artifacts
 
-The latest completed native bracket matched installed Three's executable and WAL-visible table fingerprints, PID 92331 and its original start time. Manual Test's executable and data also matched. Its original PID 29492 exited during the first baseline for an unknown cause and time; it was never restarted and its process-preservation check did not pass.
+The chart-verification bracket matched installed Three's executable, database fingerprints, PID 92331 and its original start time. The later day-close/reflection pass failed production data preservation as described above. The installed executable and process remain unchanged. Manual Test's executable and data still matched. Its original PID 29492 exited during the first baseline for an unknown cause and time; it was never restarted and its process-preservation check did not pass.
 
 The current signed local candidate is `build/verification/non-calendar/frozen-cb68bd8/Three.app`, with identities in its adjacent `identity.json`. It has the production bundle identity and must not be launched as the isolated QA app. Terra prepares a separately identified copy with explicit disposable `THREE_DB` and `THREE_CHROME_DATA`; its receipt supplies the safe app/fixture paths. Neither `make run` nor `make install` is part of this run.
 
