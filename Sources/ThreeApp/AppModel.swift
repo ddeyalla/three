@@ -10,6 +10,7 @@ import UserNotifications
 @Observable
 final class AppModel {
     let store: Store
+    let planning: PlanningController
     private(set) var snapshot: DaySnapshot
     private(set) var now = Date()
     var error: String?
@@ -51,6 +52,7 @@ final class AppModel {
     init() {
         do {
             store = try Store()
+            planning = try PlanningController(store: store)
             snapshot = try store.snapshot()
             inbox = try store.inbox()
             upcoming = try store.upcoming()
@@ -72,7 +74,7 @@ final class AppModel {
         self.ticker = ticker
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
         // A notification left from before a relaunch may be stale; reconcile schedules a fresh one if needed.
-        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+        if let running { UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [running.id]) }
         reconcile()
         // A new time zone, a changed clock or a wake can move every focus-hours boundary at once.
         let local = NotificationCenter.default, workspace = NSWorkspace.shared.notificationCenter
@@ -89,6 +91,7 @@ final class AppModel {
         ]
         appBlocker.start()
         refreshBlocking()
+        planning.check(now: now)
     }
 
     // MARK: Derived
@@ -134,6 +137,7 @@ final class AppModel {
 
     private func tick() {
         now = Date()
+        planning.check(now: now)
         if snapshot.day != DayKey(now) { reload() }
         // A clock set back by more than a tick leaves the last policy in the future, so read it again.
         if now >= blockingRefreshDue || now < blocking.now.addingTimeInterval(-1) { refreshBlocking() }
@@ -175,6 +179,8 @@ final class AppModel {
             self.error = error.localizedDescription
         }
         refreshBlocking()
+        planning.refresh()
+        planning.check(now: Date())
     }
 
     /// Browser heartbeats are written silently, so connections are re-read this often even when nothing else changes.
@@ -208,7 +214,7 @@ final class AppModel {
         let center = UNUserNotificationCenter.current()
         guard let running, !running.isPaused, running.remaining(at: Date()) > 0 else {
             if scheduledNotification != nil {
-                center.removeAllPendingNotificationRequests()
+                center.removePendingNotificationRequests(withIdentifiers: [scheduledNotification!.id])
                 scheduledNotification = nil
             }
             return
@@ -224,7 +230,7 @@ final class AppModel {
         }
         content.sound = .default
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, running.plannedEnd.timeIntervalSinceNow), repeats: false)
-        center.removeAllPendingNotificationRequests()
+        if let old = scheduledNotification { center.removePendingNotificationRequests(withIdentifiers: [old.id]) }
         center.add(UNNotificationRequest(identifier: running.id, content: content, trigger: trigger))
         scheduledNotification = (running.id, running.plannedEnd)
     }

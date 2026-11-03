@@ -1,0 +1,71 @@
+import Foundation
+import Testing
+import ThreeCore
+@testable import ThreeApp
+
+@MainActor
+struct ScheduledPlanningAppTests {
+    private func store() throws -> Store {
+        try Store(url: FileManager.default.temporaryDirectory.appendingPathComponent("three-planning-app-\(UUID().uuidString)/db.sqlite"))
+    }
+
+    @Test func testShowsOutputAndFailureAndDoesNotRepeatNudgeOnReload() async throws {
+        let store = try store()
+        var settings = PlanningSettings()
+        settings.command = "printf 'fixture stdout'; printf 'fixture stderr' >&2; exit 6"
+        try store.setPlanningSettings(settings)
+        var notices: [PlanningNotice] = []
+        let planning = try PlanningController(store: store) { notices.append($0) }
+        planning.check(now: Date(), test: true)
+        #expect(planning.checking)
+        await planning.task?.value
+        #expect(!planning.checking)
+        #expect(planning.lastRun?.status == .failed)
+        #expect(planning.lastRun?.stdout == "fixture stdout")
+        #expect(planning.lastRun?.stderr == "fixture stderr")
+        #expect(planning.lastRun?.exitCode == 6)
+        #expect(notices.count == 1 && !notices[0].draftReady)
+        let restarted = try PlanningController(store: store) { notices.append($0) }
+        restarted.check(now: Date())
+        await restarted.task?.value
+        #expect(notices.count == 1)
+        #expect(restarted.lastRun?.id == planning.lastRun?.id)
+    }
+
+    @Test func startupCancelPreventsCommandAndShutdownWaitsForOwnedCleanup() async throws {
+        let store = try store()
+        var settings = PlanningSettings()
+        settings.command = "printf should-not-run"
+        try store.setPlanningSettings(settings)
+        let planning = try PlanningController(store: store, deliverNotice: { _ in })
+        planning.check(now: Date(), test: true)
+        planning.cancel()
+        await planning.task?.value
+        #expect(planning.lastRun?.status == .cancelled)
+        #expect(planning.lastRun?.stdout == "")
+        #expect(planning.lastRun?.processGroup == nil)
+        await planning.shutdown()
+        planning.check(now: Date(), test: true)
+        #expect(planning.task == nil)
+    }
+
+    @Test func settingsUseSharedPreferenceStoreAndPreserveTimerPreferences() throws {
+        let store = try store()
+        var timer = try store.preferences()
+        timer.sessionMinutes = 25
+        try store.setPreferences(timer)
+        let planning = try PlanningController(store: store, deliverNotice: { _ in })
+        var settings = planning.settings
+        settings.localTime = "14:45"
+        settings.command = "echo local-only"
+        planning.save(settings)
+        #expect(planning.error == nil)
+        let reopened = try Store(url: URL(fileURLWithPath: store.db.path))
+        #expect(try reopened.planningSettings() == settings)
+        #expect(try reopened.preferences().sessionMinutes == 25)
+        settings.localTime = "25:00"
+        planning.save(settings)
+        #expect(planning.error != nil)
+        #expect(try reopened.planningSettings().localTime == "14:45")
+    }
+}

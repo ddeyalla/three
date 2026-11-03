@@ -15,6 +15,7 @@ struct ThreeApp: App {
             RootView()
                 .environment(model)
                 .environment(workspace)
+                .onAppear { delegate.planning = model.planning }
         }
         .defaultSize(width: 1240, height: 800)
         .windowStyle(.hiddenTitleBar)
@@ -91,6 +92,16 @@ struct ThreeApp: App {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
+    var planning: PlanningController?
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let planning else { return .terminateNow }
+        Task {
+            await planning.shutdown()
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
     func applicationDidFinishLaunching(_ notification: Notification) {
         UNUserNotificationCenter.current().delegate = self
     }

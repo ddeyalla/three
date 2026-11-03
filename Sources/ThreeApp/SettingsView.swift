@@ -3,7 +3,7 @@ import SwiftUI
 import ThreeCore
 
 enum SettingsTab: Hashable {
-    case timer, categories, blocking, connect
+    case timer, planning, categories, blocking, connect
 }
 
 struct SettingsView: View {
@@ -13,6 +13,7 @@ struct SettingsView: View {
         @Bindable var model = model
         TabView(selection: $model.settingsTab) {
             Tab("Timer", systemImage: "timer", value: .timer) { TimerSettings() }
+            Tab("Planning", systemImage: "calendar", value: .planning) { PlanningSettingsView() }
             Tab("Categories", systemImage: "circle.grid.2x2", value: .categories) { CategorySettings() }
             Tab("Blocking", systemImage: "hand.raised", value: .blocking) { BlockingSettings() }
             Tab("Connect", systemImage: "point.3.connected.trianglepath.dotted", value: .connect) { ConnectSettings() }
