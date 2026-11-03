@@ -118,7 +118,7 @@ struct BlockingSettings: View {
                 BlockedRow(item: item, locked: locked, lockHelp: lockHelp) { listNote = remove(item.rules).map { ListNote(message: $0) } }
             }
             HStack(spacing: Space.sm) {
-                TextField("Website or app", text: $site, prompt: Text("Add a website, like example.com, or an app ID"))
+                TextField("Website", text: $site, prompt: Text("Add a website, like example.com"))
                     .labelsHidden()
                     .autocorrectionDisabled()
                     .focused($siteFocused)

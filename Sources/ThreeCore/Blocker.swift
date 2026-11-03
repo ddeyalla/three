@@ -164,7 +164,6 @@ public enum BlockTarget: Hashable, Sendable {
     /// 3. A bundle identifier of an installed app (`isInstalledApp`, LaunchServices in the callers) is an app.
     /// 4. Reverse-DNS: three or more labels, the first a TLD (`com.apple.Music`) and the last not a common TLD
     ///    (`app.slack.com` stays a site). `music` and `news` are real gTLDs, so the last-label set stays small.
-    /// 5. Text that is no valid host but a valid bundle identifier (`com.foo.my_app`) is an app.
     /// Everything else is a site. Callers offer explicit app and site overrides for the cases this misreads.
     public init(classifying input: String, isInstalledApp: (String) -> Bool = { _ in false }) throws {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -182,12 +181,7 @@ public enum BlockTarget: Hashable, Sendable {
             self = .app(try AppBundleID(parsing: text))
             return
         }
-        do {
-            self = .domain(try BlockDomain(parsing: text))
-        } catch BlockError.invalidDomain(.malformed) {
-            guard let app = try? AppBundleID(parsing: text) else { throw BlockError.invalidDomain(.malformed) }
-            self = .app(app)
-        }
+        self = .domain(try BlockDomain(parsing: text))
     }
 
     /// An app, whatever the text looks like: a bundle identifier, or a `.app` path read for its identifier.

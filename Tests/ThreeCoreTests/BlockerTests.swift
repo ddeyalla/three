@@ -137,6 +137,7 @@ private func evaluate(_ now: Date, zone: String = "UTC", rules: [BlockRule] = [r
     }
     #expect(throws: BlockError.protectedApp("com.apple.finder")) { try BlockTarget(classifying: "com.apple.finder") }
     #expect(throws: BlockError.invalidDomain(.empty)) { try BlockTarget(classifying: "  ") }
+    #expect(throws: BlockError.invalidDomain(.malformed)) { try BlockTarget(classifying: "my_site.com") }
 }
 
 @Test func appBundlePathsClassifyByTheirBundleIdentifier() throws {
