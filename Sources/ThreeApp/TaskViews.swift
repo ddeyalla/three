@@ -22,24 +22,24 @@ struct TaskCard<Trailing: View>: View {
         VStack(alignment: .leading, spacing: Space.sm) {
             HStack(spacing: Space.md) {
                 CompletionButton(row: row)
-                Button(action: onTap) {
-                    VStack(alignment: .leading, spacing: Space.hairline) {
+                VStack(alignment: .leading, spacing: Space.hairline) {
+                    Button(action: onTap) {
                         Text(row.task.title)
                             .font(Typo.body)
                             .foregroundStyle(isClosed ? .secondary : .primary)
                             .lineLimit(1)
-                        TaskDetailLine(row: row)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(.rect)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-                .help(row.task.title)
-                .accessibilityLabel(row.task.title)
-                .accessibilityValue(expanded ? "Details expanded" : "Details collapsed")
-                .accessibilityActions {
-                    if let up = reorder?.moveUp { Button("Move Up", action: up) }
-                    if let down = reorder?.moveDown { Button("Move Down", action: down) }
+                    .buttonStyle(.plain)
+                    .help(row.task.title)
+                    .accessibilityLabel(row.task.title)
+                    .accessibilityValue(expanded ? "Details expanded" : "Details collapsed")
+                    .accessibilityActions {
+                        if let up = reorder?.moveUp { Button("Move Up", action: up) }
+                        if let down = reorder?.moveDown { Button("Move Down", action: down) }
+                    }
+                    TaskDetailLine(row: row, editableCategory: row.task.status != .carried)
                 }
                 trailing
                     .font(Typo.body)
@@ -143,14 +143,26 @@ private struct CardDragSource<Preview: View>: ViewModifier {
 
 /// The quiet line under a task: category, tags, step count, and whether it has notes.
 struct TaskDetailLine: View {
+    @Environment(AppModel.self) private var model
     let row: TaskRow
+    var editableCategory = false
 
     /// In a narrow card the step count and notes mark give way first, then the tags.
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            line(tags: true, extras: true)
-            line(tags: true, extras: false)
-            line(tags: false, extras: false)
+        HStack(spacing: Space.xs) {
+            if editableCategory {
+                CategoryPicker(categories: model.liveCategories, selection: row.category) { category in
+                    model.perform { try model.store.updateTask(row.id, category: category.id) }
+                }
+            } else {
+                Circle().fill(row.category.color).frame(width: 6, height: 6)
+                Text(row.category.name)
+            }
+            ViewThatFits(in: .horizontal) {
+                details(tags: true, extras: true)
+                details(tags: true, extras: false)
+                Color.clear.frame(width: 0, height: 0)
+            }
         }
         .font(Typo.meta)
         .foregroundStyle(.secondary)
@@ -158,10 +170,8 @@ struct TaskDetailLine: View {
         .lineLimit(1)
     }
 
-    private func line(tags: Bool, extras: Bool) -> some View {
+    private func details(tags: Bool, extras: Bool) -> some View {
         HStack(spacing: Space.xs) {
-            Circle().fill(row.category.color).frame(width: 6, height: 6)
-            Text(row.category.name)
             if tags { ForEach(row.tags) { Text("@\($0.name)") } }
             if extras, !row.steps.isEmpty {
                 Text("·")
@@ -172,7 +182,7 @@ struct TaskDetailLine: View {
                 Image(systemName: "text.alignleft").accessibilityLabel("Has notes")
             }
         }
-        .fixedSize(horizontal: tags, vertical: true)
+        .fixedSize()
     }
 }
 
@@ -397,40 +407,53 @@ struct QuickAddField: View {
                 TextField(placeholder, text: $text)
                     .textFieldStyle(.plain)
                     .focused($focused)
-                    .onSubmit {
-                        if model.capture(text, defaultDay: defaultDay, categoryID: category?.id) {
-                            text = ""
-                            categoryChoice = nil
-                        }
-                    }
-                Picker("Category for new task", selection: Binding(
-                    get: { category?.id ?? "" },
-                    set: { categoryChoice = ($0, parsed.category) }
-                )) {
-                    ForEach(model.liveCategories) { category in
-                        Text(category.name).tag(category.id)
-                    }
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
-                .fixedSize()
-                .accessibilityIdentifier("quick-add-category")
-                .help("Choose a category before adding the task")
+                    .onSubmit(submit)
+                    .help("#category, @tag, a duration like 45m, and today, tomorrow, a weekday or inbox")
             }
             .frame(height: 36)
-            if !text.isEmpty {
-                preview
-                    .padding(.leading, 18 + Space.md)
-                    .padding(.bottom, Space.sm)
+            HStack(spacing: Space.sm) {
+                CategoryPicker(categories: model.liveCategories, selection: category) { category in
+                    categoryChoice = (category.id, parsed.category)
+                    focused = true
+                }
+                .accessibilityIdentifier("quick-add-category")
+                Spacer(minLength: 0)
+                Text("\(parsed.minutes ?? model.snapshot.preferences.defaultBlockMinutes)m · \(whenLabel)")
+                    .font(Typo.meta)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .monospacedDigit()
+                Button(action: submit) {
+                    Image(systemName: "arrow.turn.down.left")
+                        .font(Typo.meta)
+                        .frame(width: 28, height: 26)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .disabled(parsed.title.isEmpty)
+                .help("Add task (Return)")
+                .accessibilityLabel("Add task")
+            }
+            .padding(.bottom, Space.sm)
+            if !parsed.tags.isEmpty || (!text.isEmpty && parsed.title.isEmpty) {
+                preview.padding(.bottom, Space.sm)
             }
         }
         .font(Typo.body)
         .padding(.horizontal, Space.md)
         .glassEffect(.regular.tint(.white.opacity(focused ? 0.06 : 0)).interactive(), in: .rect(cornerRadius: Radius.card))
         .focusedValue(\.todayFocus, .entry)
-        .help("#category, @tag, a duration like 45m, and today, tomorrow, a weekday or inbox")
         .onChange(of: model.quickAddRequest) { claimQuickAdd() }
         .onAppear { claimQuickAdd() }
+    }
+
+    private func submit() {
+        if model.capture(text, defaultDay: defaultDay, categoryID: category?.id) {
+            text = ""
+            categoryChoice = nil
+            focused = true
+        }
     }
 
     /// ⌘N may switch views first, so a field that appears afterwards still takes the request.
@@ -441,19 +464,12 @@ struct QuickAddField: View {
     }
 
     private var preview: some View {
-        let minutes = parsed.minutes ?? model.snapshot.preferences.defaultBlockMinutes
         return HStack(spacing: Space.sm) {
             if parsed.title.isEmpty {
                 Text("No title yet").foregroundStyle(Theme.overrun)
             }
-            HStack(spacing: Space.xs) {
-                Circle().fill(category?.color ?? Theme.idle).frame(width: 6, height: 6)
-                Text(category?.name ?? "")
-            }
             ForEach(parsed.tags, id: \.self) { Text("@\($0)") }
             Spacer(minLength: 0)
-            Text("\(minutes)m")
-            Text(whenLabel)
         }
         .lineLimit(1)
         .font(Typo.meta)
