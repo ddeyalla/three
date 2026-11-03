@@ -100,7 +100,7 @@ def prepare():
     pre = data / 'pre-upgrade-v10.sqlite'
     with sqlite3.connect(database) as source, sqlite3.connect(pre) as dest:
         source.backup(dest)
-    expectations = {'today': today.isoformat(), 'previous_month_day': previous.isoformat(), 'empty_day': (previous - dt.timedelta(days=1)).isoformat(), 'focus_elapsed_seconds': 1500, 'break_seconds_excluded': 300, 'carried_source': 'source', 'copy': 'copy', 'paused_session': 'paused', 'reflection': 'reflection', 'planning_enabled': False, 'schema': migrations}
+    expectations = {'today': today.isoformat(), 'previous_month_day': previous.isoformat(), 'empty_day': (previous - dt.timedelta(days=1)).isoformat(), 'scope': 'Fresh fixture before native timer interaction', 'focus_elapsed_seconds': 1800, 'focus_seconds_by_session': {'reflection': 1500, 'paused': 300}, 'focus_seconds_by_day': {previous.isoformat(): 1500, today.isoformat(): 300}, 'break_seconds_excluded': 300, 'carried_source': 'source', 'copy': 'copy', 'paused_session': 'paused', 'reflection': 'reflection', 'planning_enabled': False, 'schema': migrations}
     manifest = {'source': BASE, 'app': str(app), 'executable': str(app / 'Contents/MacOS' / exe), 'bundle_id': info['CFBundleIdentifier'], 'database': str(database), 'pre_upgrade_v10': str(pre), 'chrome': str(chrome), 'helper': str(helper), 'executable_sha256': digest(app / 'Contents/MacOS' / exe), 'expectations': expectations}
     (data / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     (OUT / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')

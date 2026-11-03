@@ -60,7 +60,7 @@ MeetingCache  date, eventId, title, start, end   (written by the app, read by CL
 Command       id, kind, payload, createdAt, handledAt?   (v0.5+: calendar intents from CLI/MCP, executed by the app)
 ```
 
-The record is local-first. Every row carries `id` (UUID), `updatedAt` and `deletedAt` (soft delete), so CloudKit sync can be added later without a migration (§10).
+The record is local-first. The implemented schema is not sync-ready without migrations. Some tables have no update or deletion metadata, and steps and tag links can be physically deleted. See [the schema audit and companion design](docs/plans/2026-11-03-sync-companion-design.md) for actual fields, deletion rules, and separately scoped follow-ups. CloudKit and companion sync are not implemented.
 
 ## 4. The daily loop
 

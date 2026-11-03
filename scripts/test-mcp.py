@@ -271,7 +271,7 @@ def run(binary, scratch):
             assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
             assert not connection.execute("PRAGMA foreign_key_check").fetchall()
             assert connection.execute("SELECT COUNT(*) FROM session WHERE endedAt IS NULL").fetchone()[0] == 0
-        print("PASS: 26 tool schemas, two resources, real stdio lifecycle, malformed requests, shared CLI reads/writes and Darwin signal, draft/closed guards, cap concurrency, timer, carry-over, strictness and blocker rules.")
+        print(f"PASS: {len(names)} tool schemas, two resources, real stdio lifecycle, malformed requests, shared CLI reads/writes and Darwin signal, draft/closed guards, cap concurrency, timer, carry-over, strictness and blocker rules.")
     finally:
         rpc.close()
     restarted = RPC(binary, env)
