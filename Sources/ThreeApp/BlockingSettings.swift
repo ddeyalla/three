@@ -123,7 +123,7 @@ struct BlockingSettings: View {
                     .autocorrectionDisabled()
                     .focused($siteFocused)
                     .onSubmit { addSite(site) }
-                    .onChange(of: site) { listNote = nil }
+                    .onChange(of: site) { _, text in if !text.isEmpty { listNote = nil } }  // clearing after an add keeps its note
                 Button("Add") { addSite(site) }
                     .disabled(site.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
@@ -144,7 +144,7 @@ struct BlockingSettings: View {
                     Text(note.message).fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: Space.xs)
                     if let suggestion = note.suggestion {
-                        Button("Block \(suggestion.rawValue)") { add(suggestion) }
+                        Button("Block \(suggestion.rawValue)") { add(.domain(suggestion)) }
                     }
                 }
             }
@@ -180,7 +180,7 @@ struct BlockingSettings: View {
     private func addSite(_ text: String) {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         do {
-            add(try BlockDomain(parsing: text))
+            add(try BlockTarget(classifying: text) { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) != nil })
         } catch BlockError.invalidDomain(.pathRule(let suggestion)) {
             listNote = ListNote(message: "Blocking part of a site comes later.", suggestion: suggestion)
         } catch {
@@ -189,17 +189,19 @@ struct BlockingSettings: View {
     }
 
     /// The Store hands back the rule that now covers the site, so a rule that existed before is a duplicate.
-    private func add(_ domain: BlockDomain) {
+    /// Typed bundle identifiers and .app paths arrive here as apps, by the same rule as `three block add`.
+    private func add(_ target: BlockTarget) {
         do {
             let before = Set(try model.store.blockStatus().rules.filter(\.enabled).map(\.id))
-            let rule = try model.store.addBlockRule(.domain(domain))
+            let rule = try model.store.addBlockRule(target)
             if before.contains(rule.id) {
-                listNote = ListNote(message: rule.target == .domain(domain)
-                                    ? "\(domain) is already on your list."
-                                    : "\(domain) is already covered by \(rule.target.value).", isProblem: false)
+                listNote = ListNote(message: rule.target == target
+                                    ? "\(target.value) is already on your list."
+                                    : "\(target.value) is already covered by \(rule.target.value).", isProblem: false)
             } else {
                 site = ""
-                listNote = nil
+                // A typed bundle identifier lands under apps; say so, since the field reads as websites.
+                listNote = if case .app = target { ListNote(message: "Blocked app \(rule.name).", isProblem: false) } else { nil }
                 siteFocused = true
             }
         } catch {

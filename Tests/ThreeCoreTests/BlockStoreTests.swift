@@ -43,6 +43,13 @@ private func startFocus(_ store: Store, strict: Bool = false, at now: Date = mon
     #expect(values == ["reddit.com", "redd.it", "com.tinyspeck.slackmacgap"])
 }
 
+@Test func classifiedBundleIdentifiersAreStoredAsAppRules() throws {
+    let store = try Store(url: freshURL())
+    try store.addBlockRules(["com.apple.Music", "news.ycombinator.com"].map { try BlockTarget(classifying: $0) }, now: monday)
+    let rules = try store.blockStatus(now: monday, calendar: utc).rules.map { [$0.target.kind, $0.target.value] }
+    #expect(rules == [["app", "com.apple.Music"], ["domain", "news.ycombinator.com"]])
+}
+
 @Test func unsupportedRuleCountsRollBackAddsAndReenabling() throws {
     let store = try Store(url: freshURL())
     let disabled = try store.addBlockRule(.domain(BlockDomain(parsing: "disabled.example.com")))

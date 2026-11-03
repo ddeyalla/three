@@ -89,7 +89,7 @@ three status [--json]
 three categories [add Health --color "#4FBF8B" | rename A B | color A "#hex" | archive A]
 three settings [--session 50 --short-break 5 --long-break 15 --block 60]
 three block [status] [--json]                     # whether blocking is on, why, until when, and what isn't covered
-three block add reddit news.ycombinator.com --app com.tinyspeck.slackmacgap
+three block add reddit news.ycombinator.com com.tinyspeck.slackmacgap  # bundle IDs and .app paths are apps; --app/--site to override
 three block hours add mon-fri 10:00-13:00         # weekly focus hours; 22:00-02:00 runs past midnight
 three block connect-chrome                        # the same Chrome setup as Settings → Blocking
 ```

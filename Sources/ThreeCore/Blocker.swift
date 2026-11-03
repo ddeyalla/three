@@ -62,6 +62,7 @@ public struct BlockDomain: Hashable, Comparable, Sendable, CustomStringConvertib
     public init(parsing input: String) throws {
         var text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { throw BlockError.invalidDomain(.empty) }
+        if text.hasPrefix("//") { text = "https:" + text }  // a scheme-relative URL: //cdn.example.app
         if !text.contains("://") {
             if text.hasSuffix("/") { text.removeLast() }
             if let cut = text.firstIndex(where: { "/?#".contains($0) }) {
@@ -157,6 +158,89 @@ public enum BlockTarget: Hashable, Sendable {
         case .app(let a): a.rawValue
         }
     }
+
+    /// Reads typed text as an app or a site, the one rule the CLI, MCP and Settings share. A wrong site is
+    /// visible and easy to fix; a wrong app silently blocks nothing, so doubt goes to site. In order:
+    /// 1. An existing `.app` bundle at an absolute or `~` path is that app's bundle identifier.
+    /// 2. Text with a scheme or a path is a site, so `youtube.com/shorts` keeps its suggestion.
+    /// 3. A bundle identifier of an installed app (`isInstalledApp`, LaunchServices in the callers) is an app.
+    /// 4. Reverse-DNS: three or more labels, the first a root such as `com`, and either a capital after the first
+    ///    label (`com.apple.Music`) or a last label that isn't a TLD (`com.tinyspeck.slackmacgap`).
+    /// Everything else is a site: `app.zoom.us`, `dev.twitch.tv`. Callers offer explicit app and site overrides.
+    public init(classifying input: String, isInstalledApp: (String) -> Bool = { _ in false }) throws {
+        let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.hasPrefix("./") || text.hasPrefix("../") {
+            throw BlockError.invalidApp("Use the app's full path, like /Applications/Music.app.")
+        }
+        if Self.appBundleURL(text) != nil {
+            self = try BlockTarget(app: text)
+            return
+        }
+        if text.contains("/") || text.contains(":") {
+            self = .domain(try BlockDomain(parsing: text))
+            return
+        }
+        let labels = text.split(separator: ".", omittingEmptySubsequences: false)
+        let reverseDNS = labels.count >= 3 && Self.reverseDNSRoots.contains(labels[0].lowercased())
+            && (labels.dropFirst().contains { $0.contains(where: \.isUppercase) } || !Self.topLevelDomains.contains(labels.last!.lowercased()))
+        if labels.count >= 2, isInstalledApp(text) || reverseDNS {
+            self = .app(try AppBundleID(parsing: text))
+            return
+        }
+        self = .domain(try BlockDomain(parsing: text))
+    }
+
+    /// An app, whatever the text looks like: a bundle identifier, or a `.app` path read for its identifier.
+    public init(app input: String) throws {
+        let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.hasPrefix("./") || text.hasPrefix("../") {
+            throw BlockError.invalidApp("Use the app's full path, like /Applications/Music.app.")
+        }
+        if let url = Self.appBundleURL(text) {
+            guard let id = Bundle(url: url)?.bundleIdentifier else {
+                throw BlockError.invalidApp("\(text) has no bundle identifier (CFBundleIdentifier), so it can't be blocked.")
+            }
+            self = .app(try AppBundleID(parsing: id))
+        } else if text.hasPrefix("/") || text.hasPrefix("~") {
+            throw BlockError.invalidApp("No app at \(text).")
+        } else {
+            self = .app(try AppBundleID(parsing: text))
+        }
+    }
+
+    /// An existing `.app` at an absolute or `~` path. Anything else, like `//cdn.example.app`, isn't a path.
+    private static func appBundleURL(_ text: String) -> URL? {
+        var path = text
+        if path.hasSuffix("/") { path.removeLast() }
+        guard path.hasPrefix("/") || path.hasPrefix("~"), path.lowercased().hasSuffix(".app") else { return nil }
+        let expanded = (path as NSString).expandingTildeInPath
+        guard FileManager.default.fileExists(atPath: expanded) else { return nil }
+        return URL(fileURLWithPath: expanded)
+    }
+
+    /// First labels that mark a reverse-DNS bundle identifier.
+    static let reverseDNSRoots: Set<String> = ["com", "org", "net", "io", "edu", "gov", "app", "dev", "co", "me"]
+    /// Every ISO country-code TLD and the common generic ones, offline. A last label here could be a site.
+    static let topLevelDomains: Set<String> = Set("""
+ac ad ae af ag ai al am ao aq ar as at au aw ax az ba bb bd be bf bg bh bi bj bl bm bn bo bq br bs bt bv bw by bz
+ca cc cd cf cg ch ci ck cl cm cn co cr cu cv cw cx cy cz de dj dk dm do dz ec ee eg eh er es et eu fi fj fk fm fo fr
+ga gb gd ge gf gg gh gi gl gm gn gp gq gr gs gt gu gw gy hk hm hn hr ht hu id ie il im in io iq ir is it je jm jo jp
+ke kg kh ki km kn kp kr kw ky kz la lb lc li lk lr ls lt lu lv ly ma mc md me mf mg mh mk ml mm mn mo mp mq mr ms mt
+mu mv mw mx my mz na nc ne nf ng ni nl no np nr nu nz om pa pe pf pg ph pk pl pm pn pr ps pt pw py qa re ro rs ru rw
+sa sb sc sd se sg sh si sj sk sl sm sn so sr ss st su sv sx sy sz tc td tf tg th tj tk tl tm tn to tr tt tv tw tz ua
+ug uk um us uy uz va vc ve vg vi vn vu wf ws ye yt za zm zw
+com org net edu gov mil int arpa info biz name pro aero coop museum mobi asia tel travel jobs cat post xxx
+app dev page new web blog shop store online site website tech xyz top club live life world today space fun art
+design cloud digital media studio agency email link click help zone network group social video games game run team
+tools wiki chat community company center software systems solutions services support academy school education
+university health care money finance bank capital ventures fund global inc ltd llc gmbh city london nyc berlin paris
+tokyo music news radio tube movie film show audio band style fashion food cafe bar pub beer wine tours red blue pink
+black green gold win bet poker casino porn adult sex dating works work careers science technology engineering codes
+build cool zip mov foo how one plus moe ninja guru rocks love photo photos pics gallery gay lol fyi wtf vip pub bio
+eco law legal sport sports fit fitness yoga energy events land house estate homes realty market markets trade
+exchange cash credit loans tax insurance consulting partners management marketing press report review reviews
+tips guide events party dance photography pictures live stream watch film show tv family kids baby land earth
+""".split(whereSeparator: \.isWhitespace).map(String.init))
 
     /// Rows are re-parsed on read, so a hand-edited database can't smuggle in a malformed or protected target.
     init?(kind: String, value: String) {

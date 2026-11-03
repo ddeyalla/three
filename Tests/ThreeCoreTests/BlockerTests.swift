@@ -113,6 +113,64 @@ private func evaluate(_ now: Date, zone: String = "UTC", rules: [BlockRule] = [r
     }
 }
 
+@Test func typedTextClassifiesAsAnAppOrASite() throws {
+    let apps: [(String, String)] = [
+        ("com.apple.Music", "com.apple.Music"), (" com.tinyspeck.slackmacgap ", "com.tinyspeck.slackmacgap"),
+        ("org.mozilla.firefox", "org.mozilla.firefox"), ("com.apple.News", "com.apple.News"),
+        ("dev.warp.Warp-Stable", "dev.warp.Warp-Stable"), ("me.proton.pass", "me.proton.pass"), ("com.foo.my_app", "com.foo.my_app"),
+    ]
+    for (text, id) in apps {
+        #expect(try BlockTarget(classifying: text) == .app(AppBundleID(parsing: id)), "\(text)")
+    }
+    for text in ["reddit.com", "x.com", "news.ycombinator.com", "sub.example.co.uk", "app.slack.com", "linear.app",
+                 "dev.to", "Reddit.com", "https://www.reddit.com/", "com.example.org", "app.zoom.us", "dev.twitch.tv",
+                 "app.clickup.eu", "me.example.fr", "io.example.xyz", "app.example.com.au", "app.example.co.nz",
+                 "com.apple.news", "//cdn.example.app/"] {
+        #expect(try BlockTarget(classifying: text) == .domain(BlockDomain(parsing: text)), "\(text)")
+    }
+    #expect(try BlockTarget(classifying: "com.apple.Music").value == "com.apple.Music")
+    // An installed app wins over the reverse-DNS guess, never over a scheme or path.
+    let installed = { (id: String) in id == "de.zattoo.Player" || id == "app.slack.com" }
+    #expect(try BlockTarget(classifying: "de.zattoo.Player") == .domain(BlockDomain(parsing: "de.zattoo.Player")))
+    #expect(try BlockTarget(classifying: "de.zattoo.Player", isInstalledApp: installed) == .app(AppBundleID(parsing: "de.zattoo.Player")))
+    #expect(try BlockTarget(classifying: "https://app.slack.com", isInstalledApp: installed) == .domain(BlockDomain(parsing: "app.slack.com")))
+    #expect(throws: BlockError.invalidDomain(.pathRule(suggestion: domain("youtube.com")))) {
+        try BlockTarget(classifying: "youtube.com/shorts")
+    }
+    #expect(throws: BlockError.protectedApp("com.apple.finder")) { try BlockTarget(classifying: "com.apple.finder") }
+    #expect(throws: BlockError.invalidDomain(.empty)) { try BlockTarget(classifying: "  ") }
+    #expect(throws: BlockError.invalidDomain(.malformed)) { try BlockTarget(classifying: "my_site.com") }
+    #expect(throws: BlockError.invalidDomain(.malformed)) { try BlockTarget(classifying: ".linear.app") }
+}
+
+@Test func appBundlePathsClassifyByTheirBundleIdentifier() throws {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let app = folder.appendingPathComponent("Music Fake.app")
+    defer { try? FileManager.default.removeItem(at: folder) }
+    try FileManager.default.createDirectory(at: app.appendingPathComponent("Contents"), withIntermediateDirectories: true)
+    let plist = try PropertyListSerialization.data(fromPropertyList: ["CFBundleIdentifier": "com.example.MusicFake",
+                                                                      "CFBundlePackageType": "APPL"], format: .xml, options: 0)
+    try plist.write(to: app.appendingPathComponent("Contents/Info.plist"))
+    #expect(try BlockTarget(classifying: app.path) == .app(AppBundleID(parsing: "com.example.MusicFake")))
+    #expect(try BlockTarget(classifying: app.path + "/") == .app(AppBundleID(parsing: "com.example.MusicFake")))
+    // A path that doesn't exist isn't an app; neither is a relative one.
+    #expect(throws: BlockError.invalidDomain(.pathRule(suggestion: nil))) { try BlockTarget(classifying: "/nowhere/Gone.app") }
+    #expect(throws: BlockError.invalidApp("Use the app's full path, like /Applications/Music.app.")) {
+        try BlockTarget(classifying: "./Music.app")
+    }
+    let unnamed = folder.appendingPathComponent("Unnamed.app")
+    try FileManager.default.createDirectory(at: unnamed.appendingPathComponent("Contents"), withIntermediateDirectories: true)
+    try PropertyListSerialization.data(fromPropertyList: ["CFBundlePackageType": "APPL"], format: .xml, options: 0)
+        .write(to: unnamed.appendingPathComponent("Contents/Info.plist"))
+    #expect(throws: BlockError.invalidApp("\(unnamed.path) has no bundle identifier (CFBundleIdentifier), so it can't be blocked.")) {
+        try BlockTarget(classifying: unnamed.path)
+    }
+    // The explicit app override reads paths too and takes any bundle identifier at its word.
+    #expect(try BlockTarget(app: app.path) == .app(AppBundleID(parsing: "com.example.MusicFake")))
+    #expect(try BlockTarget(app: "app.slack.com") == .app(AppBundleID(parsing: "app.slack.com")))
+    #expect(throws: BlockError.invalidApp("No app at /nowhere/Gone.app.")) { try BlockTarget(app: "/nowhere/Gone.app") }
+}
+
 // MARK: Focus hours
 
 @Test func focusHoursReadDayRangesAndOvernightTimes() throws {

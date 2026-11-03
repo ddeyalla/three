@@ -154,7 +154,7 @@ private enum MCPTool: String, CaseIterable {
         case .getBlockStatus:
             (text, fields, required, readOnly) = ("Read current blocker policy, rules, focus hours, today's hits and browser coverage.", [:], [], true)
         case .addBlockRule:
-            (text, fields, required, readOnly) = ("Tighten blocking by adding or re-enabling a domain or app rule. Repeats return the covering rule. Never removes, disables or grants exceptions.", ["kind": .object(["type": "string", "enum": ["domain", "app"]]), "value": stringField], ["kind", "value"], false)
+            (text, fields, required, readOnly) = ("Tighten blocking by adding or re-enabling a domain or app rule. Omit kind to let Three decide: a .app path, an installed app's bundle ID, or reverse-DNS like com.apple.Music is an app; anything else, like app.slack.com, is a domain. Repeats return the covering rule. Never removes, disables or grants exceptions.", ["kind": .object(["type": "string", "enum": ["domain", "app"]]), "value": stringField], ["value"], false)
         case .setTaskStrict:
             (text, fields, required, readOnly) = ("Mark a live task strict. One-way and safe to repeat. No false or disable parameter exists.", ["id": idField], ["id"], false)
         }
@@ -296,10 +296,15 @@ private struct ThreeMCP: Sendable {
                                           through: a.string("to") == nil ? nil : a.day("to")))
         case .getBlockStatus: return try result(BlockStatusJSON(store.blockStatus(), now: Date()))
         case .addBlockRule:
-            let kind = try a.requiredString("kind"), value = try a.requiredString("value")
-            let target: BlockTarget = kind == "domain" ? .domain(try BlockDomain(parsing: value)) : .app(try AppBundleID(parsing: value))
-            _ = try store.addBlockRule(target)
-            return try result(BlockStatusJSON(store.blockStatus(), now: Date()))
+            let value = try a.requiredString("value")
+            let target: BlockTarget = switch a.string("kind") {
+            case nil: try BlockTarget(classifying: value, isInstalledApp: isInstalledApp)
+            case "domain": .domain(try BlockDomain(parsing: value))
+            case "app": try BlockTarget(app: value)
+            case _?: throw ThreeError.invalid("Block rule kind must be domain or app.")
+            }
+            let rule = try store.addBlockRule(target)
+            return try result(AddedBlockRuleJSON(rule: rule, status: BlockStatusJSON(store.blockStatus(), now: Date())))
         case .setTaskStrict: try store.setTaskStrict(a.requiredString("id"))
         }
         return try result(["ok": true])
@@ -410,4 +415,18 @@ private func failure(_ code: String, _ message: String) -> CallTool.Result {
     struct Failure: Encodable { let code: String; let message: String }
     let text = try! mcpJSON(Failure(code: code, message: message))
     return .init(content: [.text(text: text, annotations: nil, _meta: nil)], isError: true)
+}
+
+/// The blocker status with the rule that now covers the value, so an agent sees whether it became an app or a domain.
+struct AddedBlockRuleJSON: Encodable {
+    struct Rule: Encodable { let id: String, kind: String, value: String }
+    let rule: BlockRule, status: BlockStatusJSON
+
+    private enum Key: String, CodingKey { case added }
+
+    func encode(to encoder: any Encoder) throws {
+        try status.encode(to: encoder)
+        var container = encoder.container(keyedBy: Key.self)
+        try container.encode(Rule(id: rule.id, kind: rule.target.kind, value: rule.target.value), forKey: .added)
+    }
 }
