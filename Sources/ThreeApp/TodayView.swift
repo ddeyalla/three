@@ -441,7 +441,7 @@ private struct TodayTaskCard: View {
                  reorder: CardReorder(dragging: dragging,
                                       moveUp: index > 0 ? { model.moveTodayTask(row.id, by: -1) } : nil,
                                       moveDown: index < count - 1 ? { model.moveTodayTask(row.id, by: 1) } : nil)) {
-            trailing
+            TaskDurationLabel(row: row)
             Button { editing = true } label: { Image(systemName: "pencil") }
                 .buttonStyle(.plain)
                 .help("Edit task")
@@ -462,8 +462,13 @@ private struct TodayTaskCard: View {
         Button("Move Up") { model.moveTodayTask(row.id, by: -1) }.disabled(index == 0)
         Button("Move Down") { model.moveTodayTask(row.id, by: 1) }.disabled(index == count - 1)
     }
+}
 
-    @ViewBuilder private var trailing: some View {
+private struct TaskDurationLabel: View {
+    @Environment(AppModel.self) private var model
+    let row: TaskRow
+
+    var body: some View {
         switch row.task.status {
         case .carried:
             Label("Tomorrow", systemImage: "arrow.turn.up.right")

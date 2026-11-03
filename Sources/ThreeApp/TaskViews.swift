@@ -373,10 +373,17 @@ struct QuickAddField: View {
     var placeholder = "Add a task"
     var claimsKeyboardShortcut = true
     @State private var text = ""
+    @State private var categoryChoice: (id: String, inlineCategory: String?)?
     @FocusState private var focused: Bool
 
     private var parsed: QuickAdd {
         QuickAdd.parse(text, categories: model.liveCategories.map(\.name), today: model.snapshot.day)
+    }
+
+    private var category: ThreeCore.Category? {
+        if let choice = categoryChoice, choice.inlineCategory == parsed.category,
+           let chosen = model.liveCategories.first(where: { $0.id == choice.id }) { return chosen }
+        return model.liveCategories.first { $0.name == parsed.category } ?? model.liveCategories.first
     }
 
     /// What it understood sits on its own line under the field, so a narrow pane never squeezes what you type.
@@ -391,8 +398,24 @@ struct QuickAddField: View {
                     .textFieldStyle(.plain)
                     .focused($focused)
                     .onSubmit {
-                        if model.capture(text, defaultDay: defaultDay) { text = "" }
+                        if model.capture(text, defaultDay: defaultDay, categoryID: category?.id) {
+                            text = ""
+                            categoryChoice = nil
+                        }
                     }
+                Picker("Category for new task", selection: Binding(
+                    get: { category?.id ?? "" },
+                    set: { categoryChoice = ($0, parsed.category) }
+                )) {
+                    ForEach(model.liveCategories) { category in
+                        Text(category.name).tag(category.id)
+                    }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .fixedSize()
+                .accessibilityIdentifier("quick-add-category")
+                .help("Choose a category before adding the task")
             }
             .frame(height: 36)
             if !text.isEmpty {
@@ -418,7 +441,6 @@ struct QuickAddField: View {
     }
 
     private var preview: some View {
-        let category = model.liveCategories.first { $0.name == parsed.category } ?? model.liveCategories.first
         let minutes = parsed.minutes ?? model.snapshot.preferences.defaultBlockMinutes
         return HStack(spacing: Space.sm) {
             if parsed.title.isEmpty {

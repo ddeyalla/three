@@ -405,7 +405,7 @@ final class AppModel {
 
     /// Quick add: `#category`, a duration and a day word override the defaults. Returns whether a task was added.
     @discardableResult
-    func capture(_ text: String, defaultDay: DayKey?) -> Bool {
+    func capture(_ text: String, defaultDay: DayKey?, categoryID: String? = nil) -> Bool {
         guard !text.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
         let quick = QuickAdd.parse(text, categories: liveCategories.map(\.name), today: snapshot.day)
         guard !quick.title.isEmpty else {
@@ -413,7 +413,7 @@ final class AppModel {
             return false
         }
         guard let fallback = liveCategories.first else { return false }
-        let new = NewTask(title: quick.title, category: quick.category ?? fallback.name,
+        let new = NewTask(title: quick.title, category: categoryID ?? quick.category ?? fallback.name,
                           blockMinutes: quick.minutes ?? snapshot.preferences.defaultBlockMinutes, tags: quick.tags)
         let day: DayKey? = switch quick.when {
         case .day(let d)?: d
