@@ -1,34 +1,76 @@
 import SwiftUI
 import ThreeCore
 
-/// The notch silhouette: concave ears where it meets the top edge, rounded bottom corners.
-/// `ear` insets the body on each side; the ears flare out into that inset.
-struct NotchShape: Shape {
-    var ear: CGFloat
-    var bottomRadius: CGFloat
+/// Motion for opening and closing the surface. Short, critically damped springs: they settle
+/// without overshooting the fixed panel, and retarget smoothly when interrupted mid-flight.
+enum NotchMotion {
+    static let expand = Animation.spring(duration: 0.3, bounce: 0)
+    static let collapse = Animation.spring(duration: 0.2, bounce: 0)
 
-    var animatableData: AnimatablePair<CGFloat, CGFloat> {
-        get { AnimatablePair(ear, bottomRadius) }
-        set { ear = newValue.first; bottomRadius = newValue.second }
+    static func animation(expanding: Bool) -> Animation { expanding ? expand : collapse }
+}
+
+/// The notch silhouette, drawn inside the fixed panel. The neck (notch plus wings) has concave ears
+/// where it meets the top edge. Expanding never widens the neck: a body grows down from under the
+/// menu bar, wider than the neck, joined to it by concave shoulders.
+struct NotchShape: Shape {
+    /// 0 collapsed, 1 expanded.
+    var progress: CGFloat
+    let layout: NotchLayout
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
     }
 
+    static let collapsedRadius = Radius.block + Space.xs
+    static let expandedRadius = Radius.panel
+
     func path(in rect: CGRect) -> Path {
-        let radius = min(bottomRadius, (rect.width - ear * 2) / 2, rect.height - ear)
-        var path = Path()
-        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
-        path.addQuadCurve(to: CGPoint(x: rect.minX + ear, y: rect.minY + ear),
-                          control: CGPoint(x: rect.minX + ear, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.minX + ear, y: rect.maxY - radius))
-        path.addQuadCurve(to: CGPoint(x: rect.minX + ear + radius, y: rect.maxY),
-                          control: CGPoint(x: rect.minX + ear, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.maxX - ear - radius, y: rect.maxY))
-        path.addQuadCurve(to: CGPoint(x: rect.maxX - ear, y: rect.maxY - radius),
-                          control: CGPoint(x: rect.maxX - ear, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.maxX - ear, y: rect.minY + ear))
-        path.addQuadCurve(to: CGPoint(x: rect.maxX, y: rect.minY),
-                          control: CGPoint(x: rect.maxX - ear, y: rect.minY))
-        path.closeSubpath()
-        return path
+        let p = min(max(progress, 0), 1)
+        let ear = NotchLayout.ear
+        let neck = layout.collapsedSize
+        let full = layout.expandedSize
+        let left = rect.midX - neck.width / 2
+        let right = rect.midX + neck.width / 2
+        let neckBottom = rect.minY + neck.height
+
+        // Neck: its rounded bottom corners square off as the body takes over beneath it.
+        let neckRadius = min(Self.collapsedRadius * (1 - p), neck.width / 2, neck.height - ear)
+        var shape = Path()
+        shape.move(to: CGPoint(x: left - ear, y: rect.minY))
+        shape.addQuadCurve(to: CGPoint(x: left, y: rect.minY + ear), control: CGPoint(x: left, y: rect.minY))
+        shape.addLine(to: CGPoint(x: left, y: neckBottom - neckRadius))
+        shape.addQuadCurve(to: CGPoint(x: left + neckRadius, y: neckBottom), control: CGPoint(x: left, y: neckBottom))
+        shape.addLine(to: CGPoint(x: right - neckRadius, y: neckBottom))
+        shape.addQuadCurve(to: CGPoint(x: right, y: neckBottom - neckRadius), control: CGPoint(x: right, y: neckBottom))
+        shape.addLine(to: CGPoint(x: right, y: rect.minY + ear))
+        shape.addQuadCurve(to: CGPoint(x: right + ear, y: rect.minY), control: CGPoint(x: right, y: rect.minY))
+        shape.closeSubpath()
+
+        let bodyHeight = (full.height - neck.height) * p
+        guard bodyHeight > 0 else { return shape }
+        // Body: overlaps the neck by a point so the two never show a seam.
+        let width = neck.width + (full.width - neck.width) * p
+        let side = (width - neck.width) / 2
+        let bottomRadius = min(Self.collapsedRadius + (Self.expandedRadius - Self.collapsedRadius) * p,
+                               width / 2, bodyHeight / 2)
+        let topRadius = min(bottomRadius, side, bodyHeight / 2)
+        let body = CGRect(x: rect.midX - width / 2, y: neckBottom - 1, width: width, height: bodyHeight + 1)
+        shape = shape.union(UnevenRoundedRectangle(topLeadingRadius: topRadius, bottomLeadingRadius: bottomRadius,
+                                                   bottomTrailingRadius: bottomRadius, topTrailingRadius: topRadius,
+                                                   style: .continuous).path(in: body))
+        // Shoulders: concave fillets where the neck meets the flat top of a wider body.
+        let shoulder = min(NotchLayout.shoulder * p, max(0, side - topRadius), neck.height - ear)
+        guard shoulder > 0 else { return shape }
+        var fillets = Path()
+        for (x, outward) in [(left, -shoulder), (right, shoulder)] {
+            fillets.move(to: CGPoint(x: x, y: neckBottom - shoulder))
+            fillets.addQuadCurve(to: CGPoint(x: x + outward, y: neckBottom), control: CGPoint(x: x, y: neckBottom))
+            fillets.addLine(to: CGPoint(x: x, y: neckBottom))
+            fillets.closeSubpath()
+        }
+        return shape.union(fillets)
     }
 }
 
@@ -44,10 +86,9 @@ struct NotchView: View {
     private var layout: NotchLayout { surface.layout }
 
     var body: some View {
-        let size = expanded ? layout.expandedSize : layout.collapsedSize
-        let ear = NotchLayout.ear
+        let shape = NotchShape(progress: expanded ? 1 : 0, layout: layout)
         ZStack(alignment: .top) {
-            NotchShape(ear: ear, bottomRadius: expanded ? Radius.panel : Radius.block + Space.xs)
+            shape
                 .fill(.black)
                 .shadow(color: .black.opacity(expanded ? 0.35 : 0), radius: Space.md, y: Space.xs)
             if let session = model.running, session.kind == .focus {
@@ -58,14 +99,17 @@ struct NotchView: View {
                         controls(session)
                             .padding(.horizontal, Space.lg)
                             .padding(.bottom, Space.md)
+                            .frame(width: layout.expandedSize.width)
                             .frame(maxHeight: .infinity)
                             .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
                     }
                 }
-                .padding(.horizontal, ear)
+                // Same frame as the shape, so the clip lines up with what is drawn.
+                .frame(width: layout.panelSize.width, height: layout.panelSize.height, alignment: .top)
+                .clipShape(shape)
             }
         }
-        .frame(width: size.width + ear * 2, height: size.height)
+        .frame(width: layout.panelSize.width, height: layout.panelSize.height)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .font(Typo.body)
         .preferredColorScheme(.dark)
@@ -78,7 +122,7 @@ struct NotchView: View {
         let tint = remaining < 0 ? Theme.overrun : model.runningTask?.category.color ?? Theme.idle
         return HStack(spacing: 0) {
             ProgressRing(progress: progress(session), tint: tint, paused: session.isPaused)
-                .frame(width: NotchLayout.wingWidth)
+                .frame(width: layout.wingWidth)
             Spacer(minLength: layout.notchWidth)
             Text(Format.clock(remaining))
                 .font(Typo.heading)
@@ -87,7 +131,7 @@ struct NotchView: View {
                 .lineLimit(1)
                 .foregroundStyle(remaining < 0 ? Theme.overrun : session.isPaused ? .secondary : .primary)
                 .opacity(expanded ? 0 : 1)
-                .frame(width: NotchLayout.wingWidth)
+                .frame(width: layout.wingWidth)
                 .accessibilityLabel("\(Format.clock(remaining)) \(session.isPaused ? "paused" : "left")")
         }
         .frame(width: layout.collapsedSize.width)
